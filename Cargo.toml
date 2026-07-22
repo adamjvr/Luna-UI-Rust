@@ -1,0 +1,34 @@
+[workspace]
+members = [
+    "apps/luna-ui-rust-demo",
+    "crates/luna-accessibility",
+    "crates/luna-core",
+    "crates/luna-host-core",
+    "crates/luna-input",
+    "crates/luna-render",
+    "crates/luna-theme",
+    "crates/luna-ui",
+]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97.1"
+license = "MPL-2.0"
+authors = ["Adam Vadala-Roth"]
+publish = false
+
+[workspace.lints.rust]
+missing_docs = "deny"
+unsafe_code = "forbid"
+unreachable_pub = "deny"
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+unwrap_used = "deny"

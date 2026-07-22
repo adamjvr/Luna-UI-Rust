@@ -1,0 +1,16 @@
+[package]
+name = "luna-render"
+description = "Backend-neutral display lists and safe CPU reference rendering for Luna UI Rust."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+luna-core = { path = "../luna-core" }
+luna-theme = { path = "../luna-theme" }
+
+[lints]
+workspace = true

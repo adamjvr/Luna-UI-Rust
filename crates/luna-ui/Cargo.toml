@@ -1,0 +1,18 @@
+[package]
+name = "luna-ui"
+description = "Widget contract and proof widgets for Luna UI Rust."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+luna-accessibility = { path = "../luna-accessibility" }
+luna-core = { path = "../luna-core" }
+luna-render = { path = "../luna-render" }
+luna-theme = { path = "../luna-theme" }
+
+[lints]
+workspace = true

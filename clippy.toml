@@ -1,0 +1,3 @@
+# Keep thresholds explicit so Clippy upgrades do not silently change project policy.
+too-many-arguments-threshold = 8
+type-complexity-threshold = 300
