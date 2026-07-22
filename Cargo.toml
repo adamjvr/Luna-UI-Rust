@@ -1,15 +1,26 @@
 [workspace]
 members = [
     "apps/luna-ui-rust-demo",
+    "apps/luna-ui-rust-native-demo",
     "crates/luna-accessibility",
+    "crates/luna-accessibility-accesskit",
+    "crates/luna-commands",
     "crates/luna-core",
     "crates/luna-host-core",
+    "crates/luna-host-winit",
     "crates/luna-input",
+    "crates/luna-layout",
     "crates/luna-render",
     "crates/luna-theme",
     "crates/luna-ui",
 ]
 resolver = "3"
+
+[workspace.dependencies]
+accesskit = "=0.24.1"
+accesskit_winit = "=0.33.2"
+softbuffer = "=0.4.8"
+winit = "=0.30.13"
 
 [workspace.package]
 version = "0.1.0"

@@ -9,7 +9,7 @@
 use luna_core::PointI;
 
 /// Modifier-key state represented as a compact bit set without a third-party dependency.
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Modifiers(u8);
 
 impl Modifiers {
@@ -51,7 +51,7 @@ pub enum PointerButton {
 }
 
 /// A named non-text key.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum NamedKey {
     /// Escape.
     Escape,
@@ -82,7 +82,7 @@ pub enum NamedKey {
 }
 
 /// Logical key value after host keyboard-layout processing.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum Key {
     /// A named control/navigation key.
     Named(NamedKey),

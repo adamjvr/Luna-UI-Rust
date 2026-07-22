@@ -1,45 +1,39 @@
-Start Luna-UI-Rust M0 deterministic foundation
+Build Luna-UI-Rust M1 native host and layout foundation
 
-Create the initial Rust-native rewrite workspace for Luna UI while preserving the architectural
-boundaries established by the Swift implementation.
+Advance the compiler-verified M0 core into the first live native desktop milestone without leaking
+winit, softbuffer, or AccessKit types into reusable Luna contracts.
 
-This milestone intentionally begins below the native-window and GPU layers. It establishes the
-product-neutral contracts that every later backend must consume and validates the governing Luna
-invariant that paint, hit testing, and accessibility derive from the same deterministic geometry.
+Add luna-layout with deterministic row, column, stack, and two-pane split calculations. Return
+immutable geometry snapshots, distribute integer remainders deterministically, saturate fixed and
+gap allocation in undersized containers, and cover ordering, alignment, small-window, and minimum
+pane behavior with regression tests.
 
-Add a Rust 2024 virtual workspace pinned to Rust 1.97.1 with Cargo resolver 3, inherited package
-metadata, strict rustdoc and safety lints, targeted Clippy policy, stable rustfmt configuration, and
-a single validation script used by CI.
+Add luna-commands with validated typed command IDs, command metadata, normalized key chords,
+repeat policy, deterministic BTreeMap registration, and immutable command dispatch requests. Keep
+behavior execution in applications rather than storing callbacks inside widgets.
 
-Add luna-core with validated stable node IDs, integer points/sizes/insets/rectangles, overflow-aware
-edge calculations, clipping/intersection behavior, and structured diagnostics that remain quiet
-until a host/application chooses to surface them.
+Extend luna-input ordering traits for deterministic key-binding maps and extend accessibility nodes
+with disabled and focused builder state.
 
-Add luna-input with platform-neutral pointer, keyboard, text, scroll, focus, modifier, and logical
-key events so future native hosts do not leak winit, SDL, Cocoa, Wayland, X11, or Win32 event types
-into widgets or application code.
+Extend the safe CPU renderer with logical-to-physical fractional-DPI rectangle conversion while
+retaining the one-to-one M0 path and BGRA8 framebuffer as the executable rendering oracle.
 
-Add luna-theme with typed RGBA8 colors and an initial semantic dark palette. Keep theme-file parsing
-outside the widget layer so future Sublime color-scheme compatibility can populate stable Luna
-tokens rather than coupling widgets to a file format.
+Add luna-accessibility-accesskit as a leaf adapter. Preserve stable numeric AccessKit IDs across
+frames, translate roles, labels, bounds, children, disabled state, focus, and available actions, and
+produce complete tree updates suitable for the event-loop-proxy adapter lifecycle.
 
-Add luna-render with immutable backend-neutral display commands, a safe tightly packed BGRA8
-framebuffer, clipping-aware rectangle composition, and a deterministic CPU renderer that serves as
-both the fallback path and executable specification for future GPU output.
+Add luna-host-winit using winit 0.30 ApplicationHandler and run_app lifecycle, hidden-first window
+creation for AccessKit, safe softbuffer context and surface management, DPI-aware framebuffer
+allocation, resize and redraw handling, normalized pointer/keyboard/text/scroll/focus input,
+AccessKit action routing, and explicit runtime error propagation.
 
-Add luna-accessibility with product-neutral roles, semantic nodes, stable node IDs, and validation
-for duplicate nodes, missing roots, missing children, and cycles before a native adapter consumes
-the snapshot.
+Add a product-neutral WorkspaceDemo composite fixture built from shared layout snapshots. Use the
+same calculated bounds for display-list generation, hit testing, and accessibility semantics.
 
-Add luna-host-core with deterministic invalidation coalescing, frame tokens, frame numbering, and
-presentation timing statistics without creating a native window or selecting an async runtime.
+Add the live luna-ui-rust-native-demo application with Control-P typed command dispatch, pointer
+activation, semantic focus, AccessKit click/focus actions, resize/DPI behavior, and Escape-to-exit.
+Keep the original headless PPM demo as the deterministic CI-friendly proof path.
 
-Add luna-ui with the reusable Widget contract, immutable UiFrame assembly, and an M0 proof panel
-whose display list, hit testing, and accessibility semantics share one bounds snapshot.
-
-Add a zero-dependency headless demo that renders the proof panel through the CPU backend and writes
-a portable PPM frame suitable for CI and early visual inspection.
-
-Add unit tests, architecture/porting/practice/roadmap/status documentation, source-baseline
-provenance, MPL-2.0 licensing, contribution rules, and a hardened GitHub Actions workflow with
-read-only permissions and a commit-pinned checkout action.
+Update architecture, status, porting, roadmap, research, validation, README, and CI-facing guidance
+for M1 while retaining Rust 1.97.1, Edition 2024, resolver 3, MPL-2.0, strict rustdoc, forbidden
+unsafe code, and warnings-as-errors policy.

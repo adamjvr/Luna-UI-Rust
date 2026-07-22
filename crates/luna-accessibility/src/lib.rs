@@ -76,6 +76,20 @@ impl AccessibilityNode {
         self.children = children;
         self
     }
+
+    /// Sets the disabled state using builder syntax.
+    #[must_use]
+    pub const fn with_disabled(mut self, is_disabled: bool) -> Self {
+        self.is_disabled = is_disabled;
+        self
+    }
+
+    /// Sets keyboard-focus ownership using builder syntax.
+    #[must_use]
+    pub const fn with_focused(mut self, is_focused: bool) -> Self {
+        self.is_focused = is_focused;
+        self
+    }
 }
 
 /// A validated semantic tree snapshot.

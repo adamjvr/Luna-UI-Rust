@@ -9,7 +9,9 @@
 mod demo_panel;
 mod frame;
 mod widget;
+mod workspace_demo;
 
 pub use demo_panel::DemoPanel;
 pub use frame::{UiFrame, UiFrameError};
 pub use widget::Widget;
+pub use workspace_demo::{WorkspaceDemo, WorkspaceDemoLayout, WorkspaceDemoState};

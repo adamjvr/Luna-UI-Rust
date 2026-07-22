@@ -1,0 +1,24 @@
+[package]
+name = "luna-host-winit"
+description = "Native winit and softbuffer host for Luna UI Rust."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+accesskit.workspace = true
+accesskit_winit.workspace = true
+luna-accessibility-accesskit = { path = "../luna-accessibility-accesskit" }
+luna-core = { path = "../luna-core" }
+luna-host-core = { path = "../luna-host-core" }
+luna-input = { path = "../luna-input" }
+luna-render = { path = "../luna-render" }
+luna-ui = { path = "../luna-ui" }
+softbuffer.workspace = true
+winit.workspace = true
+
+[lints]
+workspace = true

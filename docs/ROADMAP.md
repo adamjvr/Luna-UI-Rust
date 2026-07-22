@@ -1,21 +1,23 @@
 # Roadmap
 
-## M0 — deterministic foundation (this package)
+## M0 — deterministic foundation — complete
 
 - Rust 2024 workspace and quality gates.
-- Core IDs, geometry, diagnostics, input, theme tokens.
+- Core IDs, geometry, diagnostics, input, and theme tokens.
 - Display list and safe CPU rectangle renderer.
 - Accessibility tree validation.
 - Frame invalidation runtime.
 - Widget contract and headless proof application.
 
-## M1 — native host and reusable layout
+## M1 — native host and reusable layout — implemented in this overlay
 
-- `luna-layout` with row/column/stack/split primitives and explicit measured snapshots.
-- `luna-commands` with typed command IDs, bindings, and dispatch requests.
-- `luna-host-winit` using the modern `ApplicationHandler`/`run_app` lifecycle.
-- DPI-aware coordinates, resize handling, pointer/keyboard/text translation.
-- AccessKit adapter wired to the same semantic geometry.
+- `luna-layout` row/column/stack/split primitives with explicit immutable snapshots.
+- `luna-commands` typed IDs, metadata, bindings, repeat policy, and dispatch requests.
+- `luna-host-winit` using `ApplicationHandler` and `EventLoop::run_app`.
+- DPI-aware CPU rendering, resize handling, pointer/keyboard/text translation, and softbuffer
+  presentation.
+- AccessKit adapter using stable IDs and the same semantic geometry.
+- Live native workspace proof application.
 
 ## M2 — editor-grade text
 
@@ -23,7 +25,7 @@
 - cosmic-text shaping adapter using advanced shaping for complex scripts, fallback, bidi, and
   ligatures.
 - glyph cache and CPU glyph composition.
-- selection, caret, scrolling, clipping, and hit testing.
+- selection, caret, scrolling, clipping, and text hit testing.
 - deterministic text fixtures ported from Swift tests.
 
 ## M3 — GPU backend
@@ -34,7 +36,7 @@
 
 ## M4 — reusable editor anatomy
 
-- tabs, sidebar/project tree, status bar, menus, quick panel, find/replace, completion popup.
+- tabs, sidebar/project tree, status bar, menus, quick panel, find/replace, and completion popup.
 - command routing, focus traversal, and accessibility parity.
 - Sublime `.sublime-color-scheme` adapter.
 
