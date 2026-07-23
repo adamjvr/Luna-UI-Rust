@@ -204,13 +204,14 @@ impl NativeApplication for TextDemoApplication {
                     Key::Character(value) => Some(value.as_str()),
                     Key::Named(_) | Key::Unidentified => None,
                 };
-                if let Some(text) = keyboard.text.as_deref().or(logical_fallback) {
-                    if !command_modified && !text.is_empty() && !text.chars().all(char::is_control)
-                    {
-                        let _ = self.editor.insert_text(text);
-                        self.reveal_caret_on_next_frame = true;
-                        return HostControl::Redraw;
-                    }
+                if let Some(text) = keyboard.text.as_deref().or(logical_fallback)
+                    && !command_modified
+                    && !text.is_empty()
+                    && !text.chars().all(char::is_control)
+                {
+                    let _ = self.editor.insert_text(text);
+                    self.reveal_caret_on_next_frame = true;
+                    return HostControl::Redraw;
                 }
             }
             InputEvent::Text(text) => {
