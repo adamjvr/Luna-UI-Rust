@@ -1,0 +1,21 @@
+[package]
+name = "luna-ui-rust-text-demo"
+description = "M2 native editable text proof application for Luna UI Rust."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+luna-core = { path = "../../crates/luna-core" }
+luna-host-winit = { path = "../../crates/luna-host-winit" }
+luna-input = { path = "../../crates/luna-input" }
+luna-text = { path = "../../crates/luna-text" }
+luna-text-cosmic = { path = "../../crates/luna-text-cosmic" }
+luna-theme = { path = "../../crates/luna-theme" }
+luna-ui = { path = "../../crates/luna-ui" }
+
+[lints]
+workspace = true

@@ -105,6 +105,9 @@ impl AccessKitBridge {
         if let Some(label) = &source.label {
             node.set_label(label.clone());
         }
+        if let Some(value) = &source.value {
+            node.set_value(value.clone());
+        }
         node.set_bounds(scale_bounds(source.bounds, scale_factor));
         node.set_children(
             source
@@ -125,7 +128,7 @@ impl AccessKitBridge {
                 node.add_action(Action::Click);
                 node.add_action(Action::Focus);
             }
-            AccessibilityRole::TextField => {
+            AccessibilityRole::TextField | AccessibilityRole::TextArea => {
                 node.add_action(Action::Focus);
             }
             AccessibilityRole::Window
@@ -146,6 +149,7 @@ fn map_role(role: AccessibilityRole) -> AccessRole {
         AccessibilityRole::Label => AccessRole::Label,
         AccessibilityRole::Button => AccessRole::Button,
         AccessibilityRole::TextField => AccessRole::TextInput,
+        AccessibilityRole::TextArea => AccessRole::MultilineTextInput,
         AccessibilityRole::List => AccessRole::List,
         AccessibilityRole::ListItem => AccessRole::ListItem,
     }

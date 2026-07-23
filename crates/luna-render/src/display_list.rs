@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 
-use luna_core::RectI;
+use crate::RasterImage;
+use luna_core::{PointI, RectI};
 use luna_theme::Rgba8;
 
 /// One immutable backend-neutral paint operation.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DisplayCommand {
     /// Clear the complete target.
     Clear(Rgba8),
@@ -14,6 +15,15 @@ pub enum DisplayCommand {
         bounds: RectI,
         /// Source color.
         color: Rgba8,
+    },
+    /// Alpha-composite an immutable BGRA8 image.
+    DrawImage {
+        /// Logical destination origin. The image's logical size matches its pixel size.
+        origin: PointI,
+        /// Immutable source pixels.
+        image: RasterImage,
+        /// Optional logical clip rectangle.
+        clip: Option<RectI>,
     },
 }
 
@@ -42,6 +52,28 @@ impl DisplayList {
         if !bounds.is_empty() {
             self.commands
                 .push(DisplayCommand::FillRect { bounds, color });
+        }
+    }
+
+    /// Appends an immutable raster image.
+    pub fn draw_image(&mut self, origin: PointI, image: RasterImage) {
+        if !image.size().is_empty() {
+            self.commands.push(DisplayCommand::DrawImage {
+                origin,
+                image,
+                clip: None,
+            });
+        }
+    }
+
+    /// Appends an immutable raster image clipped to a logical rectangle.
+    pub fn draw_image_clipped(&mut self, origin: PointI, image: RasterImage, clip: RectI) {
+        if !image.size().is_empty() && !clip.is_empty() {
+            self.commands.push(DisplayCommand::DrawImage {
+                origin,
+                image,
+                clip: Some(clip),
+            });
         }
     }
 

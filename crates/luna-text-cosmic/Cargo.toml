@@ -1,6 +1,6 @@
 [package]
-name = "luna-ui"
-description = "Widget contract and proof widgets for Luna UI Rust."
+name = "luna-text-cosmic"
+description = "cosmic-text shaping, fallback, bidi, hit geometry, and glyph rasterization for Luna UI Rust."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,12 +9,10 @@ authors.workspace = true
 publish.workspace = true
 
 [dependencies]
-luna-accessibility = { path = "../luna-accessibility" }
+cosmic-text.workspace = true
 luna-core = { path = "../luna-core" }
-luna-layout = { path = "../luna-layout" }
 luna-render = { path = "../luna-render" }
 luna-text = { path = "../luna-text" }
-luna-text-cosmic = { path = "../luna-text-cosmic" }
 luna-theme = { path = "../luna-theme" }
 
 [lints]

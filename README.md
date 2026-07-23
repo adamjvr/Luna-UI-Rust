@@ -1,77 +1,86 @@
 # Luna-UI-Rust
 
 **Luna-UI-Rust** is a clean Rust-native rewrite of Luna UI: the product-neutral UI, input,
-layout, rendering, accessibility, command, and host foundation used to build editor-class desktop
-applications such as Moth Text.
+layout, rendering, accessibility, command, text, and host foundation used to build editor-class
+desktop applications such as Moth Text.
 
 This is not a mechanical Swift-to-Rust translation. The rewrite preserves Luna's architectural
 contracts while expressing them with Rust ownership, explicit errors, immutable frame snapshots,
 small workspace crates, and strict compiler tooling.
 
-## M1 status
+## M2 status
 
-M0 established the dependency-light deterministic core. M1 adds the first native desktop path while
-keeping operating-system and third-party types in leaf adapters:
+M0 established the dependency-light deterministic core. M1 added the native desktop host. M2 adds
+the first editor-grade text lane while keeping font-system state inside a narrow adapter:
 
 - stable validated node IDs and saturating integer geometry;
 - deterministic row, column, stack, and two-pane split layout snapshots;
-- platform-neutral pointer, keyboard, text, scroll, and focus events;
+- platform-neutral pointer, keyboard-layout text, IME commits, scroll, and focus events;
 - typed command IDs, metadata, key bindings, and dispatch requests;
-- strongly typed theme colors;
 - immutable backend-neutral display lists;
-- safe BGRA8 CPU rendering with fractional-DPI scaling;
-- validated platform-neutral accessibility trees;
-- stable AccessKit node-ID translation and full-tree updates;
-- deterministic frame invalidation/runtime state;
-- a product-neutral `Widget` contract and composite workspace fixture;
-- a winit `ApplicationHandler` host with softbuffer presentation;
-- a headless PPM demo and a live native desktop demo;
+- safe straight-alpha BGRA8 CPU rendering with clipped raster-image commands and fractional DPI;
+- validated platform-neutral accessibility trees and an AccessKit bridge;
+- deterministic line-plus-UTF-8 document positions and anchor/focus ranges;
+- Unicode extended-grapheme movement and deletion;
+- compact editable text state with selection replacement and vertical preferred-column motion;
+- cosmic-text advanced shaping, fallback, bidi, ligatures, caret positions, hit geometry, and cached
+  glyph rasterization;
+- a reusable `TextView` whose pixels, caret, selection, hit testing, scrolling, and accessibility
+  derive from one immutable shaped snapshot;
+- headless, native workspace, and native editable-text proof applications;
 - unit tests, strict lints, formatting policy, rustdoc checks, and CI.
 
-The reusable Luna core remains free of winit, softbuffer, and AccessKit. Those dependencies are
-pinned only in native adapter crates.
+The reusable document model remains independent of cosmic-text, winit, softbuffer, and AccessKit.
+Those dependencies remain pinned in leaf adapter crates.
 
 ## Build and validate
 
 Install the pinned toolchain through rustup, then run the complete quality gate:
 
 ```bash
+cargo fmt --all
 ./scripts/validate.sh
 ```
 
-Run the live M1 desktop proof:
+Run the M2 editable-text proof:
+
+```bash
+cargo run -p luna-ui-rust-text-demo
+```
+
+Inside the text demo:
+
+- type through winit keyboard-layout text and IME commit paths;
+- use arrows, Shift-arrows, Home, End, Backspace, Delete, and Enter;
+- use **Control-A** to select the document;
+- click or drag to place the caret and create a selection;
+- use the mouse wheel, Shift-wheel, or Page Up/Down to scroll vertically or horizontally;
+- resize the window to exercise reshaping, clipping, DPI conversion, and caret reveal;
+- press **Escape** or close the window to exit.
+
+The earlier proofs remain available:
 
 ```bash
 cargo run -p luna-ui-rust-native-demo
-```
-
-Inside the native demo:
-
-- press **Control-P** to dispatch a typed command and toggle the sidebar treatment;
-- click the sidebar command button to exercise shared hit-test geometry;
-- inspect the window with a platform accessibility tool to exercise the AccessKit tree;
-- press **Escape** or close the window to exit.
-
-The original headless proof remains available:
-
-```bash
 cargo run -p luna-ui-rust-demo -- ./luna-ui-rust-m0.ppm
 ```
 
 ## Governing architecture
 
 ```text
-native winit event / AccessKit action
+native event / AccessKit action
     -> platform-neutral Luna input or command request
-    -> deterministic application state update
-    -> shared immutable layout snapshot
-    -> display list + hit testing + accessibility tree
+    -> UTF-8/grapheme-safe application state update
+    -> cosmic-text adapter creates immutable shaped snapshot
+    -> TextView derives paint + hit testing + accessibility from that snapshot
+    -> display list + semantic tree
     -> CPU renderer / AccessKit adapter
     -> softbuffer presentation
 ```
 
 Widgets do not call graphics APIs, create native windows, own operating-system event loops, or
-embed Moth-specific policy. See `docs/ARCHITECTURE.md` and `docs/PORTING_MAP.md`.
+embed Moth-specific policy. See `docs/ARCHITECTURE.md`, `docs/PORTING_MAP.md`, and
+`docs/M2_UPGRADE.md`.
 
 ## License
 

@@ -6,13 +6,18 @@ rapid dependency accumulation.
 Before submitting changes:
 
 1. Keep product behavior out of Luna crates.
-2. Derive paint, hit testing, and accessibility from shared geometry.
-3. Return typed errors at recoverable boundaries; do not use `unwrap`, `expect`, or `panic` in
+2. Derive paint, hit testing, caret/selection geometry, scrolling, and accessibility from shared
+   geometry or one immutable shaped snapshot.
+3. Preserve Luna document coordinates as logical line plus UTF-8 byte column; use extended
+   grapheme boundaries for user-visible motion and deletion.
+4. Return typed errors at recoverable boundaries; do not use `unwrap`, `expect`, or `panic` in
    production code.
-4. Keep unsafe code forbidden until a narrowly reviewed platform boundary proves it unavoidable.
-5. Document every public item and explain architectural decisions, not obvious syntax.
-6. Run `./scripts/validate.sh`.
+5. Keep unsafe code forbidden until a narrowly reviewed platform boundary proves it unavoidable.
+6. Document every public item and explain architectural decisions, not obvious syntax.
+7. Add regression tests for Unicode, clipping, tiny viewports, long lines, and invalid coordinates
+   when changing text or layout behavior.
+8. Run `./scripts/validate.sh`.
 
 Add dependencies only in the narrowest adapter crate that needs them. A window backend does not
-belong in `luna-core`; a GPU backend does not belong in `luna-ui`; product commands do not belong in
-any Luna crate.
+belong in `luna-core`; a shaping cache does not belong in `luna-text`; a GPU backend does not belong
+in `luna-ui`; product commands do not belong in any Luna crate.

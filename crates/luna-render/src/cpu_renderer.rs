@@ -7,7 +7,7 @@ use luna_core::RectI;
 ///
 /// The production GPU renderer will be a separate backend consuming the same display list. This
 /// renderer is intentionally boring: it provides an executable specification for command order,
-/// clipping, DPI conversion, and pixel output.
+/// clipping, DPI conversion, image composition, and pixel output.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct CpuRenderer;
 
@@ -17,13 +17,12 @@ impl CpuRenderer {
         Self::render_scaled(display_list, framebuffer, 1.0);
     }
 
-    /// Executes every command while converting logical rectangles to physical pixels.
+    /// Executes every command while converting logical geometry to physical pixels.
     ///
     /// Luna widget geometry remains integral and expressed in logical pixels. Native hosts pass
     /// the current window scale factor here rather than allowing platform DPI concerns to leak
     /// into layout, hit testing, or accessibility. Leading edges are rounded down and trailing
-    /// edges are rounded up so a non-empty logical rectangle does not disappear at fractional
-    /// scale factors.
+    /// edges are rounded up so non-empty logical content does not disappear at fractional scales.
     pub fn render_scaled(
         display_list: &DisplayList,
         framebuffer: &mut Framebuffer,
@@ -31,10 +30,24 @@ impl CpuRenderer {
     ) {
         let scale_factor = normalized_scale_factor(scale_factor);
         for command in display_list.commands() {
-            match *command {
-                DisplayCommand::Clear(color) => framebuffer.clear(color),
+            match command {
+                DisplayCommand::Clear(color) => framebuffer.clear(*color),
                 DisplayCommand::FillRect { bounds, color } => {
-                    framebuffer.fill_rect(scale_rect(bounds, scale_factor), color);
+                    framebuffer.fill_rect(scale_rect(*bounds, scale_factor), *color);
+                }
+                DisplayCommand::DrawImage {
+                    origin,
+                    image,
+                    clip,
+                } => {
+                    let logical_bounds =
+                        RectI::new(origin.x, origin.y, image.size().width, image.size().height);
+                    let physical_clip = clip.map(|value| scale_rect(value, scale_factor));
+                    framebuffer.blend_image_clipped(
+                        scale_rect(logical_bounds, scale_factor),
+                        image,
+                        physical_clip,
+                    );
                 }
             }
         }
@@ -85,8 +98,8 @@ fn clamped_u32(value: f64) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::CpuRenderer;
-    use crate::{DisplayList, Framebuffer};
-    use luna_core::{RectI, SizeI};
+    use crate::{DisplayList, Framebuffer, RasterImage};
+    use luna_core::{PointI, RectI, SizeI};
     use luna_theme::Rgba8;
     use std::error::Error;
 
@@ -98,7 +111,6 @@ mod tests {
 
         CpuRenderer::render_scaled(&list, &mut framebuffer, 1.5);
 
-        // Logical 1..2 becomes physical floor(1.5)..ceil(3.0), or columns 1 and 2.
         let width = 4_usize;
         for y in 1_usize..3 {
             for x in 1_usize..3 {
@@ -119,6 +131,20 @@ mod tests {
 
         assert_eq!(&framebuffer.bytes()[0..4], &[3, 2, 1, 255]);
         assert_eq!(&framebuffer.bytes()[4..8], &[0, 0, 0, 0]);
+        Ok(())
+    }
+
+    #[test]
+    fn raster_images_scale_with_the_display_list() -> Result<(), Box<dyn Error>> {
+        let image = RasterImage::new(SizeI::new(1, 1), vec![30, 20, 10, 255])?;
+        let mut list = DisplayList::new();
+        list.draw_image(PointI::new(1, 1), image);
+        let mut framebuffer = Framebuffer::new(SizeI::new(4, 4))?;
+
+        CpuRenderer::render_scaled(&list, &mut framebuffer, 2.0);
+
+        let first = (2_usize * 4 + 2) * 4;
+        assert_eq!(&framebuffer.bytes()[first..first + 4], &[30, 20, 10, 255]);
         Ok(())
     }
 }

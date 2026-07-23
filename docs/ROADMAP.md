@@ -9,24 +9,26 @@
 - Frame invalidation runtime.
 - Widget contract and headless proof application.
 
-## M1 — native host and reusable layout — implemented in this overlay
+## M1 — native host and reusable layout — complete
 
 - `luna-layout` row/column/stack/split primitives with explicit immutable snapshots.
 - `luna-commands` typed IDs, metadata, bindings, repeat policy, and dispatch requests.
 - `luna-host-winit` using `ApplicationHandler` and `EventLoop::run_app`.
-- DPI-aware CPU rendering, resize handling, pointer/keyboard/text translation, and softbuffer
-  presentation.
+- DPI-aware CPU rendering, resize handling, input translation, and softbuffer presentation.
 - AccessKit adapter using stable IDs and the same semantic geometry.
 - Live native workspace proof application.
 
-## M2 — editor-grade text
+## M2 — editor-grade text — implemented in this overlay
 
-- UTF-8 document positions and ranges with explicit conversion boundaries.
-- cosmic-text shaping adapter using advanced shaping for complex scripts, fallback, bidi, and
-  ligatures.
-- glyph cache and CPU glyph composition.
-- selection, caret, scrolling, clipping, and text hit testing.
-- deterministic text fixtures ported from Swift tests.
+- `luna-text` line-plus-UTF-8 coordinates, explicit snapping, anchor/focus ranges, immutable line
+  snapshots, grapheme-safe movement/deletion, compact editing state, and scroll coordinates.
+- `luna-text-cosmic` long-lived font/glyph caches, advanced shaping, fallback, bidi, ligatures,
+  caret stops, hit testing, selection spans, visible ranges, and transparent glyph snapshots.
+- immutable raster-image display commands and correct straight-alpha CPU composition.
+- reusable `TextView` with clipping, current-line paint, selection, caret reveal, pointer mapping,
+  scrolling limits, and text accessibility ranges from shared geometry.
+- native multilingual editable-text proof application.
+- deterministic fixtures ported from Swift Luna Phase 3A–3D text tests.
 
 ## M3 — GPU backend
 

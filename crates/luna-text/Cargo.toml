@@ -1,0 +1,15 @@
+[package]
+name = "luna-text"
+description = "UTF-8 document coordinates, grapheme-safe editing, selections, and scrolling for Luna UI Rust."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+unicode-segmentation.workspace = true
+
+[lints]
+workspace = true

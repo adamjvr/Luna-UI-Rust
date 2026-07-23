@@ -102,6 +102,7 @@ impl WinitInputTranslator {
             }
             WindowEvent::KeyboardInput { event, .. } => Some(InputEvent::Keyboard(KeyboardEvent {
                 key: map_key(&event.logical_key),
+                text: event.text.as_ref().map(ToString::to_string),
                 is_pressed: event.state == ElementState::Pressed,
                 is_repeat: event.repeat,
                 modifiers: self.modifiers,

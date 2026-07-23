@@ -21,12 +21,34 @@ pub enum AccessibilityRole {
     Label,
     /// Pressable control.
     Button,
-    /// Editable text input.
+    /// Single-line editable text input.
     TextField,
+    /// Multi-line editable text area.
+    TextArea,
     /// List container.
     List,
     /// List item.
     ListItem,
+}
+
+/// UTF-8 byte range exposed by a text-bearing semantic node.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub struct AccessibilityTextRange {
+    /// Absolute UTF-8 byte offset.
+    pub utf8_offset: usize,
+    /// UTF-8 byte length.
+    pub utf8_length: usize,
+}
+
+impl AccessibilityTextRange {
+    /// Creates a UTF-8 accessibility range.
+    #[must_use]
+    pub const fn new(utf8_offset: usize, utf8_length: usize) -> Self {
+        Self {
+            utf8_offset,
+            utf8_length,
+        }
+    }
 }
 
 /// One semantic node in an accessibility tree.
@@ -38,6 +60,8 @@ pub struct AccessibilityNode {
     pub role: AccessibilityRole,
     /// Human-readable accessible name.
     pub label: Option<String>,
+    /// Textual value for text-bearing controls.
+    pub value: Option<String>,
     /// Bounds in Luna logical coordinates.
     pub bounds: RectI,
     /// Child IDs in semantic traversal order.
@@ -46,6 +70,16 @@ pub struct AccessibilityNode {
     pub is_disabled: bool,
     /// Whether this node currently owns keyboard focus.
     pub is_focused: bool,
+    /// Whether a text-bearing node permits edits.
+    pub is_editable: bool,
+    /// Complete text range represented by this node.
+    pub text_range: Option<AccessibilityTextRange>,
+    /// Focused insertion range, normally zero length.
+    pub caret_range: Option<AccessibilityTextRange>,
+    /// Current selected range.
+    pub selected_range: Option<AccessibilityTextRange>,
+    /// Portion of the complete text range currently visible.
+    pub visible_range: Option<AccessibilityTextRange>,
 }
 
 impl AccessibilityNode {
@@ -56,10 +90,16 @@ impl AccessibilityNode {
             id,
             role,
             label: None,
+            value: None,
             bounds,
             children: Vec::new(),
             is_disabled: false,
             is_focused: false,
+            is_editable: false,
+            text_range: None,
+            caret_range: None,
+            selected_range: None,
+            visible_range: None,
         }
     }
 
@@ -67,6 +107,13 @@ impl AccessibilityNode {
     #[must_use]
     pub fn with_label(mut self, label: impl Into<String>) -> Self {
         self.label = Some(label.into());
+        self
+    }
+
+    /// Sets the textual value using builder syntax.
+    #[must_use]
+    pub fn with_value(mut self, value: impl Into<String>) -> Self {
+        self.value = Some(value.into());
         self
     }
 
@@ -88,6 +135,29 @@ impl AccessibilityNode {
     #[must_use]
     pub const fn with_focused(mut self, is_focused: bool) -> Self {
         self.is_focused = is_focused;
+        self
+    }
+
+    /// Sets editable text state using builder syntax.
+    #[must_use]
+    pub const fn with_editable(mut self, is_editable: bool) -> Self {
+        self.is_editable = is_editable;
+        self
+    }
+
+    /// Sets complete, caret, selected, and visible text ranges.
+    #[must_use]
+    pub const fn with_text_ranges(
+        mut self,
+        text_range: Option<AccessibilityTextRange>,
+        caret_range: Option<AccessibilityTextRange>,
+        selected_range: Option<AccessibilityTextRange>,
+        visible_range: Option<AccessibilityTextRange>,
+    ) -> Self {
+        self.text_range = text_range;
+        self.caret_range = caret_range;
+        self.selected_range = selected_range;
+        self.visible_range = visible_range;
         self
     }
 }

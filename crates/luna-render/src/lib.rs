@@ -10,7 +10,9 @@
 mod cpu_renderer;
 mod display_list;
 mod framebuffer;
+mod raster_image;
 
 pub use cpu_renderer::CpuRenderer;
 pub use display_list::{DisplayCommand, DisplayList};
 pub use framebuffer::{Framebuffer, FramebufferError};
+pub use raster_image::{RasterImage, RasterImageError};

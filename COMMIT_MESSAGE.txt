@@ -1,39 +1,35 @@
-Build Luna-UI-Rust M1 native host and layout foundation
+Build Luna-UI-Rust M2 editor-grade text foundation
 
-Advance the compiler-verified M0 core into the first live native desktop milestone without leaking
-winit, softbuffer, or AccessKit types into reusable Luna contracts.
+Add luna-text with stable line-plus-UTF-8 positions, explicit scalar-boundary snapping,
+anchor/focus ranges, immutable line metadata, location/absolute conversions, Unicode extended
+grapheme boundaries, compact editable state, selection replacement, grapheme-safe backward and
+forward deletion, preferred-column vertical motion, edit revisions, and saturating scroll state.
 
-Add luna-layout with deterministic row, column, stack, and two-pane split calculations. Return
-immutable geometry snapshots, distribute integer remainders deterministically, saturate fixed and
-gap allocation in undersized containers, and cover ordering, alignment, small-window, and minimum
-pane behavior with regression tests.
+Add luna-text-cosmic as the only crate that owns cosmic-text types. Retain one FontSystem and
+SwashCache, use advanced shaping with installed-font fallback, capture bidi-aware grapheme caret
+stops, rasterize glyphs into an immutable transparent BGRA8 snapshot, and expose deterministic
+caret, hit-test, selection, exact visible-range, and measured horizontal/vertical scroll geometry
+without retaining font-system borrows inside widgets.
 
-Add luna-commands with validated typed command IDs, command metadata, normalized key chords,
-repeat policy, deterministic BTreeMap registration, and immutable command dispatch requests. Keep
-behavior execution in applications rather than storing callbacks inside widgets.
+Extend luna-render with immutable shared RasterImage storage, clipped image display commands,
+nearest-neighbor DPI scaling, and correct straight-alpha source-over composition. Add regression
+coverage proving transparent glyph intermediates retain straight color and disjoint clips draw
+nothing.
 
-Extend luna-input ordering traits for deterministic key-binding maps and extend accessibility nodes
-with disabled and focused builder state.
+Extend platform-neutral accessibility with a multiline text-area role, textual values, editability,
+and complete, caret, selected, and visible UTF-8 ranges. Map the text-area role and value through the
+AccessKit leaf adapter while preserving M1 stable IDs and corrected target_node action routing.
 
-Extend the safe CPU renderer with logical-to-physical fractional-DPI rectangle conversion while
-retaining the one-to-one M0 path and BGRA8 framebuffer as the executable rendering oracle.
+Add the reusable Luna TextView. Derive background, gutter, current-line highlight, selection,
+glyph pixels, caret, pointer-to-text mapping, scrolling limits, caret reveal, visible semantic lines,
+and text ranges from one immutable shaped snapshot.
 
-Add luna-accessibility-accesskit as a leaf adapter. Preserve stable numeric AccessKit IDs across
-frames, translate roles, labels, bounds, children, disabled state, focus, and available actions, and
-produce complete tree updates suitable for the event-loop-proxy adapter lifecycle.
+Add the native luna-ui-rust-text-demo with multilingual fallback and bidi fixtures, ligatures,
+combining graphemes, emoji sequences, keyboard-layout text plus IME commits, keyboard editing,
+Control-A, click and
+drag selection, mouse-wheel and Page Up/Down scrolling, resize/DPI behavior, accessibility focus,
+and Escape-to-exit.
 
-Add luna-host-winit using winit 0.30 ApplicationHandler and run_app lifecycle, hidden-first window
-creation for AccessKit, safe softbuffer context and surface management, DPI-aware framebuffer
-allocation, resize and redraw handling, normalized pointer/keyboard/text/scroll/focus input,
-AccessKit action routing, and explicit runtime error propagation.
-
-Add a product-neutral WorkspaceDemo composite fixture built from shared layout snapshots. Use the
-same calculated bounds for display-list generation, hit testing, and accessibility semantics.
-
-Add the live luna-ui-rust-native-demo application with Control-P typed command dispatch, pointer
-activation, semantic focus, AccessKit click/focus actions, resize/DPI behavior, and Escape-to-exit.
-Keep the original headless PPM demo as the deterministic CI-friendly proof path.
-
-Update architecture, status, porting, roadmap, research, validation, README, and CI-facing guidance
-for M1 while retaining Rust 1.97.1, Edition 2024, resolver 3, MPL-2.0, strict rustdoc, forbidden
-unsafe code, and warnings-as-errors policy.
+Update architecture, status, porting, roadmap, research, upgrade, validation, and README guidance for
+M2 while retaining Rust 1.97.1, Edition 2024, resolver 3, MPL-2.0, strict rustdoc, forbidden unsafe
+code, and warnings-as-errors policy.

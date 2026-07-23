@@ -311,6 +311,7 @@ mod tests {
         let request = registry
             .resolve_keyboard(&KeyboardEvent {
                 key: Key::Character("p".to_owned()),
+                text: Some("p".to_owned()),
                 is_pressed: true,
                 is_repeat: false,
                 modifiers: Modifiers::CONTROL,
@@ -334,6 +335,7 @@ mod tests {
             registry
                 .resolve_keyboard(&KeyboardEvent {
                     key: Key::Character("x".to_owned()),
+                    text: Some("x".to_owned()),
                     is_pressed: true,
                     is_repeat: true,
                     modifiers: Modifiers::NONE,

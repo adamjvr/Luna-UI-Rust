@@ -123,6 +123,12 @@ pub struct PointerEvent {
 pub struct KeyboardEvent {
     /// Logical key.
     pub key: Key,
+    /// Text committed by this key event after keyboard-layout processing.
+    ///
+    /// Native hosts should preserve this separately from `key`: command routing uses the logical
+    /// key, while editable controls consume the committed text. IME composition commits may still
+    /// arrive through [`InputEvent::Text`].
+    pub text: Option<String>,
     /// Whether this event is a press (`true`) or release (`false`).
     pub is_pressed: bool,
     /// Whether the operating system marked this as key repeat.

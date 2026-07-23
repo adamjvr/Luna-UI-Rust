@@ -8,10 +8,12 @@
 
 mod demo_panel;
 mod frame;
+mod text_view;
 mod widget;
 mod workspace_demo;
 
 pub use demo_panel::DemoPanel;
 pub use frame::{UiFrame, UiFrameError};
+pub use text_view::{TextView, TextViewStyle};
 pub use widget::Widget;
 pub use workspace_demo::{WorkspaceDemo, WorkspaceDemoLayout, WorkspaceDemoState};
