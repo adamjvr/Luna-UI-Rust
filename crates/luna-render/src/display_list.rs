@@ -77,6 +77,20 @@ impl DisplayList {
         }
     }
 
+    /// Appends cloned commands from another immutable display-list snapshot.
+    ///
+    /// This is used by scene assembly when multiple reusable widgets contribute paint to one
+    /// frame. Painter order is preserved exactly: existing commands remain first, followed by the
+    /// supplied commands.
+    pub fn extend(&mut self, other: &Self) {
+        self.commands.extend(other.commands.iter().cloned());
+    }
+
+    /// Moves every command from `other` onto the end of this display list.
+    pub fn append(&mut self, other: &mut Self) {
+        self.commands.append(&mut other.commands);
+    }
+
     /// Returns paint operations in painter's order.
     #[must_use]
     pub fn commands(&self) -> &[DisplayCommand] {

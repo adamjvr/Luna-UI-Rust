@@ -124,7 +124,11 @@ impl AccessKitBridge {
         // Actions communicate what native assistive technology may request. Application behavior
         // still routes through the host and Luna command system; this adapter never executes it.
         match source.role {
-            AccessibilityRole::Button => {
+            AccessibilityRole::Button
+            | AccessibilityRole::CheckBox
+            | AccessibilityRole::MenuItem
+            | AccessibilityRole::Tab
+            | AccessibilityRole::TreeItem => {
                 node.add_action(Action::Click);
                 node.add_action(Action::Focus);
             }
@@ -135,7 +139,14 @@ impl AccessKitBridge {
             | AccessibilityRole::Group
             | AccessibilityRole::Label
             | AccessibilityRole::List
-            | AccessibilityRole::ListItem => {}
+            | AccessibilityRole::ListItem
+            | AccessibilityRole::ProgressIndicator
+            | AccessibilityRole::MenuBar
+            | AccessibilityRole::Menu
+            | AccessibilityRole::TabList
+            | AccessibilityRole::Tree
+            | AccessibilityRole::Status
+            | AccessibilityRole::Dialog => {}
         }
 
         node
@@ -152,6 +163,17 @@ fn map_role(role: AccessibilityRole) -> AccessRole {
         AccessibilityRole::TextArea => AccessRole::MultilineTextInput,
         AccessibilityRole::List => AccessRole::List,
         AccessibilityRole::ListItem => AccessRole::ListItem,
+        AccessibilityRole::CheckBox => AccessRole::CheckBox,
+        AccessibilityRole::ProgressIndicator => AccessRole::ProgressIndicator,
+        AccessibilityRole::MenuBar => AccessRole::MenuBar,
+        AccessibilityRole::Menu => AccessRole::Menu,
+        AccessibilityRole::MenuItem => AccessRole::MenuItem,
+        AccessibilityRole::TabList => AccessRole::TabList,
+        AccessibilityRole::Tab => AccessRole::Tab,
+        AccessibilityRole::Tree => AccessRole::Tree,
+        AccessibilityRole::TreeItem => AccessRole::TreeItem,
+        AccessibilityRole::Status => AccessRole::Status,
+        AccessibilityRole::Dialog => AccessRole::Dialog,
     }
 }
 

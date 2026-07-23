@@ -13,7 +13,7 @@ use cosmic_text::{
 };
 use luna_core::{PointI, RectI, SizeI};
 use luna_render::{Framebuffer, FramebufferError, RasterImage, RasterImageError};
-use luna_text::{SnapBias, TextDocument, TextLocation, TextRange};
+use luna_text::{TextDocument, TextLocation, TextRange};
 use luna_theme::Rgba8;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};

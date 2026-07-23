@@ -29,6 +29,28 @@ pub enum AccessibilityRole {
     List,
     /// List item.
     ListItem,
+    /// Binary on/off control.
+    CheckBox,
+    /// Progress or completion indicator.
+    ProgressIndicator,
+    /// Menu bar container.
+    MenuBar,
+    /// Popup or drop-down menu container.
+    Menu,
+    /// Activatable menu entry.
+    MenuItem,
+    /// Tab-strip container.
+    TabList,
+    /// Individual document or panel tab.
+    Tab,
+    /// Hierarchical tree container.
+    Tree,
+    /// Hierarchical tree row.
+    TreeItem,
+    /// Application status region.
+    Status,
+    /// Modal or modeless dialog surface.
+    Dialog,
 }
 
 /// UTF-8 byte range exposed by a text-bearing semantic node.

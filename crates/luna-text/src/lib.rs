@@ -406,12 +406,10 @@ impl EditableText {
 
     /// Moves one logical grapheme backward, optionally extending selection.
     pub fn move_backward(&mut self, extending_selection: bool) {
-        if !extending_selection {
-            if let Some(selection) = self.selection.take() {
-                self.caret = selection.normalized().anchor;
-                self.preferred_utf8_column = None;
-                return;
-            }
+        if !extending_selection && let Some(selection) = self.selection.take() {
+            self.caret = selection.normalized().anchor;
+            self.preferred_utf8_column = None;
+            return;
         }
         let next = self.document.previous_grapheme(self.caret);
         self.apply_movement(next, extending_selection);
@@ -419,12 +417,10 @@ impl EditableText {
 
     /// Moves one logical grapheme forward, optionally extending selection.
     pub fn move_forward(&mut self, extending_selection: bool) {
-        if !extending_selection {
-            if let Some(selection) = self.selection.take() {
-                self.caret = selection.normalized().focus;
-                self.preferred_utf8_column = None;
-                return;
-            }
+        if !extending_selection && let Some(selection) = self.selection.take() {
+            self.caret = selection.normalized().focus;
+            self.preferred_utf8_column = None;
+            return;
         }
         let next = self.document.next_grapheme(self.caret);
         self.apply_movement(next, extending_selection);

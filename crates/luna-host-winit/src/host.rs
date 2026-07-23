@@ -14,11 +14,13 @@ use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::num::NonZeroU32;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::WindowEvent;
-use winit::event_loop::{ActiveEventLoop, EventLoop, EventLoopProxy, OwnedDisplayHandle};
+use winit::event_loop::{
+    ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy, OwnedDisplayHandle,
+};
 use winit::window::{Window, WindowId};
 
 /// Error type applications may return while constructing an immutable Luna frame.
@@ -100,6 +102,24 @@ pub trait NativeApplication {
     fn handle_accessibility_action(&mut self, _request: AccessibilityActionRequest) -> HostControl {
         HostControl::Continue
     }
+
+    /// Returns the desired logical update cadence for animated or time-driven applications.
+    ///
+    /// Returning `None` keeps the native loop event-driven. Returning a duration schedules
+    /// [`Self::update`] through winit's `WaitUntil` control flow without rendering outside
+    /// `RedrawRequested`. Applications should prefer the slowest cadence that represents their
+    /// proof or animation correctly.
+    fn frame_interval(&self) -> Option<Duration> {
+        None
+    }
+
+    /// Advances application-owned logical time.
+    ///
+    /// The host passes elapsed monotonic time since the previous update. A time-driven application
+    /// normally returns [`HostControl::Redraw`]; static editor applications may retain the default.
+    fn update(&mut self, _elapsed: Duration) -> HostControl {
+        HostControl::Continue
+    }
 }
 
 /// Native-host startup or runtime failure.
@@ -172,6 +192,8 @@ struct WinitHost<A: NativeApplication> {
     input: WinitInputTranslator,
     frame_runtime: FrameRuntime,
     started_at: Instant,
+    last_update_at: Instant,
+    next_update_at: Option<Instant>,
     last_frame: Option<UiFrame>,
     proxy: EventLoopProxy<HostEvent>,
     fatal_error: Option<HostError>,
@@ -193,6 +215,8 @@ impl<A: NativeApplication> WinitHost<A> {
             input: WinitInputTranslator::new(),
             frame_runtime: FrameRuntime::new(),
             started_at: Instant::now(),
+            last_update_at: Instant::now(),
+            next_update_at: None,
             last_frame: None,
             proxy,
             fatal_error: None,
@@ -379,6 +403,31 @@ impl<A: NativeApplication> WinitHost<A> {
         u64::try_from(self.started_at.elapsed().as_micros()).unwrap_or(u64::MAX)
     }
 
+    fn schedule_application_update(&mut self, event_loop: &ActiveEventLoop) {
+        if self.window.is_none() || self.surface.is_none() {
+            event_loop.set_control_flow(ControlFlow::Wait);
+            return;
+        }
+        let Some(interval) = self.application.frame_interval() else {
+            self.next_update_at = None;
+            event_loop.set_control_flow(ControlFlow::Wait);
+            return;
+        };
+        let interval = interval.max(Duration::from_millis(1));
+        let now = Instant::now();
+        let deadline = self.next_update_at.unwrap_or(now);
+        if now >= deadline {
+            let elapsed = now.saturating_duration_since(self.last_update_at);
+            self.last_update_at = now;
+            self.next_update_at = Some(now + interval);
+            let control = self.application.update(elapsed);
+            self.apply_control(control, event_loop);
+        }
+        if let Some(next) = self.next_update_at {
+            event_loop.set_control_flow(ControlFlow::WaitUntil(next));
+        }
+    }
+
     fn fail(&mut self, event_loop: &ActiveEventLoop, error: HostError) {
         self.fatal_error = Some(error);
         event_loop.exit();
@@ -441,6 +490,10 @@ impl<A: NativeApplication> ApplicationHandler<HostEvent> for WinitHost<A> {
         match event {
             HostEvent::AccessKit(event) => self.handle_accesskit_event(event, event_loop),
         }
+    }
+
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        self.schedule_application_update(event_loop);
     }
 }
 

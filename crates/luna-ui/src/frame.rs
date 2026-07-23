@@ -17,6 +17,24 @@ pub struct UiFrame {
 }
 
 impl UiFrame {
+    /// Builds one frame from preassembled paint and semantic parts.
+    ///
+    /// Complex applications often compose several sibling widgets—editor shell, text view, and
+    /// transient overlays—under one application-owned window node. This constructor preserves the
+    /// same accessibility validation as [`Self::build`] without forcing those siblings into a
+    /// retained trait-object tree.
+    pub fn from_parts(
+        display_list: DisplayList,
+        root: luna_core::NodeId,
+        nodes: impl IntoIterator<Item = luna_accessibility::AccessibilityNode>,
+    ) -> Result<Self, UiFrameError> {
+        let accessibility_tree = AccessibilityTree::new(root, nodes)?;
+        Ok(Self {
+            display_list,
+            accessibility_tree,
+        })
+    }
+
     /// Builds one frame from a root widget.
     pub fn build(root: &impl Widget, clear_color: Rgba8) -> Result<Self, UiFrameError> {
         let mut display_list = DisplayList::new();

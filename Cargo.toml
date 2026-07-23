@@ -1,7 +1,9 @@
 [workspace]
 members = [
     "apps/luna-ui-rust-demo",
+    "apps/luna-ui-rust-editor-demo",
     "apps/luna-ui-rust-native-demo",
+    "apps/luna-ui-rust-proof-gallery",
     "apps/luna-ui-rust-text-demo",
     "crates/luna-accessibility",
     "crates/luna-accessibility-accesskit",

@@ -1222,6 +1222,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "luna-ui-rust-editor-demo"
+version = "0.1.0"
+dependencies = [
+ "luna-accessibility",
+ "luna-core",
+ "luna-host-winit",
+ "luna-input",
+ "luna-render",
+ "luna-text",
+ "luna-text-cosmic",
+ "luna-theme",
+ "luna-ui",
+]
+
+[[package]]
 name = "luna-ui-rust-native-demo"
 version = "0.1.0"
 dependencies = [
@@ -1229,6 +1244,21 @@ dependencies = [
  "luna-core",
  "luna-host-winit",
  "luna-input",
+ "luna-theme",
+ "luna-ui",
+]
+
+[[package]]
+name = "luna-ui-rust-proof-gallery"
+version = "0.1.0"
+dependencies = [
+ "luna-accessibility",
+ "luna-core",
+ "luna-host-winit",
+ "luna-input",
+ "luna-render",
+ "luna-text",
+ "luna-text-cosmic",
  "luna-theme",
  "luna-ui",
 ]

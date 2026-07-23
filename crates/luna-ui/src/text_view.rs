@@ -255,12 +255,11 @@ impl Widget for TextView {
             viewport,
         );
 
-        if self.is_focused {
-            if let Some(caret) = self.layout.caret_rect(self.caret) {
-                if let Some(bounds) = self.translated_content_rect(caret) {
-                    display_list.fill_rect(bounds, self.style.caret);
-                }
-            }
+        if self.is_focused
+            && let Some(caret) = self.layout.caret_rect(self.caret)
+            && let Some(bounds) = self.translated_content_rect(caret)
+        {
+            display_list.fill_rect(bounds, self.style.caret);
         }
     }
 

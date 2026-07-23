@@ -1,40 +1,37 @@
 # Current Status
 
-**Milestone:** M2 editor-grade text
+**Milestone:** M3 twin native demos and reusable editor anatomy
 
 ## Implemented
 
-- M0 deterministic foundation, compiler-verified on Pop!_OS.
-- M1 native host/layout/command/accessibility milestone, compiler-verified by the project owner after
-  correcting AccessKit 0.24's `ActionRequest::target_node` field usage.
-- `luna-text`: immutable logical lines, UTF-8 offsets, explicit scalar-boundary snapping,
-  location/absolute conversion, anchor/focus ranges, grapheme boundaries, compact editable state,
-  selection replacement, grapheme-safe deletion, horizontal and vertical movement, revisions, and
-  scroll clamping.
-- `luna-text-cosmic`: one long-lived `FontSystem` and `SwashCache`, advanced shaping, installed-font
-  fallback, bidi-aware cursor placement, rasterized glyph snapshots, grapheme caret stops, point hit
-  testing, selection rectangles, exact visible ranges, and measured horizontal/vertical scroll geometry.
-- `luna-render`: immutable `RasterImage` snapshots backed by shared pixel storage, clipped image
-  commands, fractional-DPI image scaling, and correct straight-alpha source-over composition.
-- `TextView`: shared editor geometry for background, gutter, current line, selection, glyph image,
-  caret, text hit testing, scrolling, caret reveal, and accessibility.
-- Accessibility text-area role, values, editability, total/caret/selection/visible UTF-8 ranges, and
-  visible line children.
-- `luna-ui-rust-text-demo`: editable multilingual text, complex scripts, fallback, bidi, ligatures,
-  combining sequences, emoji graphemes, click/drag selection, keyboard-layout text, IME commits, keyboard editing,
-  manual scrolling, resizing, and AccessKit focus.
+- M0 deterministic foundation and M1 native host/layout/commands, compiler-verified on Pop!_OS.
+- M2 editor-grade document, shaping, raster, text-view, input, and accessibility foundation,
+  compiler-verified and committed by the project owner.
+- Shared `TextLabel`, `Button`, `Toggle`, `ProgressBar`, and card-border primitives.
+- Responsive `ProofGallery` with control, layout, text, animation, accessibility, and theme cards.
+- Shared `EditorShell` with Swift-derived menu/tab/sidebar/status metrics and one geometry snapshot for
+  paint, hit testing, labels, and semantics.
+- Reusable `CommandPalette` and `FindPanel` overlays.
+- Additional platform-neutral semantic roles and AccessKit mappings for editor chrome and controls.
+- Optional time-driven `NativeApplication::frame_interval` and `update` hooks. Static applications
+  continue to sleep on events; animated applications use winit `WaitUntil` and request ordinary
+  redraws.
+- `luna-ui-rust-proof-gallery`, a dedicated native visual/interaction/accessibility regression
+  application.
+- `luna-ui-rust-editor-demo`, a dedicated event-driven editor integration harness with editable
+  documents, dirty state, tab/sidebar navigation, command palette, find panel, saving, document
+  creation/closing, theme switching, and editor text interaction.
 
 ## Deliberately deferred
 
-A production rope or piece table, undo/redo, IME pre-edit composition, soft wrapping, syntax spans,
-multiple cursors, rectangular selection, discontinuous bidi selection highlights, rich AccessKit
-text-run selection mapping, font-family configuration, GPU glyph atlases, and Moth document/session
-integration remain later milestones.
+GPU rendering, production menu popups, completion popups, splitter dragging, full replace commands,
+undo/redo, syntax spans, multiple cursors, IME pre-edit composition, production file I/O, project
+watching, Moth session policy, and packaging remain later milestones.
 
 ## Validation note
 
-M0 and corrected M1 were compiler-tested by the project owner. The M2 generation container did not
-contain Rust tooling or Cargo registry access, so its report covers structural validation and API
-review rather than claiming a compiler run. Run `cargo fmt --all && ./scripts/validate.sh` after
-applying the overlay. Any compiler, Clippy, test, rustdoc, rendering, input, shaping, or accessibility
-failure is an M2 blocker.
+M0 through M2 were compiled and run by the project owner. The M3 generation environment did not
+contain Rust tooling or Cargo registry access, so M3 receives structural, dependency, source-policy,
+archive, and patch-round-trip validation here. Run `cargo fmt --all && ./scripts/validate.sh`, then
+run both M3 applications after extraction. Any compiler, Clippy, test, rustdoc, rendering, input,
+timing, shaping, or accessibility failure is an M3 blocker.

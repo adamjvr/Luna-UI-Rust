@@ -1,52 +1,53 @@
-# M2 Validation Report
+# M3 Validation Report
 
 ## Verified baseline
 
-The project owner compiled, formatted, linted, tested, ran, committed, and pushed M0 and the
-corrected M1 native-host milestone on Pop!_OS with Rust 1.97.1. The M1 correction uses AccessKit's
-`ActionRequest::target_node` field.
+The project owner compiled, formatted, linted, tested, ran, committed, and pushed M0 through M2 on
+Pop!_OS with the pinned Rust 1.97.1 toolchain. The M3 working tree was produced as an overlay on that
+committed M2 repository-root baseline.
 
-## M2 generation checks
+## M3 structural checks
 
-The M2 overlay was checked for the following properties:
+The final M3 tree was checked for the following properties:
 
-- all TOML files parse with Python's standard `tomllib` parser;
-- every declared workspace member contains a manifest;
-- every local path dependency resolves to a workspace package;
+- all 22 TOML configuration and manifest files parse with Python's standard `tomllib` parser;
+- all 18 declared workspace members contain manifests;
+- every local path dependency resolves to a declared workspace package;
 - the local workspace dependency graph is acyclic;
-- external text/native dependencies are pinned to exact versions;
-- all Rust files include an MPL-2.0 SPDX identifier;
-- all crate roots include crate-level rustdoc;
-- a source-aware delimiter scan reports balanced braces, brackets, and parentheses;
-- project source contains no `unsafe` blocks or declarations;
+- external native/text dependencies remain pinned to exact versions;
+- all 37 Rust source files include an MPL-2.0 SPDX identifier;
+- every library and application crate root includes crate-level rustdoc;
+- public-item documentation scans report no undocumented public declarations in project source;
+- a source-aware Rust delimiter scan reports balanced braces, brackets, and parentheses while
+  ignoring comments, strings, characters, raw strings, and lifetimes;
+- project source contains no unsafe blocks or declarations;
 - project source contains no `.unwrap()`, `.expect()`, `panic!`, `todo!`, or `unimplemented!` calls;
-- generated source contains no container or developer-home path leakage;
-- UTF-8 location conversion, scalar snapping, grapheme motion/deletion, selection replacement,
-  vertical preferred-column motion, and scroll clamping have deterministic test fixtures;
-- shaping tests cover caret geometry, hit testing, multiline selection, exact one-line visible
-  ranges, and real horizontal extent for unwrapped long lines;
-- renderer tests cover clipping, source-over alpha, transparent intermediate glyph images, and
-  disjoint image clips;
-- ordinary keyboard text is retained separately from logical keys, while IME commits remain a
-  separate platform-neutral event;
-- native adapter signatures were reviewed against the published winit 0.30.13, cosmic-text 0.19.0,
-  unicode-segmentation 1.13.3, AccessKit 0.24.1, and accesskit_winit 0.33.2 APIs;
-- the final repository-root archive contains no `.git`, `target`, Cargo registry, generated
-  framebuffer, or outer wrapper directory;
-- the M1-to-M2 patch applies to a fresh M1 baseline and reproduces the packaged M2 tree.
+- generated source and documentation contain no container or developer-home path leakage;
+- the workspace contains 58 `#[test]` functions and 10,814 lines of Rust source;
+- editor-shell tests cover shared tab/sidebar/editor geometry and hidden-sidebar allocation;
+- proof-gallery tests cover responsive six-card layout, theme-card semantics, and animation bounds;
+- control tests cover clamped progress geometry;
+- theme tests cover deterministic integer blending and distinct dark/light palettes;
+- host scheduling keeps application updates separate from the existing `RedrawRequested` render
+  path and retains event-driven defaults for static applications;
+- proof-gallery accessibility labels are reachable from the application root and the interactive
+  theme card is exposed as a button;
+- editor semantic targets route menus, tabs, sidebar rows, text focus, command-palette rows, and
+  find-panel controls back into application behavior;
+- the final archive and M2-to-M3 patch are verified separately during packaging.
 
 ## Toolchain limitation for this overlay
 
-The M2 generation container did not contain `rustc`, Cargo, rustfmt, or Clippy and could not resolve
-the Cargo registry. Therefore this report does **not** claim a completed compiler run for new M2
-code. After extracting the overlay into the committed corrected-M1 repository, run:
+The M3 generation container did not contain `rustc`, Cargo, rustfmt, or Clippy and could not download
+or resolve a Rust toolchain. Therefore this report does **not** claim a completed compiler run for
+new M3 code. After extracting the overlay into the committed M2 repository, run:
 
 ```bash
 cargo fmt --all
 ./scripts/validate.sh
-cargo run -p luna-ui-rust-text-demo
+cargo run -p luna-ui-rust-proof-gallery
+cargo run -p luna-ui-rust-editor-demo
 ```
 
-The first Cargo command may update the existing `Cargo.lock` with the new pinned text dependencies.
-Any compiler, formatting, Clippy, test, rustdoc, rendering, input, shaping, scrolling, or
-accessibility failure is an M2 blocker and should be corrected before M3 work begins.
+Any compiler, formatting, Clippy, test, rustdoc, rendering, input, timing, shaping, or accessibility
+failure is an M3 blocker and should be corrected before M4 work begins.

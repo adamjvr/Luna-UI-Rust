@@ -1,35 +1,29 @@
-Build Luna-UI-Rust M2 editor-grade text foundation
+Build Luna-UI-Rust M3 twin demos and editor anatomy
 
-Add luna-text with stable line-plus-UTF-8 positions, explicit scalar-boundary snapping,
-anchor/focus ranges, immutable line metadata, location/absolute conversions, Unicode extended
-grapheme boundaries, compact editable state, selection replacement, grapheme-safe backward and
-forward deletion, preferred-column vertical motion, edit revisions, and saturating scroll state.
+Port the Swift LunaUITestApp testing split into two first-class native Rust applications. Add a
+responsive proof gallery for continuous visual, interaction, shaping, DPI, theme, animation, and
+accessibility regression work, and add an event-driven editor integration harness for realistic
+shell and text composition.
 
-Add luna-text-cosmic as the only crate that owns cosmic-text types. Retain one FontSystem and
-SwashCache, use advanced shaping with installed-font fallback, capture bidi-aware grapheme caret
-stops, rasterize glyphs into an immutable transparent BGRA8 snapshot, and expose deterministic
-caret, hit-test, selection, exact visible-range, and measured horizontal/vertical scroll geometry
-without retaining font-system borrows inside widgets.
+Add reusable TextLabel, Button, Toggle, ProgressBar, and card-border primitives. Add ProofGallery
+with deterministic card geometry and application-owned logical animation state. Add EditorShell
+with Swift-derived menu bar, dirty tab strip, project/sidebar tree, editor viewport, and status bar
+metrics, all sharing one layout snapshot across paint, labels, hit testing, and accessibility.
 
-Extend luna-render with immutable shared RasterImage storage, clipped image display commands,
-nearest-neighbor DPI scaling, and correct straight-alpha source-over composition. Add regression
-coverage proving transparent glyph intermediates retain straight color and disjoint clips draw
-nothing.
+Add reusable CommandPalette and FindPanel overlays with deterministic filtering, keyboard
+selection, field focus, hit geometry, and semantic trees. Extend platform-neutral accessibility and
+the AccessKit adapter with checkbox, progress, menu, tab, tree, dialog, and status roles.
 
-Extend platform-neutral accessibility with a multiline text-area role, textual values, editability,
-and complete, caret, selected, and visible UTF-8 ranges. Map the text-area role and value through the
-AccessKit leaf adapter while preserving M1 stable IDs and corrected target_node action routing.
+Extend the native winit host with optional frame_interval and update hooks. Schedule animated
+applications through about_to_wait and ControlFlow::WaitUntil while retaining RedrawRequested as the
+only rendering and presentation path. Keep static/editor applications fully event-driven.
 
-Add the reusable Luna TextView. Derive background, gutter, current-line highlight, selection,
-glyph pixels, caret, pointer-to-text mapping, scrolling limits, caret reveal, visible semantic lines,
-and text ranges from one immutable shaped snapshot.
+Add luna-ui-rust-proof-gallery with control activation, theme switching, multilingual shaped text,
+responsive cards, logical-time animation, pointer interaction, and accessibility actions. Add
+luna-ui-rust-editor-demo with editable documents, dirty tracking, tabs, project navigation, status
+updates, command palette, find panel, save/new/close/sidebar/theme commands, pointer selection,
+keyboard-layout text, IME commits, scrolling, and shared TextView accessibility.
 
-Add the native luna-ui-rust-text-demo with multilingual fallback and bidi fixtures, ligatures,
-combining graphemes, emoji sequences, keyboard-layout text plus IME commits, keyboard editing,
-Control-A, click and
-drag selection, mouse-wheel and Page Up/Down scrolling, resize/DPI behavior, accessibility focus,
-and Escape-to-exit.
-
-Update architecture, status, porting, roadmap, research, upgrade, validation, and README guidance for
-M2 while retaining Rust 1.97.1, Edition 2024, resolver 3, MPL-2.0, strict rustdoc, forbidden unsafe
-code, and warnings-as-errors policy.
+Update architecture, status, roadmap, porting, upgrade, validation, and README documentation for M3
+while retaining Rust 1.97.1, Edition 2024, resolver 3, MPL-2.0, strict rustdoc, forbidden unsafe code,
+and warnings-as-errors policy.
