@@ -4,7 +4,10 @@ use crate::Widget;
 use luna_accessibility::{AccessibilityNode, AccessibilityRole};
 use luna_core::{NodeId, PointI, RectI};
 use luna_render::DisplayList;
-use luna_text_cosmic::TextLayoutSnapshot;
+use luna_text::TextDocument;
+use luna_text_cosmic::{TextEngine, TextLayoutError, TextLayoutRequest, TextLayoutSnapshot};
+use luna_theme::Rgba8;
+use std::collections::HashMap;
 
 /// Horizontal alignment for an immutable shaped label inside its bounds.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -16,6 +19,108 @@ pub enum TextAlignment {
     Center,
     /// Place text against the trailing edge.
     Trailing,
+}
+
+/// Lifetime counters for the reusable shaped-label cache.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct TextLabelCacheStats {
+    /// Requests served by a retained shaped label.
+    pub hits: u64,
+    /// Requests that shaped and rasterized a new label.
+    pub misses: u64,
+    /// Number of distinct retained label layouts.
+    pub entries: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct TextLabelCacheKey {
+    text: String,
+    maximum_width: u32,
+    font_size_bits: u32,
+    line_height_bits: u32,
+    foreground: Rgba8,
+}
+
+struct CachedTextLabel {
+    key: TextLabelCacheKey,
+    layout: TextLayoutSnapshot,
+}
+
+/// Application-owned cache for immutable editor-chrome labels.
+///
+/// Each stable label slot retains at most one layout. Bounds and alignment remain widget
+/// properties; changing a slot's text, typography, color, or maximum width replaces only that
+/// slot. Dynamic status labels therefore remain bounded instead of accumulating one entry per
+/// displayed value.
+#[derive(Default)]
+pub struct TextLabelCache {
+    layouts: HashMap<String, CachedTextLabel>,
+    hits: u64,
+    misses: u64,
+}
+
+impl TextLabelCache {
+    /// Creates an empty label cache.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Returns a retained label layout or shapes it once on a cache miss.
+    pub fn layout(
+        &mut self,
+        engine: &mut TextEngine,
+        slot_id: &str,
+        text: &str,
+        maximum_width: u32,
+        font_size: f32,
+        line_height: f32,
+        foreground: Rgba8,
+    ) -> Result<TextLayoutSnapshot, TextLayoutError> {
+        let key = TextLabelCacheKey {
+            text: text.to_owned(),
+            maximum_width: maximum_width.max(1),
+            font_size_bits: font_size.to_bits(),
+            line_height_bits: line_height.to_bits(),
+            foreground,
+        };
+        if let Some(cached) = self.layouts.get(slot_id)
+            && cached.key == key
+        {
+            self.hits = self.hits.saturating_add(1);
+            return Ok(cached.layout.clone());
+        }
+
+        let layout = engine.shape(
+            &TextDocument::new(text),
+            TextLayoutRequest::new(1, font_size, line_height, foreground)
+                .with_maximum_raster_width(key.maximum_width),
+        )?;
+        self.layouts.insert(
+            slot_id.to_owned(),
+            CachedTextLabel {
+                key,
+                layout: layout.clone(),
+            },
+        );
+        self.misses = self.misses.saturating_add(1);
+        Ok(layout)
+    }
+
+    /// Removes retained label layouts while preserving lifetime counters.
+    pub fn clear(&mut self) {
+        self.layouts.clear();
+    }
+
+    /// Returns lifetime hit, miss, and entry counters.
+    #[must_use]
+    pub fn stats(&self) -> TextLabelCacheStats {
+        TextLabelCacheStats {
+            hits: self.hits,
+            misses: self.misses,
+            entries: self.layouts.len(),
+        }
+    }
 }
 
 /// Reusable static label backed by a shaped cosmic-text snapshot.
@@ -100,7 +205,7 @@ impl Widget for TextLabel {
 
 #[cfg(test)]
 mod tests {
-    use super::{TextAlignment, TextLabel};
+    use super::{TextAlignment, TextLabel, TextLabelCache};
     use crate::Widget;
     use luna_core::{NodeId, RectI};
     use luna_text::TextDocument;
@@ -126,6 +231,68 @@ mod tests {
 
         assert!(label.bounds().contains(label.image_origin()));
         assert_eq!(label.accessibility_nodes()[0].bounds, label.bounds());
+        Ok(())
+    }
+
+    #[test]
+    fn label_cache_reuses_shape_across_position_changes() -> Result<(), Box<dyn Error>> {
+        let theme = Theme::luna_dark();
+        let mut engine = TextEngine::new();
+        let mut cache = TextLabelCache::new();
+
+        let first = cache.layout(
+            &mut engine,
+            "status-slot",
+            "Status",
+            120,
+            13.0,
+            19.0,
+            theme.foreground,
+        )?;
+        let second = cache.layout(
+            &mut engine,
+            "status-slot",
+            "Status",
+            120,
+            13.0,
+            19.0,
+            theme.foreground,
+        )?;
+
+        assert_eq!(first, second);
+        assert_eq!(cache.stats().hits, 1);
+        assert_eq!(cache.stats().misses, 1);
+        assert_eq!(cache.stats().entries, 1);
+        Ok(())
+    }
+
+    #[test]
+    fn label_cache_replaces_dynamic_slot_content() -> Result<(), Box<dyn Error>> {
+        let theme = Theme::luna_dark();
+        let mut engine = TextEngine::new();
+        let mut cache = TextLabelCache::new();
+
+        let _ = cache.layout(
+            &mut engine,
+            "status-slot",
+            "Line 1",
+            120,
+            13.0,
+            19.0,
+            theme.foreground,
+        )?;
+        let _ = cache.layout(
+            &mut engine,
+            "status-slot",
+            "Line 2",
+            120,
+            13.0,
+            19.0,
+            theme.foreground,
+        )?;
+
+        assert_eq!(cache.stats().misses, 2);
+        assert_eq!(cache.stats().entries, 1);
         Ok(())
     }
 }

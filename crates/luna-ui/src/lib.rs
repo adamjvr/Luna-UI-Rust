@@ -8,6 +8,7 @@
 
 mod controls;
 mod demo_panel;
+mod dropdown_menu;
 mod editor_shell;
 mod frame;
 mod overlays;
@@ -19,17 +20,21 @@ mod workspace_demo;
 
 pub use controls::{Button, ControlState, ProgressBar, Toggle, card_border};
 pub use demo_panel::DemoPanel;
+pub use dropdown_menu::{
+    DropdownMenu, DropdownMenuLayout, DropdownMenuRowFrame, DropdownMenuState, MenuCommand,
+    MenuDefinition, MenuItem,
+};
 pub use editor_shell::{
     EditorShell, EditorShellHit, EditorShellLayout, EditorShellMetrics, EditorShellState,
     ShellItemFrame, ShellMenu, ShellTab, SidebarItem, SidebarItemKind,
 };
-pub use frame::{UiFrame, UiFrameError};
+pub use frame::{RetainedDisplayList, UiFrame, UiFrameError};
 pub use overlays::{
     CommandPalette, CommandPaletteLayout, CommandPaletteState, FindField, FindPanel,
     FindPanelLayout, FindPanelState, PaletteItem, PaletteRowFrame,
 };
 pub use proof_gallery::{ProofCardFrame, ProofGallery, ProofGalleryLayout, ProofGalleryState};
-pub use text_label::{TextAlignment, TextLabel};
+pub use text_label::{TextAlignment, TextLabel, TextLabelCache, TextLabelCacheStats};
 pub use text_view::{TextView, TextViewStyle};
 pub use widget::Widget;
 pub use workspace_demo::{WorkspaceDemo, WorkspaceDemoLayout, WorkspaceDemoState};

@@ -65,6 +65,18 @@ pub struct ProofGalleryLayout {
     pub accessibility_note: RectI,
 }
 
+impl ProofGalleryLayout {
+    /// Returns this immutable geometry with only the animation square recomputed.
+    ///
+    /// Responsive card, control, and text geometry remain unchanged, allowing applications to retain
+    /// layout across animation samples.
+    #[must_use]
+    pub fn with_animation_millis(mut self, animation_millis: u64) -> Self {
+        self.animation_square = animation_square(self.animation_lane, animation_millis);
+        self
+    }
+}
+
 /// Product-neutral regression gallery chrome.
 ///
 /// The gallery intentionally keeps animation and proof-only state out of the editor demo. Its
@@ -96,23 +108,32 @@ impl ProofGallery {
         })
     }
 
+    /// Reuses a previously calculated layout while advancing only animation geometry.
+    #[must_use]
+    pub fn from_layout_snapshot(
+        id: NodeId,
+        theme: Theme,
+        state: ProofGalleryState,
+        layout: ProofGalleryLayout,
+    ) -> Self {
+        let layout = layout.with_animation_millis(state.animation_millis);
+        Self {
+            id,
+            bounds: layout.bounds,
+            theme,
+            state,
+            layout,
+        }
+    }
+
     /// Returns shared proof geometry.
     #[must_use]
     pub const fn layout(&self) -> &ProofGalleryLayout {
         &self.layout
     }
-}
 
-impl Widget for ProofGallery {
-    fn id(&self) -> &NodeId {
-        &self.id
-    }
-
-    fn bounds(&self) -> RectI {
-        self.bounds
-    }
-
-    fn build_display_list(&self, display_list: &mut DisplayList) {
+    /// Appends paint that is independent from logical animation time.
+    pub fn build_static_display_list(&self, display_list: &mut DisplayList) {
         display_list.fill_rect(self.layout.header, self.theme.panel_header);
         for card in &self.layout.cards {
             display_list.fill_rect(card.bounds, self.theme.panel);
@@ -129,6 +150,10 @@ impl Widget for ProofGallery {
         display_list.fill_rect(self.layout.split_divider, self.theme.accent);
         display_list.fill_rect(self.layout.split_secondary, self.theme.panel_header);
         display_list.fill_rect(self.layout.animation_lane, self.theme.background);
+    }
+
+    /// Appends only time-varying animation paint.
+    pub fn build_animation_display_list(&self, display_list: &mut DisplayList) {
         display_list.fill_rect(self.layout.animation_square, self.theme.accent);
         let pulse = u8::try_from((self.state.animation_millis / 8) % 160).unwrap_or(0);
         display_list.fill_rect(
@@ -143,6 +168,21 @@ impl Widget for ProofGallery {
                 .accent
                 .with_alpha(80_u8.saturating_add(pulse.min(120))),
         );
+    }
+}
+
+impl Widget for ProofGallery {
+    fn id(&self) -> &NodeId {
+        &self.id
+    }
+
+    fn bounds(&self) -> RectI {
+        self.bounds
+    }
+
+    fn build_display_list(&self, display_list: &mut DisplayList) {
+        self.build_static_display_list(display_list);
+        self.build_animation_display_list(display_list);
     }
 
     fn accessibility_nodes(&self) -> Vec<AccessibilityNode> {
@@ -303,29 +343,7 @@ fn calculate_layout(
 
     let text_sample = cards[2].content;
     let animation_lane = cards[3].content.inset(InsetsI::symmetric(6, 20));
-    let square_size = 26_u32.min(animation_lane.height).min(animation_lane.width);
-    let travel = animation_lane.width.saturating_sub(square_size);
-    let offset = if travel == 0 {
-        0
-    } else {
-        let cycle = u64::from(travel).saturating_mul(2);
-        let phase = state.animation_millis / 5 % cycle;
-        if phase <= u64::from(travel) {
-            phase
-        } else {
-            cycle.saturating_sub(phase)
-        }
-    };
-    let animation_square = RectI::new(
-        animation_lane
-            .x
-            .saturating_add(i32::try_from(offset).unwrap_or(i32::MAX)),
-        animation_lane.y.saturating_add(
-            i32::try_from(animation_lane.height.saturating_sub(square_size) / 2).unwrap_or(0),
-        ),
-        square_size,
-        square_size,
-    );
+    let animation_square = animation_square(animation_lane, state.animation_millis);
     let accessibility_note = cards[4].content;
 
     Ok(ProofGalleryLayout {
@@ -344,6 +362,32 @@ fn calculate_layout(
         animation_square,
         accessibility_note,
     })
+}
+
+fn animation_square(animation_lane: RectI, animation_millis: u64) -> RectI {
+    let square_size = 26_u32.min(animation_lane.height).min(animation_lane.width);
+    let travel = animation_lane.width.saturating_sub(square_size);
+    let offset = if travel == 0 {
+        0
+    } else {
+        let cycle = u64::from(travel).saturating_mul(2);
+        let phase = animation_millis / 5 % cycle;
+        if phase <= u64::from(travel) {
+            phase
+        } else {
+            cycle.saturating_sub(phase)
+        }
+    };
+    RectI::new(
+        animation_lane
+            .x
+            .saturating_add(i32::try_from(offset).unwrap_or(i32::MAX)),
+        animation_lane.y.saturating_add(
+            i32::try_from(animation_lane.height.saturating_sub(square_size) / 2).unwrap_or(0),
+        ),
+        square_size,
+        square_size,
+    )
 }
 
 fn draw_border(display_list: &mut DisplayList, bounds: RectI, color: luna_theme::Rgba8) {
@@ -399,6 +443,34 @@ mod tests {
         assert_eq!(
             accessibility.last().map(|node| node.role),
             Some(luna_accessibility::AccessibilityRole::Button)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn reused_layout_changes_only_animation_geometry() -> Result<(), Box<dyn Error>> {
+        let initial = ProofGallery::new(
+            NodeId::new("gallery")?,
+            RectI::new(0, 0, 900, 700),
+            Theme::luna_dark(),
+            ProofGalleryState::default(),
+        )?;
+        let initial_layout = initial.layout().clone();
+        let advanced = ProofGallery::from_layout_snapshot(
+            NodeId::new("gallery")?,
+            Theme::luna_dark(),
+            ProofGalleryState {
+                animation_millis: 500,
+                ..ProofGalleryState::default()
+            },
+            initial_layout.clone(),
+        );
+
+        assert_eq!(advanced.layout().cards, initial_layout.cards);
+        assert_eq!(advanced.layout().button, initial_layout.button);
+        assert_ne!(
+            advanced.layout().animation_square,
+            initial_layout.animation_square
         );
         Ok(())
     }

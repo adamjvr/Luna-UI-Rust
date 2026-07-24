@@ -14,3 +14,4 @@ pub use host::{
     NativeApplication, WindowConfig, run_native,
 };
 pub use input::WinitInputTranslator;
+pub use luna_host_core::InvalidationClass;

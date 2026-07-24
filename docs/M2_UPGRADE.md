@@ -30,6 +30,6 @@ After validation:
 git status --short
 git diff --stat
 git diff
-git add .
-git commit -F COMMIT_MESSAGE.txt
+git add -A
+git commit -m "Build Luna-UI-Rust M2 editor-grade text foundation"
 ```

@@ -30,4 +30,4 @@ git diff --stat
 git diff
 ```
 
-The proposed commit body is stored in `COMMIT_MESSAGE.txt`.
+Commit the validated change with a normal inline Git commit message.

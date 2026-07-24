@@ -11,7 +11,7 @@ use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 
 /// Product-neutral semantic role.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AccessibilityRole {
     /// Application/window root.
     Window,
@@ -54,7 +54,7 @@ pub enum AccessibilityRole {
 }
 
 /// UTF-8 byte range exposed by a text-bearing semantic node.
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct AccessibilityTextRange {
     /// Absolute UTF-8 byte offset.
     pub utf8_offset: usize,
@@ -189,6 +189,7 @@ impl AccessibilityNode {
 pub struct AccessibilityTree {
     root: NodeId,
     nodes: BTreeMap<NodeId, AccessibilityNode>,
+    fingerprint: u64,
 }
 
 impl AccessibilityTree {
@@ -227,7 +228,12 @@ impl AccessibilityTree {
         let mut visited = BTreeSet::new();
         validate_acyclic(&root, &by_id, &mut visiting, &mut visited)?;
 
-        Ok(Self { root, nodes: by_id })
+        let fingerprint = accessibility_fingerprint(&root, &by_id);
+        Ok(Self {
+            root,
+            nodes: by_id,
+            fingerprint,
+        })
     }
 
     /// Returns the root node ID.
@@ -245,6 +251,149 @@ impl AccessibilityTree {
     /// Iterates nodes in stable identifier order.
     pub fn nodes(&self) -> impl Iterator<Item = &AccessibilityNode> {
         self.nodes.values()
+    }
+
+    /// Returns a deterministic fingerprint of every semantic field in the validated snapshot.
+    ///
+    /// Hosts use this value to avoid rebuilding native accessibility trees when paint changes but
+    /// semantics remain identical. Node storage is ordered by stable [`NodeId`], so equivalent trees
+    /// produce the same value regardless of the order in which nodes were supplied to [`Self::new`].
+    #[must_use]
+    pub const fn fingerprint(&self) -> u64 {
+        self.fingerprint
+    }
+}
+
+fn accessibility_fingerprint(root: &NodeId, nodes: &BTreeMap<NodeId, AccessibilityNode>) -> u64 {
+    let mut fingerprint = StableFingerprint::new();
+    fingerprint.write_node_id(root);
+    fingerprint.write_usize(nodes.len());
+    for (id, node) in nodes {
+        fingerprint.write_node_id(id);
+        fingerprint.write_u8(accessibility_role_tag(node.role));
+        fingerprint.write_optional_string(node.label.as_deref());
+        fingerprint.write_optional_string(node.value.as_deref());
+        fingerprint.write_rect(node.bounds);
+        fingerprint.write_usize(node.children.len());
+        for child in &node.children {
+            fingerprint.write_node_id(child);
+        }
+        fingerprint.write_bool(node.is_disabled);
+        fingerprint.write_bool(node.is_focused);
+        fingerprint.write_bool(node.is_editable);
+        fingerprint.write_optional_text_range(node.text_range);
+        fingerprint.write_optional_text_range(node.caret_range);
+        fingerprint.write_optional_text_range(node.selected_range);
+        fingerprint.write_optional_text_range(node.visible_range);
+    }
+    fingerprint.finish()
+}
+
+const fn accessibility_role_tag(role: AccessibilityRole) -> u8 {
+    match role {
+        AccessibilityRole::Window => 0,
+        AccessibilityRole::Group => 1,
+        AccessibilityRole::Label => 2,
+        AccessibilityRole::Button => 3,
+        AccessibilityRole::TextField => 4,
+        AccessibilityRole::TextArea => 5,
+        AccessibilityRole::List => 6,
+        AccessibilityRole::ListItem => 7,
+        AccessibilityRole::CheckBox => 8,
+        AccessibilityRole::ProgressIndicator => 9,
+        AccessibilityRole::MenuBar => 10,
+        AccessibilityRole::Menu => 11,
+        AccessibilityRole::MenuItem => 12,
+        AccessibilityRole::TabList => 13,
+        AccessibilityRole::Tab => 14,
+        AccessibilityRole::Tree => 15,
+        AccessibilityRole::TreeItem => 16,
+        AccessibilityRole::Status => 17,
+        AccessibilityRole::Dialog => 18,
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct StableFingerprint(u64);
+
+impl StableFingerprint {
+    const OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
+    const PRIME: u64 = 0x0000_0100_0000_01b3;
+
+    const fn new() -> Self {
+        Self(Self::OFFSET_BASIS)
+    }
+
+    const fn finish(self) -> u64 {
+        self.0
+    }
+
+    fn write_bytes(&mut self, bytes: &[u8]) {
+        for byte in bytes {
+            self.0 ^= u64::from(*byte);
+            self.0 = self.0.wrapping_mul(Self::PRIME);
+        }
+    }
+
+    fn write_u8(&mut self, value: u8) {
+        self.write_bytes(&[value]);
+    }
+
+    fn write_u32(&mut self, value: u32) {
+        self.write_bytes(&value.to_le_bytes());
+    }
+
+    fn write_u64(&mut self, value: u64) {
+        self.write_bytes(&value.to_le_bytes());
+    }
+
+    fn write_i32(&mut self, value: i32) {
+        self.write_bytes(&value.to_le_bytes());
+    }
+
+    fn write_usize(&mut self, value: usize) {
+        self.write_u64(u64::try_from(value).unwrap_or(u64::MAX));
+    }
+
+    fn write_bool(&mut self, value: bool) {
+        self.write_u8(u8::from(value));
+    }
+
+    fn write_string(&mut self, value: &str) {
+        self.write_usize(value.len());
+        self.write_bytes(value.as_bytes());
+    }
+
+    fn write_optional_string(&mut self, value: Option<&str>) {
+        match value {
+            Some(value) => {
+                self.write_u8(1);
+                self.write_string(value);
+            }
+            None => self.write_u8(0),
+        }
+    }
+
+    fn write_node_id(&mut self, value: &NodeId) {
+        self.write_string(value.as_str());
+    }
+
+    fn write_rect(&mut self, value: RectI) {
+        self.write_i32(value.x);
+        self.write_i32(value.y);
+        self.write_u32(value.width);
+        self.write_u32(value.height);
+    }
+
+    fn write_optional_text_range(&mut self, value: Option<AccessibilityTextRange>) {
+        match value {
+            Some(value) => {
+                self.write_u8(1);
+                self.write_usize(value.utf8_offset);
+                self.write_usize(value.utf8_length);
+            }
+            None => self.write_u8(0),
+        }
     }
 }
 
@@ -326,6 +475,41 @@ mod tests {
 
         let tree = AccessibilityTree::new(root.clone(), nodes)?;
         assert_eq!(tree.root(), &root);
+        Ok(())
+    }
+    #[test]
+    fn fingerprint_is_order_independent_and_semantic() -> Result<(), Box<dyn Error>> {
+        let root = NodeId::new("root")?;
+        let child = root.child("child")?;
+        let root_node = AccessibilityNode::new(
+            root.clone(),
+            AccessibilityRole::Window,
+            RectI::new(0, 0, 100, 80),
+        )
+        .with_children(vec![child.clone()]);
+        let child_node = AccessibilityNode::new(
+            child.clone(),
+            AccessibilityRole::Button,
+            RectI::new(10, 10, 30, 20),
+        )
+        .with_label("Run");
+        let first = AccessibilityTree::new(root.clone(), [root_node.clone(), child_node.clone()])?;
+        let second = AccessibilityTree::new(root.clone(), [child_node.clone(), root_node])?;
+        let changed = AccessibilityTree::new(
+            root,
+            [
+                AccessibilityNode::new(
+                    NodeId::new("root")?,
+                    AccessibilityRole::Window,
+                    RectI::new(0, 0, 100, 80),
+                )
+                .with_children(vec![child.clone()]),
+                child_node.with_label("Stop"),
+            ],
+        )?;
+
+        assert_eq!(first.fingerprint(), second.fingerprint());
+        assert_ne!(first.fingerprint(), changed.fingerprint());
         Ok(())
     }
 }

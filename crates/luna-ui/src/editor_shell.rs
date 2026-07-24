@@ -114,6 +114,8 @@ pub struct EditorShellState {
     pub menus: Vec<ShellMenu>,
     /// Open document tabs.
     pub tabs: Vec<ShellTab>,
+    /// Active top-level dropdown menu ID, or `None` when menus are closed.
+    pub active_menu_id: Option<String>,
     /// Active tab ID.
     pub active_tab_id: Option<String>,
     /// Visible sidebar rows.
@@ -143,6 +145,7 @@ impl Default for EditorShellState {
                 ShellMenu::new("help", "Help"),
             ],
             tabs: Vec::new(),
+            active_menu_id: None,
             active_tab_id: None,
             sidebar_items: Vec::new(),
             selected_sidebar_id: None,
@@ -400,6 +403,21 @@ impl Widget for EditorShell {
 
     fn build_display_list(&self, display_list: &mut DisplayList) {
         display_list.fill_rect(self.layout.menu_bar, self.theme.panel_header);
+        for frame in &self.layout.menus {
+            if frame.is_selected {
+                display_list.fill_rect(frame.bounds, self.theme.hover_surface());
+                display_list.fill_rect(
+                    RectI::new(
+                        frame.bounds.x,
+                        i32::try_from(frame.bounds.bottom().saturating_sub(2))
+                            .unwrap_or(frame.bounds.y),
+                        frame.bounds.width,
+                        2,
+                    ),
+                    self.theme.accent,
+                );
+            }
+        }
         display_list.fill_rect(self.layout.tab_strip, self.theme.panel);
         for frame in &self.layout.tabs {
             let color = if frame.is_selected {
@@ -478,7 +496,12 @@ impl Widget for EditorShell {
                     AccessibilityRole::MenuItem,
                     frame.bounds,
                 )
-                .with_label(frame.title.clone()),
+                .with_label(frame.title.clone())
+                .with_value(if frame.is_selected {
+                    "Expanded"
+                } else {
+                    "Collapsed"
+                }),
             );
         }
         nodes.push(
@@ -629,7 +652,7 @@ fn calculate_layout(
                 title: definition.title.clone(),
                 bounds: RectI::new(menu_x, menu_bar.y, width, menu_bar.height),
                 accessory_bounds: None,
-                is_selected: false,
+                is_selected: state.active_menu_id.as_ref() == Some(&definition.id),
                 depth: 0,
             });
         }
@@ -823,6 +846,31 @@ mod tests {
             Some(EditorShellHit::Tab("readme".to_owned()))
         );
         assert_eq!(shell.accessibility_nodes()[0].bounds, shell.bounds());
+        Ok(())
+    }
+
+    #[test]
+    fn active_menu_heading_is_selected_and_semantically_expanded() -> Result<(), Box<dyn Error>> {
+        let shell = EditorShell::new(
+            NodeId::new("shell")?,
+            RectI::new(0, 0, 800, 600),
+            Theme::luna_dark(),
+            EditorShellState {
+                active_menu_id: Some("edit".to_owned()),
+                ..EditorShellState::default()
+            },
+            EditorShellMetrics::default(),
+        )?;
+        let edit_frame = shell
+            .layout()
+            .menus
+            .iter()
+            .find(|frame| frame.id == "edit")
+            .ok_or_else(|| std::io::Error::other("edit menu frame missing"))?;
+        assert!(edit_frame.is_selected);
+        assert!(shell.accessibility_nodes().iter().any(|node| {
+            node.id == edit_frame.node_id && node.value.as_deref() == Some("Expanded")
+        }));
         Ok(())
     }
 

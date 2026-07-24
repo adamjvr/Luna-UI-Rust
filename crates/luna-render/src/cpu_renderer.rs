@@ -52,6 +52,15 @@ impl CpuRenderer {
             }
         }
     }
+
+    /// Converts one logical rectangle to the physical coverage used by the CPU renderer.
+    ///
+    /// Retained hosts use this exact conversion when restoring dirty regions, preserving the same
+    /// floor-leading/ceil-trailing rule as ordinary display-list execution.
+    #[must_use]
+    pub fn scale_logical_rect(bounds: RectI, scale_factor: f64) -> RectI {
+        scale_rect(bounds, normalized_scale_factor(scale_factor))
+    }
 }
 
 fn normalized_scale_factor(scale_factor: f64) -> f64 {
@@ -119,6 +128,14 @@ mod tests {
             }
         }
         Ok(())
+    }
+
+    #[test]
+    fn public_logical_rect_scaling_matches_render_coverage() {
+        assert_eq!(
+            CpuRenderer::scale_logical_rect(RectI::new(1, 1, 1, 1), 1.5),
+            RectI::new(1, 1, 2, 2)
+        );
     }
 
     #[test]

@@ -2,14 +2,15 @@
 
 //! cosmic-text adapter for Luna's platform-neutral UTF-8 document model.
 //!
-//! This crate is the only M2 layer that knows about cosmic-text. It owns one long-lived
-//! [`cosmic_text::FontSystem`] and [`cosmic_text::SwashCache`], performs advanced shaping, and
-//! converts the result into an immutable Luna snapshot containing transparent BGRA8 pixels plus
-//! deterministic caret, selection, scrolling, and hit-test geometry. Widgets never retain a
-//! font-system borrow and renderers never depend on cosmic-text types.
+//! This crate is Luna's only layer that knows about cosmic-text. It owns one long-lived
+//! [`cosmic_text::FontSystem`] and [`cosmic_text::SwashCache`], performs advanced shaping, retains
+//! per-document logical layout, and converts visible overscanned bands into immutable Luna
+//! snapshots. Caret, selection, scrolling, hit-test, and accessibility geometry remain complete
+//! even when glyph pixels cover only the active viewport band. Widgets never retain a font-system
+//! borrow and renderers never depend on cosmic-text types.
 
 use cosmic_text::{
-    Attrs, Buffer, Color, Cursor, Family, FontSystem, Metrics, Shaping, SwashCache, Wrap,
+    Attrs, Buffer, Color, Cursor, Family, FontSystem, Metrics, Scroll, Shaping, SwashCache, Wrap,
 };
 use luna_core::{PointI, RectI, SizeI};
 use luna_render::{Framebuffer, FramebufferError, RasterImage, RasterImageError};
@@ -21,6 +22,7 @@ use std::sync::Arc;
 
 const CONTENT_PADDING: u32 = 4;
 const DEFAULT_MAXIMUM_RASTER_WIDTH: u32 = 16_384;
+const DEFAULT_OVERSCAN_VIEWPORTS: u32 = 1;
 
 /// Inputs controlling one immutable shaped-text snapshot.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -75,10 +77,11 @@ pub struct CaretStop {
     pub height: u32,
 }
 
-/// Immutable shaped and rasterized text snapshot.
+/// Immutable logical text snapshot plus a possibly partial glyph raster.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TextLayoutSnapshot {
     image: RasterImage,
+    raster_bounds: RectI,
     content_size: SizeI,
     line_height: u32,
     content_padding: u32,
@@ -90,6 +93,23 @@ impl TextLayoutSnapshot {
     #[must_use]
     pub const fn image(&self) -> &RasterImage {
         &self.image
+    }
+
+    /// Returns the content-local rectangle represented by the raster image.
+    #[must_use]
+    pub const fn raster_bounds(&self) -> RectI {
+        self.raster_bounds
+    }
+
+    /// Returns whether the retained raster fully covers a vertical viewport.
+    #[must_use]
+    pub fn covers_vertical_viewport(&self, scroll_y: i32, viewport_height: u32) -> bool {
+        let top = i64::from(scroll_y.max(0));
+        let content_bottom = i64::from(self.content_size.height);
+        let bottom = top
+            .saturating_add(i64::from(viewport_height))
+            .min(content_bottom);
+        i64::from(self.raster_bounds.y) <= top && self.raster_bounds.bottom() >= bottom
     }
 
     /// Returns the complete logical content size.
@@ -263,6 +283,175 @@ impl TextLayoutSnapshot {
     }
 }
 
+/// Cache statistics for retained editor text.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct TextLayoutCacheStats {
+    /// Requests that reused existing logical shaping and caret geometry.
+    pub layout_hits: u64,
+    /// Requests that rebuilt logical shaping and caret geometry.
+    pub layout_misses: u64,
+    /// Requests satisfied by the current overscanned raster band.
+    pub raster_hits: u64,
+    /// Requests that generated a new raster band.
+    pub raster_misses: u64,
+}
+
+impl TextLayoutCacheStats {
+    /// Adds another cache's counters into this aggregate.
+    pub fn accumulate(&mut self, other: Self) {
+        self.layout_hits = self.layout_hits.saturating_add(other.layout_hits);
+        self.layout_misses = self.layout_misses.saturating_add(other.layout_misses);
+        self.raster_hits = self.raster_hits.saturating_add(other.raster_hits);
+        self.raster_misses = self.raster_misses.saturating_add(other.raster_misses);
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct TextGeometryKey {
+    document_revision: u64,
+    width: u32,
+    maximum_raster_width: u32,
+    font_size_bits: u32,
+    line_height_bits: u32,
+    tab_width: u16,
+}
+
+impl TextGeometryKey {
+    fn new(document_revision: u64, request: TextLayoutRequest) -> Self {
+        Self {
+            document_revision,
+            width: request.width,
+            maximum_raster_width: request.maximum_raster_width,
+            font_size_bits: request.font_size.to_bits(),
+            line_height_bits: request.line_height.to_bits(),
+            tab_width: request.tab_width,
+        }
+    }
+}
+
+struct PreparedTextLayout {
+    buffer: Buffer,
+    content_size: SizeI,
+    line_height: u32,
+    caret_stops: Arc<[CaretStop]>,
+}
+
+/// Retained logical layout and overscanned glyph raster for one document view.
+///
+/// Applications normally keep one cache per open document. Document revision, width, font
+/// metrics, and tab width invalidate logical shaping. Foreground changes invalidate only glyph
+/// pixels. Caret, selection, focus, and overlay changes do not invalidate either layer.
+pub struct TextLayoutCache {
+    geometry_key: Option<TextGeometryKey>,
+    raster_foreground: Option<Rgba8>,
+    prepared: Option<PreparedTextLayout>,
+    snapshot: Option<TextLayoutSnapshot>,
+    overscan_viewports: u32,
+    stats: TextLayoutCacheStats,
+}
+
+impl TextLayoutCache {
+    /// Creates an empty cache with one viewport of vertical overscan above and below visible text.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            geometry_key: None,
+            raster_foreground: None,
+            prepared: None,
+            snapshot: None,
+            overscan_viewports: DEFAULT_OVERSCAN_VIEWPORTS,
+            stats: TextLayoutCacheStats {
+                layout_hits: 0,
+                layout_misses: 0,
+                raster_hits: 0,
+                raster_misses: 0,
+            },
+        }
+    }
+
+    /// Sets the number of complete viewport heights retained above and below the visible region.
+    #[must_use]
+    pub const fn with_overscan_viewports(mut self, overscan_viewports: u32) -> Self {
+        self.overscan_viewports = overscan_viewports;
+        self
+    }
+
+    /// Returns the most recent immutable snapshot, when one has been generated.
+    #[must_use]
+    pub const fn snapshot(&self) -> Option<&TextLayoutSnapshot> {
+        self.snapshot.as_ref()
+    }
+
+    /// Returns lifetime hit and miss counters.
+    #[must_use]
+    pub const fn stats(&self) -> TextLayoutCacheStats {
+        self.stats
+    }
+
+    /// Discards only glyph pixels while retaining logical shaping and caret geometry.
+    pub fn invalidate_raster(&mut self) {
+        self.raster_foreground = None;
+        self.snapshot = None;
+    }
+
+    /// Updates the cache and returns a snapshot covering the requested viewport.
+    #[allow(clippy::too_many_arguments)]
+    pub fn update(
+        &mut self,
+        engine: &mut TextEngine,
+        document: &TextDocument,
+        document_revision: u64,
+        request: TextLayoutRequest,
+        scroll_y: i32,
+        viewport_height: u32,
+    ) -> Result<&TextLayoutSnapshot, TextLayoutError> {
+        validate_request(request)?;
+        let geometry_key = TextGeometryKey::new(document_revision, request);
+        if self.geometry_key == Some(geometry_key) {
+            self.stats.layout_hits = self.stats.layout_hits.saturating_add(1);
+        } else {
+            self.prepared = Some(engine.prepare(document, request)?);
+            self.geometry_key = Some(geometry_key);
+            self.raster_foreground = None;
+            self.snapshot = None;
+            self.stats.layout_misses = self.stats.layout_misses.saturating_add(1);
+        }
+
+        let raster_is_current = self.raster_foreground == Some(request.foreground)
+            && self.snapshot.as_ref().is_some_and(|snapshot| {
+                snapshot.covers_vertical_viewport(scroll_y, viewport_height)
+            });
+        if raster_is_current {
+            self.stats.raster_hits = self.stats.raster_hits.saturating_add(1);
+        } else {
+            let Some(prepared) = self.prepared.as_mut() else {
+                return Err(TextLayoutError::InvalidCacheState);
+            };
+            let overscan = viewport_height.saturating_mul(self.overscan_viewports);
+            let raster_bounds = raster_window(
+                prepared.content_size,
+                prepared.line_height,
+                scroll_y,
+                viewport_height,
+                overscan,
+            );
+            self.snapshot = Some(engine.rasterize(prepared, request.foreground, raster_bounds)?);
+            self.raster_foreground = Some(request.foreground);
+            self.stats.raster_misses = self.stats.raster_misses.saturating_add(1);
+        }
+
+        self.snapshot
+            .as_ref()
+            .ok_or(TextLayoutError::InvalidCacheState)
+    }
+}
+
+impl Default for TextLayoutCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Stateful shaping and glyph-raster cache shared across text views.
 ///
 /// Construct this once per application or rendering thread. `FontSystem::new` scans installed
@@ -283,13 +472,31 @@ impl TextEngine {
         }
     }
 
-    /// Shapes and rasterizes one immutable document snapshot.
+    /// Shapes and rasterizes one complete immutable document snapshot.
+    ///
+    /// This compatibility path is useful for labels and tests. Editor views should retain a
+    /// [`TextLayoutCache`] and call [`TextLayoutCache::update`] instead.
     pub fn shape(
         &mut self,
         document: &TextDocument,
         request: TextLayoutRequest,
     ) -> Result<TextLayoutSnapshot, TextLayoutError> {
         validate_request(request)?;
+        let mut prepared = self.prepare(document, request)?;
+        let bounds = RectI::new(
+            0,
+            0,
+            prepared.content_size.width,
+            prepared.content_size.height.max(1),
+        );
+        self.rasterize(&mut prepared, request.foreground, bounds)
+    }
+
+    fn prepare(
+        &mut self,
+        document: &TextDocument,
+        request: TextLayoutRequest,
+    ) -> Result<PreparedTextLayout, TextLayoutError> {
         let rounded_line_height = rounded_positive_u32(request.line_height);
         let content_height = u32::try_from(document.line_count())
             .unwrap_or(u32::MAX)
@@ -315,34 +522,58 @@ impl TextEngine {
             measured_content_width.clamp(minimum_width, maximum_width),
             content_height.max(1),
         );
-
         let caret_stops = collect_caret_stops(
             document,
             &buffer,
             rounded_line_height,
             i32::try_from(CONTENT_PADDING).unwrap_or(0),
         );
-        let mut framebuffer = Framebuffer::new(content_size)?;
+
+        Ok(PreparedTextLayout {
+            buffer,
+            content_size,
+            line_height: rounded_line_height,
+            caret_stops: caret_stops.into(),
+        })
+    }
+
+    fn rasterize(
+        &mut self,
+        prepared: &mut PreparedTextLayout,
+        foreground: Rgba8,
+        raster_bounds: RectI,
+    ) -> Result<TextLayoutSnapshot, TextLayoutError> {
+        let image_size = SizeI::new(raster_bounds.width.max(1), raster_bounds.height.max(1));
+        let mut framebuffer = Framebuffer::new(image_size)?;
         let foreground = Color::rgba(
-            request.foreground.red,
-            request.foreground.green,
-            request.foreground.blue,
-            request.foreground.alpha,
+            foreground.red,
+            foreground.green,
+            foreground.blue,
+            foreground.alpha,
         );
         let padding = i32::try_from(CONTENT_PADDING).unwrap_or(0);
-        buffer.draw(
+        let line_height = i32::try_from(prepared.line_height.max(1)).unwrap_or(i32::MAX);
+        let buffer_offset = raster_bounds.y.saturating_sub(padding).max(0);
+        let scroll_line = usize::try_from(buffer_offset / line_height).unwrap_or(usize::MAX);
+        let scroll_vertical = (buffer_offset % line_height) as f32;
+        prepared
+            .buffer
+            .set_size(None, Some(raster_bounds.height.max(1) as f32));
+        prepared
+            .buffer
+            .set_scroll(Scroll::new(scroll_line, scroll_vertical, 0.0));
+        prepared.buffer.draw(
             &mut self.font_system,
             &mut self.swash_cache,
             foreground,
             |x, y, width, height, color| {
+                let local_y = y
+                    .saturating_add(buffer_offset)
+                    .saturating_add(padding)
+                    .saturating_sub(raster_bounds.y);
                 let (red, green, blue, alpha) = color.as_rgba_tuple();
                 framebuffer.blend_rect(
-                    RectI::new(
-                        x.saturating_add(padding),
-                        y.saturating_add(padding),
-                        width,
-                        height,
-                    ),
+                    RectI::new(x.saturating_add(padding), local_y, width, height),
                     Rgba8::new(red, green, blue, alpha),
                 );
             },
@@ -351,10 +582,11 @@ impl TextEngine {
 
         Ok(TextLayoutSnapshot {
             image,
-            content_size,
-            line_height: rounded_line_height,
+            raster_bounds,
+            content_size: prepared.content_size,
+            line_height: prepared.line_height,
             content_padding: CONTENT_PADDING,
-            caret_stops: caret_stops.into(),
+            caret_stops: prepared.caret_stops.clone(),
         })
     }
 }
@@ -363,6 +595,35 @@ impl Default for TextEngine {
     fn default() -> Self {
         Self::new()
     }
+}
+
+fn raster_window(
+    content_size: SizeI,
+    line_height: u32,
+    scroll_y: i32,
+    viewport_height: u32,
+    overscan: u32,
+) -> RectI {
+    let content_height = content_size.height.max(1);
+    let viewport_top = u32::try_from(scroll_y.max(0))
+        .unwrap_or(u32::MAX)
+        .min(content_height.saturating_sub(1));
+    let raw_start = viewport_top.saturating_sub(overscan);
+    let alignment = line_height.max(1);
+    let start = raw_start / alignment * alignment;
+    let raw_end = viewport_top
+        .saturating_add(viewport_height.max(1))
+        .saturating_add(overscan)
+        .min(content_height);
+    let aligned_line = raw_end.saturating_add(alignment.saturating_sub(1)) / alignment;
+    let aligned_end = aligned_line.saturating_mul(alignment);
+    let end = aligned_end.min(content_height).max(start.saturating_add(1));
+    RectI::new(
+        0,
+        i32::try_from(start).unwrap_or(i32::MAX),
+        content_size.width.max(1),
+        end.saturating_sub(start).max(1),
+    )
 }
 
 fn collect_caret_stops(
@@ -443,6 +704,8 @@ pub enum TextLayoutError {
     InvalidFontSize,
     /// Line height was zero, negative, NaN, or infinite.
     InvalidLineHeight,
+    /// An internal cache invariant was unexpectedly unavailable.
+    InvalidCacheState,
     /// Transparent glyph framebuffer allocation failed.
     Framebuffer(FramebufferError),
     /// Conversion to an immutable raster image failed.
@@ -458,6 +721,7 @@ impl Display for TextLayoutError {
             Self::InvalidLineHeight => {
                 formatter.write_str("text line height must be finite and positive")
             }
+            Self::InvalidCacheState => formatter.write_str("text layout cache state was invalid"),
             Self::Framebuffer(error) => write!(formatter, "text framebuffer failed: {error}"),
             Self::RasterImage(error) => write!(formatter, "text raster image failed: {error}"),
         }
@@ -469,7 +733,7 @@ impl Error for TextLayoutError {
         match self {
             Self::Framebuffer(error) => Some(error),
             Self::RasterImage(error) => Some(error),
-            Self::InvalidFontSize | Self::InvalidLineHeight => None,
+            Self::InvalidFontSize | Self::InvalidLineHeight | Self::InvalidCacheState => None,
         }
     }
 }
@@ -488,7 +752,7 @@ impl From<RasterImageError> for TextLayoutError {
 
 #[cfg(test)]
 mod tests {
-    use super::{TextEngine, TextLayoutError, TextLayoutRequest};
+    use super::{TextEngine, TextLayoutCache, TextLayoutError, TextLayoutRequest};
     use luna_core::{PointI, SizeI};
     use luna_text::{TextDocument, TextLocation, TextRange};
     use luna_theme::Rgba8;
@@ -557,6 +821,81 @@ mod tests {
             snapshot.visible_range(&document, 4, snapshot.line_height()),
             TextRange::new(TextLocation::new(0, 0), TextLocation::new(0, 5))
         );
+        Ok(())
+    }
+
+    #[test]
+    fn viewport_cache_reuses_layout_and_overscanned_raster() -> Result<(), Box<dyn Error>> {
+        let document = TextDocument::new(
+            (0..100)
+                .map(|line| format!("line {line}\n"))
+                .collect::<String>(),
+        );
+        let request = TextLayoutRequest::new(240, 14.0, 20.0, Rgba8::opaque(240, 240, 240));
+        let mut engine = TextEngine::new();
+        let mut cache = TextLayoutCache::new();
+
+        let first = cache
+            .update(&mut engine, &document, 0, request, 0, 100)?
+            .clone();
+        let second = cache.update(&mut engine, &document, 0, request, 40, 100)?;
+
+        assert!(first.raster_bounds().height < first.content_size().height);
+        assert_eq!(first.raster_bounds(), second.raster_bounds());
+        assert_eq!(
+            cache.stats(),
+            super::TextLayoutCacheStats {
+                layout_hits: 1,
+                layout_misses: 1,
+                raster_hits: 1,
+                raster_misses: 1,
+            }
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn distant_scroll_rerasterizes_without_reshaping() -> Result<(), Box<dyn Error>> {
+        let document = TextDocument::new(
+            (0..200)
+                .map(|line| format!("line {line}\n"))
+                .collect::<String>(),
+        );
+        let request = TextLayoutRequest::new(240, 14.0, 20.0, Rgba8::opaque(240, 240, 240));
+        let mut engine = TextEngine::new();
+        let mut cache = TextLayoutCache::new();
+
+        let first = cache
+            .update(&mut engine, &document, 0, request, 0, 100)?
+            .raster_bounds();
+        let second = cache
+            .update(&mut engine, &document, 0, request, 2_000, 100)?
+            .raster_bounds();
+
+        assert_ne!(first, second);
+        assert_eq!(cache.stats().layout_misses, 1);
+        assert_eq!(cache.stats().raster_misses, 2);
+        Ok(())
+    }
+
+    #[test]
+    fn color_change_rerasterizes_but_revision_change_reshapes() -> Result<(), Box<dyn Error>> {
+        let document = TextDocument::new("alpha\nbeta\ngamma");
+        let request = TextLayoutRequest::new(240, 14.0, 20.0, Rgba8::opaque(240, 240, 240));
+        let mut engine = TextEngine::new();
+        let mut cache = TextLayoutCache::new();
+
+        let _ = cache.update(&mut engine, &document, 0, request, 0, 60)?;
+        let recolored = TextLayoutRequest {
+            foreground: Rgba8::opaque(10, 20, 30),
+            ..request
+        };
+        let _ = cache.update(&mut engine, &document, 0, recolored, 0, 60)?;
+        let _ = cache.update(&mut engine, &document, 1, recolored, 0, 60)?;
+
+        assert_eq!(cache.stats().layout_misses, 2);
+        assert_eq!(cache.stats().layout_hits, 1);
+        assert_eq!(cache.stats().raster_misses, 3);
         Ok(())
     }
 }

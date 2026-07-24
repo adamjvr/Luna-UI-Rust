@@ -89,20 +89,79 @@ This prevents proof animation from turning ordinary editor applications into pol
 `luna-text` owns durable semantic positions and editing behavior. A position is a logical line plus a
 UTF-8 byte column. The public conversion boundary clamps arbitrary coordinates to valid scalar
 boundaries, while user-visible movement and deletion advance by Unicode extended grapheme clusters.
-The current `String`-backed editor state is intentionally replaceable by a rope or piece table
-without changing those public coordinates.
+The editable state still rebuilds snapshots after changes, but immutable `TextDocument` clones share
+UTF-8 and line-index storage through `Arc`. The storage engine remains replaceable by a rope or piece
+table without changing public coordinates.
 
-`luna-text-cosmic` owns mutable font discovery and glyph caches. It consumes an immutable
-`TextDocument` and produces an immutable `TextLayoutSnapshot` containing shared BGRA8 glyph pixels,
-caret stops, hit geometry, selection geometry, visible ranges, and content extents. Widgets and
-render backends never retain a cosmic-text borrow.
+`luna-text-cosmic` owns mutable font discovery, glyph caches, and retained per-document layout state.
+A `TextLayoutCache` separates complete logical geometry from partial glyph pixels:
+
+```text
+document revision + width + typography
+    -> retained cosmic-text buffer
+    -> complete content size and caret/hit/selection geometry
+    -> viewport-height raster band with vertical overscan
+```
+
+Caret, selection, focus, and overlays do not participate in logical cache keys. Foreground color
+invalidates glyph pixels only. The immutable `TextLayoutSnapshot` records `raster_bounds` so widgets
+paint a partial image in full document coordinates while hit testing, scrolling, selection, and
+accessibility continue to use complete geometry. Widgets and render backends never retain a
+cosmic-text borrow.
+
+## Editor chrome retention
+
+`TextLabelCache` is application-owned because shaping mutates the shared font system. Each stable
+chrome slot retains at most one immutable text snapshot. Static menus and sidebar rows become cache
+hits, while dynamic tab/status values replace their slot instead of growing an unbounded text-key
+cache. Bounds and alignment remain widget properties and do not invalidate shaping.
+
+## Command-surface projection
+
+Applications own command meaning and current availability. Luna owns reusable presentation and
+interaction. M3.1d uses one application command catalog to derive every command surface:
+
+```text
+application command catalog
+    -> top-level dropdown definitions
+    -> searchable command-palette items
+    -> keyboard shortcut dispatch
+    -> pointer and accessibility activation
+    -> one application command executor
+```
+
+`DropdownMenuState` and `CommandPaletteState` remain independent. A menu-heading click opens an
+anchored desktop dropdown; Ctrl+P opens a modal searchable palette. They may project the same command
+ID without sharing query, selection, focus, geometry, or dismissal state. Disabled commands remain
+visible in menus but are omitted from the current palette projection. Checked state is application
+state projected into immutable menu definitions.
+
+Dropdown row geometry drives paint, pointer hit testing, and accessibility. Menu open/close and row
+navigation invalidate overlay paint only; they never participate in document-layout or glyph-raster
+cache keys. Moth-specific command policy remains above Luna.
 
 ## Immutable frame snapshots
 
-A frame contains data, not callbacks into widget state. The renderer consumes a `DisplayList`; the
-accessibility adapter consumes an `AccessibilityTree`. Large immutable raster images use shared
-storage so cloning frame commands does not copy every glyph pixel. This permits deterministic tests,
-CPU/GPU parity, recording/replay, caching, and clear synchronization boundaries.
+A frame contains data, not callbacks into widget state. The renderer consumes a dynamic
+`DisplayList` and may also consume a shared `RetainedDisplayList`. The accessibility adapter consumes
+a validated `AccessibilityTree` shared through `Arc`. Large immutable raster images, static paint
+lists, and semantic trees therefore cross frame boundaries without copying every glyph pixel, paint
+command, node, or string.
+
+A retained paint layer carries an application-owned revision and logical dirty region:
+
+```text
+static display list revision
+    -> host-retained static framebuffer
+    -> full restore after revision/size/scale change
+    -> clipped dirty-region restore on dynamic-only frames
+    -> dynamic display list
+```
+
+The revision must change whenever static paint changes. Dynamic commands must remain inside the
+declared dirty region. This explicit contract permits deterministic tests, CPU/GPU parity,
+recording/replay, caching, and clear synchronization boundaries without making the host understand
+application widgets.
 
 ## Geometry invariant
 
@@ -119,10 +178,28 @@ chrome geometry.
 ## Native host lifecycle
 
 The winit host creates windows only after `resumed`, creates the AccessKit adapter before making the
-window visible, normalizes native input, schedules optional logical updates, requests frames through
-`FrameRuntime`, builds one immutable `UiFrame`, scales and paints it through the CPU renderer,
-presents through softbuffer, and submits a matching AccessKit update. Application errors propagate
-to the caller rather than being hidden.
+window visible, normalizes native input, schedules optional logical updates, and requests frames
+through typed invalidations. It builds one immutable `UiFrame`, reuses the ordinary working
+framebuffer, optionally retains a separately rasterized static framebuffer, converts directly into
+softbuffer storage, and resizes the surface only after physical-size changes.
+
+For a retained frame, the host rerasterizes static paint only after revision, physical-size, or scale
+changes. Otherwise it restores the declared dirty rectangle and executes only dynamic commands.
+
+`AccessibilityTree` computes a deterministic fixed-endian field fingerprint during validation.
+The host tracks AccessKit activation and translates semantics only after fingerprint or scale
+changes. Initial activation always receives a complete current tree, and deactivation clears the
+translated-snapshot state. Stage
+timings and lifetime/cache counters make build, rendering, presentation, retained-scene, and semantic
+cost visible. Application errors propagate to the caller rather than being hidden.
+
+## Swift parity boundary
+
+The architectural spine is near parity with Swift Luna UI, but feature breadth is not. Rust currently
+has stronger retained editor-raster and concrete AccessKit paths, while Swift remains substantially
+ahead in nested submenus, context menus, completion, real files/workspaces, split panes, advanced
+tabs, and paired Moth integration. [`SWIFT_PARITY.md`](SWIFT_PARITY.md) is the governing inventory;
+performance milestones must not be described as equivalent to editor-product feature parity.
 
 ## Safety policy
 

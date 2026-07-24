@@ -9,6 +9,7 @@
 //! Unicode extended grapheme clusters, so combining marks and emoji sequences are not split.
 
 use std::cmp::Ordering;
+use std::sync::Arc;
 use unicode_segmentation::UnicodeSegmentation;
 
 /// Direction used when a requested UTF-8 byte column lands inside a scalar encoding.
@@ -112,31 +113,34 @@ impl TextLine {
 }
 
 /// Immutable plain-text snapshot with stable UTF-8 line metadata.
+///
+/// Clones share both the UTF-8 storage and indexed line table. Editing replaces the complete
+/// snapshot, while frame construction and retained layout caches can clone documents cheaply.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TextDocument {
-    text: String,
-    lines: Vec<TextLine>,
+    text: Arc<str>,
+    lines: Arc<[TextLine]>,
 }
 
 impl TextDocument {
     /// Creates a snapshot and indexes every logical line.
     #[must_use]
     pub fn new(text: impl Into<String>) -> Self {
-        let text = text.into();
-        let lines = make_lines(&text);
+        let text = Arc::<str>::from(text.into());
+        let lines = Arc::<[TextLine]>::from(make_lines(text.as_ref()));
         Self { text, lines }
     }
 
     /// Returns the complete UTF-8 text.
     #[must_use]
     pub fn text(&self) -> &str {
-        &self.text
+        self.text.as_ref()
     }
 
     /// Returns all logical lines.
     #[must_use]
     pub fn lines(&self) -> &[TextLine] {
-        &self.lines
+        self.lines.as_ref()
     }
 
     /// Returns the number of logical lines. Even an empty document has one line.
@@ -199,8 +203,8 @@ impl TextDocument {
     /// line feed maps to the beginning of the following line.
     #[must_use]
     pub fn location_for_offset(&self, offset: usize, bias: SnapBias) -> TextLocation {
-        let offset = snap_byte_boundary(&self.text, offset, bias);
-        for line in &self.lines {
+        let offset = snap_byte_boundary(self.text.as_ref(), offset, bias);
+        for line in self.lines.as_ref() {
             let end = line.utf8_offset.saturating_add(line.utf8_length);
             if offset <= end {
                 return TextLocation::new(line.index, offset.saturating_sub(line.utf8_offset));
@@ -612,6 +616,16 @@ fn push_line(lines: &mut Vec<TextLine>, text: &str, start: usize, end: usize) {
 #[cfg(test)]
 mod tests {
     use super::{EditableText, SnapBias, TextDocument, TextLocation, TextRange, TextScroll};
+    use std::sync::Arc;
+
+    #[test]
+    fn immutable_document_clones_share_snapshot_storage() {
+        let document = TextDocument::new("alpha\nbeta");
+        let cloned = document.clone();
+
+        assert!(Arc::ptr_eq(&document.text, &cloned.text));
+        assert!(Arc::ptr_eq(&document.lines, &cloned.lines));
+    }
 
     #[test]
     fn swift_fixture_locations_map_to_absolute_utf8_offsets() {

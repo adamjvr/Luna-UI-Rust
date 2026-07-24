@@ -1,31 +1,39 @@
 // SPDX-License-Identifier: MPL-2.0
 
-//! Native M3 editor integration harness for Luna UI Rust.
+//! Native M3.1d editor integration harness for Luna UI Rust.
 //!
 //! This application mirrors the purpose of Swift LunaUITestApp's default editor mode: reusable
 //! shell anatomy and editor text are exercised together without embedding Moth Text product
 //! policy in Luna. It provides menus, tabs, a project sidebar, status chrome, editable text,
-//! command palette, find panel, dirty tracking, and accessibility from shared geometry.
+//! real dropdown menus, a separate command palette, find panel, dirty tracking, accessibility,
+//! retained document layouts, overscanned glyph rasters, and stable-slot chrome-label caching.
 //!
-//! Shortcuts: Control-P command palette, Control-F find, Control-S save, Control-N new document,
-//! Control-B sidebar, Control-W close tab, Control-A select all, Escape closes overlays or exits.
+//! Shortcuts: Control-P command palette, Control-F find, Control-H replace, Control-S save,
+//! Control-N new document, Control-B sidebar, Control-W close tab, Control-A select all, and Escape
+//! closes the active menu/overlay or exits when no transient surface is open.
 
 use luna_accessibility::{AccessibilityNode, AccessibilityRole};
 use luna_core::{InsetsI, NodeId, PointI, RectI, SizeI};
 use luna_host_winit::{
     AccessibilityActionKind, AccessibilityActionRequest, ApplicationError, HostControl,
-    NativeApplication, WindowConfig, run_native,
+    InvalidationClass, NativeApplication, WindowConfig, run_native,
 };
-use luna_input::{InputEvent, Key, Modifiers, NamedKey, PointerButton, PointerEventKind};
+use luna_input::{
+    InputEvent, Key, Modifiers, NamedKey, PointerButton, PointerEvent, PointerEventKind,
+};
 use luna_render::DisplayList;
 use luna_text::{EditableText, SnapBias, TextLocation, TextRange, TextScroll};
-use luna_text_cosmic::{TextEngine, TextLayoutRequest, TextLayoutSnapshot};
-use luna_theme::Theme;
-use luna_ui::{
-    CommandPalette, CommandPaletteState, EditorShell, EditorShellHit, EditorShellMetrics,
-    EditorShellState, FindField, FindPanel, FindPanelState, PaletteItem, ShellTab, SidebarItem,
-    TextAlignment, TextLabel, TextView, TextViewStyle, UiFrame, Widget,
+use luna_text_cosmic::{
+    TextEngine, TextLayoutCache, TextLayoutCacheStats, TextLayoutRequest, TextLayoutSnapshot,
 };
+use luna_theme::{Rgba8, Theme};
+use luna_ui::{
+    CommandPalette, CommandPaletteState, DropdownMenu, DropdownMenuState, EditorShell,
+    EditorShellHit, EditorShellMetrics, EditorShellState, FindField, FindPanel, FindPanelState,
+    MenuCommand, MenuDefinition, MenuItem, PaletteItem, ShellMenu, ShellTab, SidebarItem,
+    TextAlignment, TextLabel, TextLabelCache, TextView, TextViewStyle, UiFrame, Widget,
+};
+use std::collections::HashMap;
 use std::error::Error;
 use std::ops::Range;
 
@@ -34,9 +42,27 @@ const SHELL_ID: &str = "m3-editor-shell";
 const TEXT_ID: &str = "m3-editor-text";
 const PALETTE_ID: &str = "m3-editor-palette";
 const FIND_ID: &str = "m3-editor-find";
+const MENU_ID: &str = "m3-editor-dropdown-menu";
 
-const README_TEXT: &str = "# Luna UI Rust\n\nM3 adds separate proof-gallery and editor integration demos.\n\n- Deterministic shell geometry\n- Editor-grade text shaping\n- Tabs, sidebar, status, quick panel, and find overlay\n- Shared accessibility semantics\n\nPress Control-P to inspect commands.\n";
-const EDITOR_TEXT: &str = "// EditorSurface.rs\n\npub struct EditorSurface {\n    // Product-neutral geometry lives in Luna.\n    // Product command policy remains in the application.\n}\n\n// Type, select, scroll, resize, and open the find panel.\n";
+const README_TEXT: &str = concat!(
+    "# Luna UI Rust\n\n",
+    "M3.1d adds real dropdown menus without replacing the command palette.\n\n",
+    "- Deterministic shell geometry\n",
+    "- Revision-keyed document shaping\n",
+    "- Viewport-band glyph rasterization\n",
+    "- Stable-slot editor chrome labels\n",
+    "- Shared menu and palette command IDs\n",
+    "- Shared accessibility geometry\n\n",
+    "Click File/Edit/Find/View/Help, or press Control-P for the palette.\n",
+);
+const EDITOR_TEXT: &str = concat!(
+    "// EditorSurface.rs\n\n",
+    "pub struct EditorSurface {\n",
+    "    // Product-neutral geometry lives in Luna.\n",
+    "    // Product command policy remains in the application.\n",
+    "}\n\n",
+    "// Type, select, scroll, resize, and open the find panel.\n",
+);
 const THEME_TEXT: &str =
     "{\n  \"name\": \"Luna Dark\",\n  \"background\": \"#121418\",\n  \"accent\": \"#8269ff\"\n}\n";
 
@@ -76,22 +102,26 @@ struct EditorDemoApplication {
     text_id: NodeId,
     palette_id: NodeId,
     find_id: NodeId,
+    menu_id: NodeId,
     documents: Vec<DemoDocument>,
     active_index: usize,
     engine: TextEngine,
-    last_text_layout: Option<TextLayoutSnapshot>,
+    text_layouts: HashMap<String, TextLayoutCache>,
+    label_cache: TextLabelCache,
     last_editor_bounds: RectI,
     viewport: RectI,
     theme: Theme,
     sidebar_is_visible: bool,
     selected_sidebar_id: Option<String>,
     palette: Option<CommandPaletteState>,
+    menu: DropdownMenuState,
     find: Option<FindPanelState>,
     find_matches: Vec<Range<usize>>,
     drag_anchor: Option<TextLocation>,
     text_is_focused: bool,
     reveal_caret_on_next_frame: bool,
     next_untitled_number: u32,
+    frame_build_count: u64,
 }
 
 impl EditorDemoApplication {
@@ -102,6 +132,7 @@ impl EditorDemoApplication {
             text_id: NodeId::new(TEXT_ID)?,
             palette_id: NodeId::new(PALETTE_ID)?,
             find_id: NodeId::new(FIND_ID)?,
+            menu_id: NodeId::new(MENU_ID)?,
             documents: vec![
                 DemoDocument::new("readme", "README.md", README_TEXT),
                 DemoDocument::new("editor", "EditorSurface.rs", EDITOR_TEXT),
@@ -109,19 +140,22 @@ impl EditorDemoApplication {
             ],
             active_index: 1,
             engine: TextEngine::new(),
-            last_text_layout: None,
+            text_layouts: HashMap::new(),
+            label_cache: TextLabelCache::new(),
             last_editor_bounds: RectI::new(0, 0, 1, 1),
             viewport: RectI::new(0, 0, 1_180, 760),
             theme: Theme::luna_dark(),
             sidebar_is_visible: true,
             selected_sidebar_id: Some("editor".to_owned()),
             palette: None,
+            menu: DropdownMenuState::default(),
             find: None,
             find_matches: Vec::new(),
             drag_anchor: None,
             text_is_focused: true,
             reveal_caret_on_next_frame: true,
             next_untitled_number: 1,
+            frame_build_count: 0,
         })
     }
 
@@ -138,9 +172,129 @@ impl EditorDemoApplication {
         &mut self.documents[index]
     }
 
+    fn menu_definitions(&self) -> Vec<MenuDefinition> {
+        let active = self.active_document();
+        let find_navigation_is_enabled = self.find.is_some() && !self.find_matches.is_empty();
+        vec![
+            MenuDefinition::new(
+                "file",
+                "File",
+                vec![
+                    MenuItem::command(MenuCommand::new("new-file", "New File", "Ctrl+N")),
+                    MenuItem::command(
+                        MenuCommand::new("open", "Open…", "Ctrl+O").with_enabled(false),
+                    ),
+                    MenuItem::Separator,
+                    MenuItem::command(
+                        MenuCommand::new("save", "Save", "Ctrl+S").with_enabled(active.is_dirty()),
+                    ),
+                    MenuItem::command(
+                        MenuCommand::new("save-as", "Save As…", "Ctrl+Shift+S").with_enabled(false),
+                    ),
+                    MenuItem::Separator,
+                    MenuItem::command(
+                        MenuCommand::new("close-tab", "Close Tab", "Ctrl+W")
+                            .with_enabled(self.documents.len() > 1),
+                    ),
+                    MenuItem::Separator,
+                    MenuItem::command(MenuCommand::new("exit", "Exit", "")),
+                ],
+            ),
+            MenuDefinition::new(
+                "edit",
+                "Edit",
+                vec![
+                    MenuItem::command(
+                        MenuCommand::new("undo", "Undo", "Ctrl+Z").with_enabled(false),
+                    ),
+                    MenuItem::command(
+                        MenuCommand::new("redo", "Redo", "Ctrl+Shift+Z").with_enabled(false),
+                    ),
+                    MenuItem::Separator,
+                    MenuItem::command(MenuCommand::new("cut", "Cut", "Ctrl+X").with_enabled(false)),
+                    MenuItem::command(
+                        MenuCommand::new("copy", "Copy", "Ctrl+C").with_enabled(false),
+                    ),
+                    MenuItem::command(
+                        MenuCommand::new("paste", "Paste", "Ctrl+V").with_enabled(false),
+                    ),
+                    MenuItem::Separator,
+                    MenuItem::command(
+                        MenuCommand::new("select-all", "Select All", "Ctrl+A")
+                            .with_enabled(!active.editor.document().text().is_empty()),
+                    ),
+                ],
+            ),
+            MenuDefinition::new(
+                "find",
+                "Find",
+                vec![
+                    MenuItem::command(MenuCommand::new("find", "Find…", "Ctrl+F")),
+                    MenuItem::command(MenuCommand::new("replace", "Replace…", "Ctrl+H")),
+                    MenuItem::Separator,
+                    MenuItem::command(
+                        MenuCommand::new("find-next", "Find Next", "F3")
+                            .with_enabled(find_navigation_is_enabled),
+                    ),
+                    MenuItem::command(
+                        MenuCommand::new("find-previous", "Find Previous", "Shift+F3")
+                            .with_enabled(find_navigation_is_enabled),
+                    ),
+                ],
+            ),
+            MenuDefinition::new(
+                "view",
+                "View",
+                vec![
+                    MenuItem::command(
+                        MenuCommand::new("toggle-sidebar", "Show Sidebar", "Ctrl+B")
+                            .with_checked(self.sidebar_is_visible),
+                    ),
+                    MenuItem::command(
+                        MenuCommand::new("theme", "Light Theme", "")
+                            .with_checked(self.theme == Theme::luna_light()),
+                    ),
+                ],
+            ),
+            MenuDefinition::new(
+                "help",
+                "Help",
+                vec![MenuItem::command(
+                    MenuCommand::new("about", "About Luna UI Rust", "").with_enabled(false),
+                )],
+            ),
+        ]
+    }
+
+    fn palette_items(&self) -> Vec<PaletteItem> {
+        self.menu_definitions()
+            .into_iter()
+            .flat_map(|menu| {
+                let menu_title = menu.title;
+                menu.items.into_iter().filter_map(move |item| {
+                    let MenuItem::Command(command) = item else {
+                        return None;
+                    };
+                    command.is_enabled.then(|| {
+                        PaletteItem::new(
+                            command.id,
+                            format!("{menu_title}: {}", command.title),
+                            command.shortcut,
+                        )
+                    })
+                })
+            })
+            .collect()
+    }
+
     fn shell_state(&self) -> EditorShellState {
         let active = self.active_document();
+        let menu_definitions = self.menu_definitions();
         EditorShellState {
+            menus: menu_definitions
+                .iter()
+                .map(|menu| ShellMenu::new(menu.id.clone(), menu.title.clone()))
+                .collect(),
             tabs: self
                 .documents
                 .iter()
@@ -151,6 +305,7 @@ impl EditorDemoApplication {
                     is_closable: self.documents.len() > 1,
                 })
                 .collect(),
+            active_menu_id: self.menu.active_menu_id.clone(),
             active_tab_id: Some(active.id.clone()),
             sidebar_items: vec![
                 SidebarItem::folder("workspace", "Luna-UI-Rust", 0, true),
@@ -176,7 +331,6 @@ impl EditorDemoApplication {
                 active.editor.caret().utf8_column.saturating_add(1)
             ),
             editor_children: vec![self.text_id.clone()],
-            ..EditorShellState::default()
         }
     }
 
@@ -190,13 +344,34 @@ impl EditorDemoApplication {
         )?)
     }
 
-    fn text_width(&self, bounds: RectI) -> u32 {
+    fn top_level_menu_at(&self, position: PointI) -> Option<String> {
+        self.create_shell()
+            .ok()
+            .and_then(|shell| match shell.semantic_hit_test(position) {
+                Some(EditorShellHit::Menu(menu_id)) => Some(menu_id),
+                Some(
+                    EditorShellHit::Tab(_)
+                    | EditorShellHit::CloseTab(_)
+                    | EditorShellHit::SidebarItem(_)
+                    | EditorShellHit::Editor,
+                )
+                | None => None,
+            })
+    }
+
+    fn transient_surface_count(&self) -> usize {
+        usize::from(self.menu.is_open())
+            .saturating_add(usize::from(self.palette.is_some()))
+            .saturating_add(usize::from(self.find.is_some()))
+    }
+
+    fn text_viewport_size(&self, bounds: RectI) -> SizeI {
         let style = TextViewStyle::from_theme(self.theme);
-        bounds
-            .inset(style.content_insets)
-            .width
-            .saturating_sub(style.gutter_width)
-            .max(1)
+        let inner = bounds.inset(style.content_insets);
+        SizeI::new(
+            inner.width.saturating_sub(style.gutter_width).max(1),
+            inner.height.max(1),
+        )
     }
 
     fn text_view_from_layout(&self, layout: TextLayoutSnapshot) -> TextView {
@@ -211,15 +386,77 @@ impl EditorDemoApplication {
             document.scroll,
             TextViewStyle::from_theme(self.theme),
             format!("Editor for {}", document.title),
-            self.text_is_focused && self.palette.is_none() && self.find.is_none(),
+            self.text_is_focused
+                && self.palette.is_none()
+                && self.find.is_none()
+                && !self.menu.is_open(),
             true,
         )
     }
 
     fn current_text_view(&self) -> Option<TextView> {
-        self.last_text_layout
-            .clone()
+        let document_id = &self.active_document().id;
+        self.text_layouts
+            .get(document_id)
+            .and_then(TextLayoutCache::snapshot)
+            .cloned()
             .map(|layout| self.text_view_from_layout(layout))
+    }
+
+    fn update_active_text_layout(
+        &mut self,
+        request: TextLayoutRequest,
+        scroll_y: i32,
+        viewport_height: u32,
+    ) -> Result<TextLayoutSnapshot, ApplicationError> {
+        let active_index = self
+            .active_index
+            .min(self.documents.len().saturating_sub(1));
+        let document_id = self.documents[active_index].id.clone();
+        let revision = self.documents[active_index].editor.edit_revision();
+        let document = self.documents[active_index].editor.document();
+        let cache = self.text_layouts.entry(document_id).or_default();
+        Ok(cache
+            .update(
+                &mut self.engine,
+                document,
+                revision,
+                request,
+                scroll_y,
+                viewport_height,
+            )?
+            .clone())
+    }
+
+    fn aggregate_text_cache_stats(&self) -> TextLayoutCacheStats {
+        let mut aggregate = TextLayoutCacheStats::default();
+        for cache in self.text_layouts.values() {
+            aggregate.accumulate(cache.stats());
+        }
+        aggregate
+    }
+
+    fn report_cache_metrics(&self) {
+        if self.frame_build_count != 1 && !self.frame_build_count.is_multiple_of(32) {
+            return;
+        }
+        let text = self.aggregate_text_cache_stats();
+        let labels = self.label_cache.stats();
+        eprintln!(
+            concat!(
+                "[luna-editor cache] frames={} ",
+                "text={{layout_hits:{}, layout_misses:{}, raster_hits:{}, raster_misses:{}}} ",
+                "labels={{hits:{}, misses:{}, entries:{}}}",
+            ),
+            self.frame_build_count,
+            text.layout_hits,
+            text.layout_misses,
+            text.raster_hits,
+            text.raster_misses,
+            labels.hits,
+            labels.misses,
+            labels.entries,
+        );
     }
 
     fn append_label(
@@ -231,36 +468,191 @@ impl EditorDemoApplication {
         alignment: TextAlignment,
         font_size: f32,
     ) -> Result<(), ApplicationError> {
+        self.append_colored_label(
+            display_list,
+            id,
+            text,
+            bounds,
+            alignment,
+            font_size,
+            self.theme.foreground,
+        )
+    }
+
+    fn append_colored_label(
+        &mut self,
+        display_list: &mut DisplayList,
+        id: &str,
+        text: &str,
+        bounds: RectI,
+        alignment: TextAlignment,
+        font_size: f32,
+        color: Rgba8,
+    ) -> Result<(), ApplicationError> {
         if bounds.is_empty() {
             return Ok(());
         }
         let node_id = NodeId::new(id)?;
-        let layout = self.engine.shape(
-            &luna_text::TextDocument::new(text),
-            TextLayoutRequest::new(1, font_size, font_size + 6.0, self.theme.foreground)
-                .with_maximum_raster_width(bounds.width.max(1)),
+        let layout = self.label_cache.layout(
+            &mut self.engine,
+            id,
+            text,
+            bounds.width,
+            font_size,
+            font_size + 6.0,
+            color,
         )?;
         let label = TextLabel::new(node_id, bounds, text, layout, alignment);
         label.build_display_list(display_list);
         Ok(())
     }
 
+    fn active_menu_definition(&self) -> Option<MenuDefinition> {
+        let active_id = self.menu.active_menu_id.as_deref()?;
+        self.menu_definitions()
+            .into_iter()
+            .find(|definition| definition.id == active_id)
+    }
+
+    fn create_dropdown_menu(
+        &self,
+        shell: &EditorShell,
+    ) -> Result<Option<DropdownMenu>, ApplicationError> {
+        let Some(definition) = self.active_menu_definition() else {
+            return Ok(None);
+        };
+        let Some(anchor) = shell
+            .layout()
+            .menus
+            .iter()
+            .find(|frame| frame.id == definition.id)
+            .map(|frame| frame.bounds)
+        else {
+            return Ok(None);
+        };
+        Ok(Some(DropdownMenu::new(
+            self.menu_id.clone(),
+            self.viewport,
+            anchor,
+            self.theme,
+            definition,
+            self.menu.selected_index,
+        )?))
+    }
+
+    fn open_menu(&mut self, menu_id: &str) -> HostControl {
+        if self.menu.active_menu_id.as_deref() == Some(menu_id)
+            && self.palette.is_none()
+            && self.find.is_none()
+        {
+            self.menu.close();
+            self.text_is_focused = true;
+            eprintln!("[luna-editor menu] close={menu_id}");
+            return HostControl::Invalidate(InvalidationClass::TextOverlay);
+        }
+        let Some(definition) = self
+            .menu_definitions()
+            .into_iter()
+            .find(|definition| definition.id == menu_id)
+        else {
+            return HostControl::Continue;
+        };
+        self.palette = None;
+        self.find = None;
+        self.menu.open(&definition);
+        self.text_is_focused = false;
+        eprintln!("[luna-editor menu] open={menu_id} palette=false find=false");
+        debug_assert_eq!(self.transient_surface_count(), 1);
+        HostControl::Invalidate(InvalidationClass::TextOverlay)
+    }
+
+    fn close_menu(&mut self) -> HostControl {
+        if !self.menu.is_open() {
+            return HostControl::Continue;
+        }
+        self.menu.close();
+        self.text_is_focused = self.palette.is_none() && self.find.is_none();
+        HostControl::Invalidate(InvalidationClass::TextOverlay)
+    }
+
+    fn switch_menu(&mut self, delta: i32) -> HostControl {
+        let definitions = self.menu_definitions();
+        let Some(active_id) = self.menu.active_menu_id.as_deref() else {
+            return HostControl::Continue;
+        };
+        let Some(current) = definitions
+            .iter()
+            .position(|definition| definition.id == active_id)
+        else {
+            return HostControl::Continue;
+        };
+        let count = definitions.len();
+        if count == 0 {
+            return HostControl::Continue;
+        }
+        let next = if delta < 0 {
+            if current == 0 {
+                count.saturating_sub(1)
+            } else {
+                current.saturating_sub(1)
+            }
+        } else {
+            current.saturating_add(1) % count
+        };
+        self.menu.open(&definitions[next]);
+        HostControl::Invalidate(InvalidationClass::TextOverlay)
+    }
+
+    fn handle_menu_key(&mut self, key: NamedKey) -> HostControl {
+        let Some(definition) = self.active_menu_definition() else {
+            return HostControl::Continue;
+        };
+        match key {
+            NamedKey::Escape => self.close_menu(),
+            NamedKey::ArrowDown => {
+                self.menu.select_next(&definition);
+                HostControl::Invalidate(InvalidationClass::PaintOverlay)
+            }
+            NamedKey::ArrowUp => {
+                self.menu.select_previous(&definition);
+                HostControl::Invalidate(InvalidationClass::PaintOverlay)
+            }
+            NamedKey::ArrowLeft => self.switch_menu(-1),
+            NamedKey::ArrowRight => self.switch_menu(1),
+            NamedKey::Home => {
+                self.menu.select_first(&definition);
+                HostControl::Invalidate(InvalidationClass::PaintOverlay)
+            }
+            NamedKey::End => {
+                self.menu.select_last(&definition);
+                HostControl::Invalidate(InvalidationClass::PaintOverlay)
+            }
+            NamedKey::Enter => {
+                let command = self.menu.selected_command(&definition).map(str::to_owned);
+                command.map_or(HostControl::Continue, |command| {
+                    self.execute_command(&command)
+                })
+            }
+            NamedKey::Tab
+            | NamedKey::Backspace
+            | NamedKey::Delete
+            | NamedKey::PageUp
+            | NamedKey::PageDown => HostControl::Continue,
+        }
+    }
+
     fn open_palette(&mut self) -> HostControl {
+        self.menu.close();
+        self.find = None;
+        let items = self.palette_items();
         self.palette = Some(CommandPaletteState {
             query: String::new(),
-            items: vec![
-                PaletteItem::new("new-file", "File: New File", "Ctrl+N"),
-                PaletteItem::new("save", "File: Save", "Ctrl+S"),
-                PaletteItem::new("close-tab", "File: Close Tab", "Ctrl+W"),
-                PaletteItem::new("find", "Find: Open Find Panel", "Ctrl+F"),
-                PaletteItem::new("toggle-sidebar", "View: Toggle Sidebar", "Ctrl+B"),
-                PaletteItem::new("theme", "View: Toggle Light/Dark Theme", ""),
-            ],
+            items,
             selected_index: 0,
         });
-        self.find = None;
         self.text_is_focused = false;
-        HostControl::Redraw
+        debug_assert_eq!(self.transient_surface_count(), 1);
+        HostControl::Invalidate(InvalidationClass::TextOverlay)
     }
 
     fn open_find(&mut self) -> HostControl {
@@ -269,30 +661,71 @@ impl EditorDemoApplication {
             ..FindPanelState::default()
         });
         self.palette = None;
+        self.menu.close();
         self.text_is_focused = false;
         self.refresh_find_matches();
-        HostControl::Redraw
+        debug_assert_eq!(self.transient_surface_count(), 1);
+        HostControl::Invalidate(InvalidationClass::TextOverlay)
     }
 
     fn execute_command(&mut self, command: &str) -> HostControl {
         self.palette = None;
-        match command {
-            "new-file" => self.new_document(),
-            "save" => self.save_active(),
-            "close-tab" => self.close_active(),
-            "find" => return self.open_find(),
-            "toggle-sidebar" => self.sidebar_is_visible = !self.sidebar_is_visible,
+        self.menu.close();
+        let invalidation = match command {
+            "new-file" => {
+                self.new_document();
+                InvalidationClass::WidgetLayout
+            }
+            "save" if self.active_document().is_dirty() => {
+                self.save_active();
+                InvalidationClass::TextOverlay
+            }
+            "save" => return HostControl::Continue,
+            "close-tab" if self.documents.len() > 1 => {
+                self.close_active();
+                InvalidationClass::WidgetLayout
+            }
+            "close-tab" => return HostControl::Continue,
+            "find" | "replace" => return self.open_find(),
+            "find-next" if self.find.is_some() && !self.find_matches.is_empty() => {
+                self.select_find_match(1);
+                InvalidationClass::TextOverlay
+            }
+            "find-previous" if self.find.is_some() && !self.find_matches.is_empty() => {
+                self.select_find_match(-1);
+                InvalidationClass::TextOverlay
+            }
+            "find-next" | "find-previous" => return HostControl::Continue,
+            "select-all" => {
+                let end = self.active_document().editor.document().end_location();
+                self.active_document_mut()
+                    .editor
+                    .set_selection(TextRange::new(TextLocation::default(), end));
+                self.reveal_caret_on_next_frame = true;
+                InvalidationClass::TextOverlay
+            }
+            "toggle-sidebar" => {
+                self.sidebar_is_visible = !self.sidebar_is_visible;
+                InvalidationClass::WidgetLayout
+            }
             "theme" => {
                 self.theme = if self.theme == Theme::luna_dark() {
                     Theme::luna_light()
                 } else {
                     Theme::luna_dark()
                 };
+                self.label_cache.clear();
+                for cache in self.text_layouts.values_mut() {
+                    cache.invalidate_raster();
+                }
+                InvalidationClass::FullFrame
             }
-            _ => {}
-        }
-        self.text_is_focused = true;
-        HostControl::Redraw
+            "command-palette" => return self.open_palette(),
+            "exit" => return HostControl::Exit,
+            _ => return HostControl::Continue,
+        };
+        self.text_is_focused = self.find.is_none();
+        HostControl::Invalidate(invalidation)
     }
 
     fn new_document(&mut self) {
@@ -318,7 +751,9 @@ impl EditorDemoApplication {
         if self.documents.len() <= 1 {
             return;
         }
+        let removed_id = self.documents[self.active_index].id.clone();
         self.documents.remove(self.active_index);
+        self.text_layouts.remove(&removed_id);
         self.active_index = self
             .active_index
             .min(self.documents.len().saturating_sub(1));
@@ -331,7 +766,8 @@ impl EditorDemoApplication {
             self.active_index = index;
             self.selected_sidebar_id = Some(id.to_owned());
             self.reveal_caret_on_next_frame = true;
-            self.text_is_focused = true;
+            self.text_is_focused =
+                self.palette.is_none() && self.find.is_none() && !self.menu.is_open();
         }
     }
 
@@ -395,20 +831,23 @@ impl EditorDemoApplication {
     }
 
     fn handle_palette_key(&mut self, key: NamedKey) -> HostControl {
-        match key {
+        let invalidation = match key {
             NamedKey::Escape => {
                 self.palette = None;
                 self.text_is_focused = true;
+                InvalidationClass::TextOverlay
             }
             NamedKey::ArrowDown => {
                 if let Some(state) = self.palette.as_mut() {
                     state.select_next();
                 }
+                InvalidationClass::PaintOverlay
             }
             NamedKey::ArrowUp => {
                 if let Some(state) = self.palette.as_mut() {
                     state.select_previous();
                 }
+                InvalidationClass::PaintOverlay
             }
             NamedKey::Backspace => {
                 if let Some(state) = self.palette.as_mut() {
@@ -416,6 +855,7 @@ impl EditorDemoApplication {
                     state.selected_index = 0;
                     state.normalize_selection();
                 }
+                InvalidationClass::TextOverlay
             }
             NamedKey::Enter => {
                 let command = self
@@ -426,6 +866,7 @@ impl EditorDemoApplication {
                 if let Some(command) = command {
                     return self.execute_command(&command);
                 }
+                InvalidationClass::PaintOverlay
             }
             NamedKey::Tab
             | NamedKey::Delete
@@ -434,16 +875,17 @@ impl EditorDemoApplication {
             | NamedKey::Home
             | NamedKey::End
             | NamedKey::PageUp
-            | NamedKey::PageDown => {}
-        }
-        HostControl::Redraw
+            | NamedKey::PageDown => return HostControl::Continue,
+        };
+        HostControl::Invalidate(invalidation)
     }
 
     fn handle_find_key(&mut self, key: NamedKey) -> HostControl {
-        match key {
+        let invalidation = match key {
             NamedKey::Escape => {
                 self.find = None;
                 self.text_is_focused = true;
+                InvalidationClass::TextOverlay
             }
             NamedKey::Tab => {
                 if let Some(find) = self.find.as_mut() {
@@ -452,6 +894,7 @@ impl EditorDemoApplication {
                         FindField::Replacement => FindField::Query,
                     };
                 }
+                InvalidationClass::PaintOverlay
             }
             NamedKey::Backspace => {
                 if let Some(find) = self.find.as_mut() {
@@ -465,62 +908,170 @@ impl EditorDemoApplication {
                     }
                 }
                 self.refresh_find_matches();
+                InvalidationClass::TextOverlay
             }
-            NamedKey::Enter | NamedKey::ArrowDown => self.select_find_match(1),
-            NamedKey::ArrowUp => self.select_find_match(-1),
+            NamedKey::Enter | NamedKey::ArrowDown => {
+                self.select_find_match(1);
+                InvalidationClass::TextOverlay
+            }
+            NamedKey::ArrowUp => {
+                self.select_find_match(-1);
+                InvalidationClass::TextOverlay
+            }
             NamedKey::Delete
             | NamedKey::ArrowLeft
             | NamedKey::ArrowRight
             | NamedKey::Home
             | NamedKey::End
             | NamedKey::PageUp
-            | NamedKey::PageDown => {}
-        }
-        HostControl::Redraw
+            | NamedKey::PageDown => return HostControl::Continue,
+        };
+        HostControl::Invalidate(invalidation)
     }
 
     fn handle_editor_key(&mut self, key: NamedKey, modifiers: Modifiers) -> HostControl {
         let extending = modifiers.contains(Modifiers::SHIFT);
-        let viewport_height = self.last_editor_bounds.height;
+        let viewport_height = self.text_viewport_size(self.last_editor_bounds).height;
+        let maximum_scroll_y = self
+            .current_text_view()
+            .map_or(i32::MAX, |view| view.maximum_scroll().y);
+        let previous_caret = self.active_document().editor.caret();
+        let previous_selection = self.active_document().editor.selection();
+        let previous_revision = self.active_document().editor.edit_revision();
+        let previous_scroll = self.active_document().scroll;
         let mut reveal = true;
-        match key {
-            NamedKey::ArrowLeft => self.active_document_mut().editor.move_backward(extending),
-            NamedKey::ArrowRight => self.active_document_mut().editor.move_forward(extending),
-            NamedKey::ArrowUp => self.active_document_mut().editor.move_up(extending),
-            NamedKey::ArrowDown => self.active_document_mut().editor.move_down(extending),
-            NamedKey::Home => self
-                .active_document_mut()
-                .editor
-                .move_to_line_start(extending),
-            NamedKey::End => self
-                .active_document_mut()
-                .editor
-                .move_to_line_end(extending),
+        let invalidation = match key {
+            NamedKey::ArrowLeft => {
+                self.active_document_mut().editor.move_backward(extending);
+                InvalidationClass::TextOverlay
+            }
+            NamedKey::ArrowRight => {
+                self.active_document_mut().editor.move_forward(extending);
+                InvalidationClass::TextOverlay
+            }
+            NamedKey::ArrowUp => {
+                self.active_document_mut().editor.move_up(extending);
+                InvalidationClass::TextOverlay
+            }
+            NamedKey::ArrowDown => {
+                self.active_document_mut().editor.move_down(extending);
+                InvalidationClass::TextOverlay
+            }
+            NamedKey::Home => {
+                self.active_document_mut()
+                    .editor
+                    .move_to_line_start(extending);
+                InvalidationClass::TextOverlay
+            }
+            NamedKey::End => {
+                self.active_document_mut()
+                    .editor
+                    .move_to_line_end(extending);
+                InvalidationClass::TextOverlay
+            }
             NamedKey::Backspace => {
                 let _ = self.active_document_mut().editor.delete_backward();
+                InvalidationClass::TextLayout
             }
             NamedKey::Delete => {
                 let _ = self.active_document_mut().editor.delete_forward();
+                InvalidationClass::TextLayout
             }
             NamedKey::Enter => {
                 let _ = self.active_document_mut().editor.insert_newline();
+                InvalidationClass::TextLayout
             }
             NamedKey::PageUp => {
                 let amount = i32::try_from(viewport_height).unwrap_or(i32::MAX);
                 let current_y = self.active_document().scroll.y;
                 self.active_document_mut().scroll.y = current_y.saturating_sub(amount).max(0);
                 reveal = false;
+                InvalidationClass::TextRaster
             }
             NamedKey::PageDown => {
                 let amount = i32::try_from(viewport_height).unwrap_or(i32::MAX);
                 let current_y = self.active_document().scroll.y;
-                self.active_document_mut().scroll.y = current_y.saturating_add(amount);
+                self.active_document_mut().scroll.y = current_y
+                    .saturating_add(amount)
+                    .min(maximum_scroll_y.max(0));
                 reveal = false;
+                InvalidationClass::TextRaster
             }
             NamedKey::Escape | NamedKey::Tab => return HostControl::Continue,
+        };
+        let changed = match invalidation {
+            InvalidationClass::TextLayout => {
+                self.active_document().editor.edit_revision() != previous_revision
+            }
+            InvalidationClass::TextRaster => self.active_document().scroll != previous_scroll,
+            InvalidationClass::TextOverlay => {
+                self.active_document().editor.caret() != previous_caret
+                    || self.active_document().editor.selection() != previous_selection
+            }
+            _ => true,
+        };
+        if !changed {
+            return HostControl::Continue;
         }
         self.reveal_caret_on_next_frame = reveal;
-        HostControl::Redraw
+        HostControl::Invalidate(invalidation)
+    }
+
+    fn handle_open_menu_pointer(&mut self, pointer: &PointerEvent) -> HostControl {
+        let Ok(shell) = self.create_shell() else {
+            return HostControl::Continue;
+        };
+        let top_menu = match shell.semantic_hit_test(pointer.position) {
+            Some(EditorShellHit::Menu(menu_id)) => Some(menu_id),
+            Some(
+                EditorShellHit::Tab(_)
+                | EditorShellHit::CloseTab(_)
+                | EditorShellHit::SidebarItem(_)
+                | EditorShellHit::Editor,
+            )
+            | None => None,
+        };
+        let dropdown = self.create_dropdown_menu(&shell).ok().flatten();
+        match pointer.kind {
+            PointerEventKind::Moved => {
+                if let Some(menu_id) = top_menu
+                    && self.menu.active_menu_id.as_deref() != Some(menu_id.as_str())
+                {
+                    return self.open_menu(&menu_id);
+                }
+                let Some(dropdown) = dropdown else {
+                    return HostControl::Continue;
+                };
+                let Some(item_index) = dropdown.item_index_at(pointer.position) else {
+                    return HostControl::Continue;
+                };
+                let definition = dropdown.definition().clone();
+                if self.menu.select_hovered(&definition, item_index) {
+                    HostControl::Invalidate(InvalidationClass::PaintOverlay)
+                } else {
+                    HostControl::Continue
+                }
+            }
+            PointerEventKind::Pressed(PointerButton::Primary) => {
+                if let Some(menu_id) = top_menu {
+                    return self.open_menu(&menu_id);
+                }
+                let Some(dropdown) = dropdown else {
+                    return self.close_menu();
+                };
+                if let Some(command) = dropdown.command_at(pointer.position).map(str::to_owned) {
+                    return self.execute_command(&command);
+                }
+                if dropdown.contains(pointer.position) {
+                    HostControl::Continue
+                } else {
+                    self.close_menu()
+                }
+            }
+            PointerEventKind::Pressed(_)
+            | PointerEventKind::Released(_)
+            | PointerEventKind::Left => HostControl::Continue,
+        }
     }
 
     fn apply_pointer_to_text(&mut self, position: PointI, extending: bool) -> bool {
@@ -530,10 +1081,11 @@ impl EditorDemoApplication {
         let Some(location) = view.text_hit_test(position) else {
             return false;
         };
+        let previous_caret = self.active_document().editor.caret();
+        let previous_selection = self.active_document().editor.selection();
+        let was_focused = self.text_is_focused;
         if extending {
-            let anchor = self
-                .drag_anchor
-                .unwrap_or(self.active_document().editor.caret());
+            let anchor = self.drag_anchor.unwrap_or(previous_caret);
             self.active_document_mut()
                 .editor
                 .set_selection(TextRange::new(anchor, location));
@@ -543,7 +1095,9 @@ impl EditorDemoApplication {
         }
         self.text_is_focused = true;
         self.reveal_caret_on_next_frame = true;
-        true
+        previous_caret != self.active_document().editor.caret()
+            || previous_selection != self.active_document().editor.selection()
+            || !was_focused
     }
 
     fn append_shell_labels(
@@ -635,6 +1189,63 @@ impl EditorDemoApplication {
             TextAlignment::Trailing,
             12.0,
         )?;
+        Ok(())
+    }
+
+    fn append_dropdown_labels(
+        &mut self,
+        menu: &DropdownMenu,
+        display_list: &mut DisplayList,
+    ) -> Result<(), ApplicationError> {
+        for row in &menu.layout().rows {
+            if row.is_separator {
+                continue;
+            }
+            let color = if row.is_enabled {
+                self.theme.foreground
+            } else {
+                self.theme.muted_foreground()
+            };
+            self.append_colored_label(
+                display_list,
+                &format!(
+                    "m3-editor-dropdown-{}-title-{}",
+                    menu.definition().id,
+                    row.item_index
+                ),
+                &row.title,
+                RectI::new(
+                    row.bounds.x.saturating_add(28),
+                    row.bounds.y,
+                    row.bounds.width.saturating_sub(128),
+                    row.bounds.height,
+                ),
+                TextAlignment::Leading,
+                13.0,
+                color,
+            )?;
+            if !row.shortcut.is_empty() {
+                self.append_colored_label(
+                    display_list,
+                    &format!(
+                        "m3-editor-dropdown-{}-shortcut-{}",
+                        menu.definition().id,
+                        row.item_index
+                    ),
+                    &row.shortcut,
+                    RectI::new(
+                        i32::try_from(row.bounds.right().saturating_sub(94))
+                            .unwrap_or(row.bounds.x),
+                        row.bounds.y,
+                        84,
+                        row.bounds.height,
+                    ),
+                    TextAlignment::Trailing,
+                    12.0,
+                    color,
+                )?;
+            }
+        }
         Ok(())
     }
 
@@ -792,12 +1403,10 @@ impl NativeApplication for EditorDemoApplication {
         let caret = self.active_document().editor.caret();
         let selection = self.active_document().editor.selection();
         let mut scroll = self.active_document().scroll;
-        let editor_text_width = self.text_width(self.last_editor_bounds);
-        let foreground = self.theme.foreground;
-        let layout = self.engine.shape(
-            &document,
-            TextLayoutRequest::new(editor_text_width, 15.0, 22.0, foreground),
-        )?;
+        let text_viewport = self.text_viewport_size(self.last_editor_bounds);
+        let request =
+            TextLayoutRequest::new(text_viewport.width, 15.0, 22.0, self.theme.foreground);
+        let mut layout = self.update_active_text_layout(request, scroll.y, text_viewport.height)?;
         if self.reveal_caret_on_next_frame {
             let provisional = TextView::new(
                 self.text_id.clone(),
@@ -812,24 +1421,30 @@ impl NativeApplication for EditorDemoApplication {
                 true,
                 true,
             );
-            scroll = provisional.scroll_revealing_caret();
-            self.active_document_mut().scroll = scroll;
+            let revealed_scroll = provisional.scroll_revealing_caret();
+            if revealed_scroll != scroll {
+                scroll = revealed_scroll;
+                self.active_document_mut().scroll = scroll;
+                layout = self.update_active_text_layout(request, scroll.y, text_viewport.height)?;
+            }
             self.reveal_caret_on_next_frame = false;
         }
         let text_view = TextView::new(
             self.text_id.clone(),
             self.last_editor_bounds,
             document,
-            layout.clone(),
+            layout,
             caret,
             selection,
             scroll,
             TextViewStyle::from_theme(self.theme),
             format!("Editor for {}", self.active_document().title),
-            self.text_is_focused && self.palette.is_none() && self.find.is_none(),
+            self.text_is_focused
+                && self.palette.is_none()
+                && self.find.is_none()
+                && !self.menu.is_open(),
             true,
         );
-        self.last_text_layout = Some(layout);
 
         let mut display_list = DisplayList::new();
         display_list.clear(self.theme.background);
@@ -844,6 +1459,7 @@ impl NativeApplication for EditorDemoApplication {
         nodes.extend(shell.accessibility_nodes());
         nodes.extend(text_view.accessibility_nodes());
         self.append_shell_labels(&shell, &mut display_list)?;
+        debug_assert!(self.transient_surface_count() <= 1);
 
         if let Some(state) = self.palette.clone() {
             let palette =
@@ -860,10 +1476,18 @@ impl NativeApplication for EditorDemoApplication {
             root_children.push(self.find_id.clone());
             self.append_find_labels(&panel, &mut display_list)?;
         }
+        if let Some(menu) = self.create_dropdown_menu(&shell)? {
+            menu.build_display_list(&mut display_list);
+            nodes.extend(menu.accessibility_nodes());
+            root_children.push(self.menu_id.clone());
+            self.append_dropdown_labels(&menu, &mut display_list)?;
+        }
         nodes[0] =
             AccessibilityNode::new(self.root_id.clone(), AccessibilityRole::Window, viewport)
                 .with_label("Luna UI Rust editor demo window")
                 .with_children(root_children);
+        self.frame_build_count = self.frame_build_count.saturating_add(1);
+        self.report_cache_metrics();
         Ok(UiFrame::from_parts(
             display_list,
             self.root_id.clone(),
@@ -874,6 +1498,20 @@ impl NativeApplication for EditorDemoApplication {
     fn handle_input(&mut self, event: InputEvent) -> HostControl {
         match event {
             InputEvent::Keyboard(keyboard) if keyboard.is_pressed => {
+                if self.menu.is_open() {
+                    if let Key::Named(key) = &keyboard.key {
+                        return self.handle_menu_key(*key);
+                    }
+                    if matches!(&keyboard.key, Key::Character(value) if value == " ") {
+                        let command = self.active_menu_definition().and_then(|definition| {
+                            self.menu.selected_command(&definition).map(str::to_owned)
+                        });
+                        return command.map_or(HostControl::Continue, |command| {
+                            self.execute_command(&command)
+                        });
+                    }
+                    return HostControl::Continue;
+                }
                 if self.palette.is_some() {
                     if let Key::Named(key) = &keyboard.key {
                         return self.handle_palette_key(*key);
@@ -884,7 +1522,7 @@ impl NativeApplication for EditorDemoApplication {
                             state.selected_index = 0;
                             state.normalize_selection();
                         }
-                        return HostControl::Redraw;
+                        return HostControl::Invalidate(InvalidationClass::TextOverlay);
                     }
                     return HostControl::Continue;
                 }
@@ -900,7 +1538,7 @@ impl NativeApplication for EditorDemoApplication {
                             }
                         }
                         self.refresh_find_matches();
-                        return HostControl::Redraw;
+                        return HostControl::Invalidate(InvalidationClass::TextOverlay);
                     }
                     return HostControl::Continue;
                 }
@@ -910,34 +1548,34 @@ impl NativeApplication for EditorDemoApplication {
                         && !keyboard.modifiers.contains(Modifiers::ALT));
                 if command_modified {
                     let command = match &keyboard.key {
-                        Key::Character(value) if value.eq_ignore_ascii_case("p") => Some("palette"),
+                        Key::Character(value) if value.eq_ignore_ascii_case("p") => {
+                            Some("command-palette")
+                        }
                         Key::Character(value) if value.eq_ignore_ascii_case("f") => Some("find"),
-                        Key::Character(value) if value.eq_ignore_ascii_case("s") => Some("save"),
-                        Key::Character(value) if value.eq_ignore_ascii_case("n") => Some("new"),
-                        Key::Character(value) if value.eq_ignore_ascii_case("b") => Some("sidebar"),
-                        Key::Character(value) if value.eq_ignore_ascii_case("w") => Some("close"),
+                        Key::Character(value) if value.eq_ignore_ascii_case("h") => Some("replace"),
+                        Key::Character(value)
+                            if value.eq_ignore_ascii_case("s")
+                                && !keyboard.modifiers.contains(Modifiers::SHIFT) =>
+                        {
+                            Some("save")
+                        }
+                        Key::Character(value) if value.eq_ignore_ascii_case("n") => {
+                            Some("new-file")
+                        }
+                        Key::Character(value) if value.eq_ignore_ascii_case("b") => {
+                            Some("toggle-sidebar")
+                        }
+                        Key::Character(value) if value.eq_ignore_ascii_case("w") => {
+                            Some("close-tab")
+                        }
                         Key::Character(value) if value.eq_ignore_ascii_case("a") => {
                             Some("select-all")
                         }
                         _ => None,
                     };
-                    match command {
-                        Some("palette") => return self.open_palette(),
-                        Some("find") => return self.open_find(),
-                        Some("save") => self.save_active(),
-                        Some("new") => self.new_document(),
-                        Some("sidebar") => self.sidebar_is_visible = !self.sidebar_is_visible,
-                        Some("close") => self.close_active(),
-                        Some("select-all") => {
-                            let end = self.active_document().editor.document().end_location();
-                            self.active_document_mut()
-                                .editor
-                                .set_selection(TextRange::new(TextLocation::default(), end));
-                            self.reveal_caret_on_next_frame = true;
-                        }
-                        Some(_) | None => {}
-                    }
-                    return HostControl::Redraw;
+                    return command.map_or(HostControl::Continue, |command| {
+                        self.execute_command(command)
+                    });
                 }
                 if keyboard.key == Key::Named(NamedKey::Escape) {
                     return HostControl::Exit;
@@ -953,15 +1591,21 @@ impl NativeApplication for EditorDemoApplication {
                     && !text.is_empty()
                     && !text.chars().all(char::is_control)
                 {
-                    let _ = self.active_document_mut().editor.insert_text(text);
-                    self.reveal_caret_on_next_frame = true;
-                    return HostControl::Redraw;
+                    let result = self.active_document_mut().editor.insert_text(text);
+                    if result.did_change {
+                        self.reveal_caret_on_next_frame = true;
+                        return HostControl::Invalidate(InvalidationClass::TextLayout);
+                    }
                 }
             }
             InputEvent::Text(text) => {
-                if let Some(state) = self.palette.as_mut() {
+                if self.menu.is_open() {
+                    return HostControl::Continue;
+                }
+                let invalidation = if let Some(state) = self.palette.as_mut() {
                     state.query.push_str(&text);
                     state.normalize_selection();
+                    InvalidationClass::TextOverlay
                 } else if self.find.is_some() {
                     if let Some(find) = self.find.as_mut() {
                         match find.active_field {
@@ -970,13 +1614,26 @@ impl NativeApplication for EditorDemoApplication {
                         }
                     }
                     self.refresh_find_matches();
+                    InvalidationClass::TextOverlay
                 } else {
-                    let _ = self.active_document_mut().editor.insert_text(&text);
+                    let result = self.active_document_mut().editor.insert_text(&text);
+                    if !result.did_change {
+                        return HostControl::Continue;
+                    }
                     self.reveal_caret_on_next_frame = true;
-                }
-                return HostControl::Redraw;
+                    InvalidationClass::TextLayout
+                };
+                return HostControl::Invalidate(invalidation);
             }
             InputEvent::Pointer(pointer) => {
+                if pointer.kind == PointerEventKind::Pressed(PointerButton::Primary)
+                    && let Some(menu_id) = self.top_level_menu_at(pointer.position)
+                {
+                    return self.open_menu(&menu_id);
+                }
+                if self.menu.is_open() {
+                    return self.handle_open_menu_pointer(&pointer);
+                }
                 if pointer.kind == PointerEventKind::Pressed(PointerButton::Primary) {
                     if let Some(state) = self.palette.clone() {
                         if let Ok(palette) = CommandPalette::new(
@@ -984,12 +1641,21 @@ impl NativeApplication for EditorDemoApplication {
                             self.viewport,
                             self.theme,
                             state,
-                        ) && let Some(command) =
-                            palette.command_at(pointer.position).map(str::to_owned)
-                        {
-                            return self.execute_command(&command);
+                        ) {
+                            if let Some(command) =
+                                palette.command_at(pointer.position).map(str::to_owned)
+                            {
+                                return self.execute_command(&command);
+                            }
+                            if !palette.layout().panel.contains(pointer.position) {
+                                self.palette = None;
+                                self.text_is_focused = true;
+                                return HostControl::Invalidate(InvalidationClass::TextOverlay);
+                            }
                         }
-                    } else if let Some(state) = self.find.clone() {
+                        return HostControl::Continue;
+                    }
+                    if let Some(state) = self.find.clone() {
                         if let Ok(panel) =
                             FindPanel::new(self.find_id.clone(), self.viewport, self.theme, state)
                         {
@@ -997,54 +1663,63 @@ impl NativeApplication for EditorDemoApplication {
                             if layout.close.contains(pointer.position) {
                                 self.find = None;
                                 self.text_is_focused = true;
-                                return HostControl::Redraw;
+                                return HostControl::Invalidate(InvalidationClass::TextOverlay);
                             }
                             if layout.next.contains(pointer.position) {
                                 self.select_find_match(1);
-                                return HostControl::Redraw;
+                                return HostControl::Invalidate(InvalidationClass::TextOverlay);
                             }
                             if layout.previous.contains(pointer.position) {
                                 self.select_find_match(-1);
-                                return HostControl::Redraw;
+                                return HostControl::Invalidate(InvalidationClass::TextOverlay);
                             }
                             if layout.query.contains(pointer.position) {
                                 if let Some(find) = self.find.as_mut() {
                                     find.active_field = FindField::Query;
                                 }
-                                return HostControl::Redraw;
+                                return HostControl::Invalidate(InvalidationClass::PaintOverlay);
                             }
                             if layout.replacement.contains(pointer.position) {
                                 if let Some(find) = self.find.as_mut() {
                                     find.active_field = FindField::Replacement;
                                 }
-                                return HostControl::Redraw;
+                                return HostControl::Invalidate(InvalidationClass::PaintOverlay);
                             }
                         }
-                    } else if let Ok(shell) = self.create_shell() {
+                        return HostControl::Continue;
+                    }
+                    if let Ok(shell) = self.create_shell() {
                         match shell.semantic_hit_test(pointer.position) {
-                            Some(EditorShellHit::Tab(id)) => self.activate_document(&id),
+                            Some(EditorShellHit::Tab(id)) => {
+                                self.activate_document(&id);
+                                return HostControl::Invalidate(InvalidationClass::WidgetLayout);
+                            }
                             Some(EditorShellHit::CloseTab(id)) => {
                                 self.activate_document(&id);
                                 self.close_active();
+                                return HostControl::Invalidate(InvalidationClass::WidgetLayout);
                             }
-                            Some(EditorShellHit::SidebarItem(id)) => self.activate_document(&id),
-                            Some(EditorShellHit::Menu(_)) => return self.open_palette(),
+                            Some(EditorShellHit::SidebarItem(id)) => {
+                                self.activate_document(&id);
+                                return HostControl::Invalidate(InvalidationClass::WidgetLayout);
+                            }
+                            Some(EditorShellHit::Menu(_)) => {}
                             Some(EditorShellHit::Editor) => {
                                 let extending = pointer.modifiers.contains(Modifiers::SHIFT);
                                 if self.apply_pointer_to_text(pointer.position, extending) {
-                                    return HostControl::Redraw;
+                                    return HostControl::Invalidate(InvalidationClass::TextOverlay);
                                 }
                             }
                             None => {}
                         }
                     }
-                    return HostControl::Redraw;
+                    return HostControl::Continue;
                 }
                 if pointer.kind == PointerEventKind::Moved
                     && self.drag_anchor.is_some()
                     && self.apply_pointer_to_text(pointer.position, true)
                 {
-                    return HostControl::Redraw;
+                    return HostControl::Invalidate(InvalidationClass::TextOverlay);
                 }
                 if matches!(
                     pointer.kind,
@@ -1053,7 +1728,9 @@ impl NativeApplication for EditorDemoApplication {
                     self.drag_anchor = None;
                 }
             }
-            InputEvent::Scroll(scroll) if self.palette.is_none() && self.find.is_none() => {
+            InputEvent::Scroll(scroll)
+                if self.palette.is_none() && self.find.is_none() && !self.menu.is_open() =>
+            {
                 if let Some(view) = self.current_text_view() {
                     let maximum = view.maximum_scroll();
                     let (delta_x, delta_y) =
@@ -1062,24 +1739,41 @@ impl NativeApplication for EditorDemoApplication {
                         } else {
                             (scroll.delta_x, scroll.delta_y)
                         };
-                    let document = self.active_document_mut();
-                    document
-                        .scroll
-                        .scroll_by(delta_x, delta_y, maximum.x, maximum.y);
+                    let previous = self.active_document().scroll;
+                    let changed = {
+                        let document = self.active_document_mut();
+                        document
+                            .scroll
+                            .scroll_by(delta_x, delta_y, maximum.x, maximum.y);
+                        document.scroll != previous
+                    };
                     self.reveal_caret_on_next_frame = false;
-                    return HostControl::Redraw;
+                    if changed {
+                        return HostControl::Invalidate(InvalidationClass::TextRaster);
+                    }
                 }
             }
-            InputEvent::FocusGained => {
+            InputEvent::FocusGained
+                if !self.text_is_focused
+                    && self.palette.is_none()
+                    && self.find.is_none()
+                    && !self.menu.is_open() =>
+            {
                 self.text_is_focused = true;
-                return HostControl::Redraw;
+                return HostControl::Invalidate(InvalidationClass::PaintOverlay);
             }
-            InputEvent::FocusLost => {
+            InputEvent::FocusLost
+                if self.text_is_focused || self.drag_anchor.is_some() || self.menu.is_open() =>
+            {
                 self.text_is_focused = false;
                 self.drag_anchor = None;
-                return HostControl::Redraw;
+                self.menu.close();
+                return HostControl::Invalidate(InvalidationClass::TextOverlay);
             }
-            InputEvent::Keyboard(_) | InputEvent::Scroll(_) => {}
+            InputEvent::Keyboard(_)
+            | InputEvent::Scroll(_)
+            | InputEvent::FocusGained
+            | InputEvent::FocusLost => {}
         }
         HostControl::Continue
     }
@@ -1092,13 +1786,24 @@ impl NativeApplication for EditorDemoApplication {
             return HostControl::Continue;
         }
 
+        if self.menu.is_open()
+            && let Ok(shell) = self.create_shell()
+            && let Ok(Some(menu)) = self.create_dropdown_menu(&shell)
+            && request.kind == AccessibilityActionKind::Click
+        {
+            let command = menu.command_for_node(&target).map(str::to_owned);
+            if let Some(command) = command {
+                return self.execute_command(&command);
+            }
+        }
+
         if let Some(state) = self.palette.clone()
             && let Ok(palette) =
                 CommandPalette::new(self.palette_id.clone(), self.viewport, self.theme, state)
         {
             if &target == palette.input_node_id() {
                 self.text_is_focused = false;
-                return HostControl::Redraw;
+                return HostControl::Invalidate(InvalidationClass::Accessibility);
             }
             if request.kind == AccessibilityActionKind::Click {
                 let command = palette.command_for_node(&target).map(str::to_owned);
@@ -1116,52 +1821,147 @@ impl NativeApplication for EditorDemoApplication {
                 if let Some(find) = self.find.as_mut() {
                     find.active_field = FindField::Query;
                 }
-                return HostControl::Redraw;
+                return HostControl::Invalidate(InvalidationClass::Accessibility);
             }
             if &target == panel.replacement_node_id() {
                 if let Some(find) = self.find.as_mut() {
                     find.active_field = FindField::Replacement;
                 }
-                return HostControl::Redraw;
+                return HostControl::Invalidate(InvalidationClass::Accessibility);
             }
             if request.kind == AccessibilityActionKind::Click {
                 if &target == panel.previous_node_id() {
                     self.select_find_match(-1);
-                    return HostControl::Redraw;
+                    return HostControl::Invalidate(InvalidationClass::TextOverlay);
                 }
                 if &target == panel.next_node_id() {
                     self.select_find_match(1);
-                    return HostControl::Redraw;
+                    return HostControl::Invalidate(InvalidationClass::TextOverlay);
                 }
                 if &target == panel.close_node_id() {
                     self.find = None;
                     self.text_is_focused = true;
-                    return HostControl::Redraw;
+                    return HostControl::Invalidate(InvalidationClass::Accessibility);
                 }
             }
         }
 
         if let Ok(shell) = self.create_shell() {
             match shell.semantic_target(&target) {
-                Some(EditorShellHit::Menu(_)) if request.kind == AccessibilityActionKind::Click => {
-                    return self.open_palette();
+                Some(EditorShellHit::Menu(menu_id))
+                    if request.kind == AccessibilityActionKind::Click =>
+                {
+                    return self.open_menu(&menu_id);
                 }
                 Some(EditorShellHit::Tab(id) | EditorShellHit::SidebarItem(id)) => {
                     self.activate_document(&id);
-                    return HostControl::Redraw;
+                    return HostControl::Invalidate(InvalidationClass::Accessibility);
                 }
                 Some(EditorShellHit::Editor) => {
+                    self.menu.close();
+                    self.palette = None;
+                    self.find = None;
                     self.text_is_focused = true;
-                    return HostControl::Redraw;
+                    return HostControl::Invalidate(InvalidationClass::Accessibility);
                 }
                 Some(EditorShellHit::CloseTab(_) | EditorShellHit::Menu(_)) | None => {}
             }
         }
 
         if target == self.text_id {
+            self.menu.close();
+            self.palette = None;
+            self.find = None;
             self.text_is_focused = true;
-            return HostControl::Redraw;
+            return HostControl::Invalidate(InvalidationClass::Accessibility);
         }
         HostControl::Continue
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::EditorDemoApplication;
+    use luna_core::PointI;
+    use luna_host_winit::NativeApplication;
+    use luna_input::{InputEvent, Modifiers, PointerButton, PointerEvent, PointerEventKind};
+    use std::error::Error;
+
+    #[test]
+    fn dropdown_and_palette_states_remain_independent() -> Result<(), Box<dyn Error + Send + Sync>>
+    {
+        let mut application = EditorDemoApplication::new()?;
+
+        let _ = application.open_menu("file");
+        assert_eq!(application.menu.active_menu_id.as_deref(), Some("file"));
+        assert!(application.palette.is_none());
+
+        let _ = application.open_palette();
+        assert!(!application.menu.is_open());
+        assert!(application.palette.is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn menu_heading_pointer_replaces_palette_with_dropdown()
+    -> Result<(), Box<dyn Error + Send + Sync>> {
+        let mut application = EditorDemoApplication::new()?;
+        let _ = application.open_palette();
+        let shell = application.create_shell()?;
+        let file = shell
+            .layout()
+            .menus
+            .iter()
+            .find(|menu| menu.id == "file")
+            .ok_or_else(|| std::io::Error::other("missing File menu heading"))?;
+        let position = PointI::new(
+            file.bounds.x.saturating_add(2),
+            file.bounds.y.saturating_add(2),
+        );
+
+        let _ = application.handle_input(InputEvent::Pointer(PointerEvent {
+            kind: PointerEventKind::Pressed(PointerButton::Primary),
+            position,
+            modifiers: Modifiers::NONE,
+            timestamp_micros: 1,
+        }));
+
+        assert_eq!(application.menu.active_menu_id.as_deref(), Some("file"));
+        assert!(application.palette.is_none());
+        assert!(application.find.is_none());
+        assert_eq!(application.transient_surface_count(), 1);
+        let dropdown = application
+            .create_dropdown_menu(&application.create_shell()?)?
+            .ok_or_else(|| std::io::Error::other("File dropdown was not constructed"))?;
+        assert_eq!(
+            dropdown.layout().panel.y,
+            i32::try_from(file.bounds.bottom()).unwrap_or(i32::MAX),
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn command_palette_is_not_projected_into_any_dropdown()
+    -> Result<(), Box<dyn Error + Send + Sync>> {
+        let application = EditorDemoApplication::new()?;
+        assert!(application.menu_definitions().iter().all(|menu| {
+            menu.items.iter().all(|item| {
+                item.as_command()
+                    .is_none_or(|command| command.id != "command-palette")
+            })
+        }));
+        Ok(())
+    }
+
+    #[test]
+    fn palette_projection_excludes_disabled_menu_commands()
+    -> Result<(), Box<dyn Error + Send + Sync>> {
+        let application = EditorDemoApplication::new()?;
+        let items = application.palette_items();
+
+        assert!(items.iter().any(|item| item.id == "new-file"));
+        assert!(!items.iter().any(|item| item.id == "open"));
+        assert!(!items.iter().any(|item| item.id == "save-as"));
+        Ok(())
     }
 }

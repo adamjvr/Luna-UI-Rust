@@ -8,6 +8,33 @@
 
 use std::collections::BTreeSet;
 
+/// Stable high-level category describing why frame work is required.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum InvalidationClass {
+    /// First frame after native resources are created.
+    Initial,
+    /// Time-driven animation or proof sampling.
+    Animation,
+    /// Caret, selection, focus, or other paint-only overlays changed.
+    PaintOverlay,
+    /// Text-adjacent overlay content changed without document layout changes.
+    TextOverlay,
+    /// Glyph pixels must be regenerated while logical text geometry remains valid.
+    TextRaster,
+    /// Logical text shaping and caret geometry must be rebuilt.
+    TextLayout,
+    /// Widget or shell geometry must be rebuilt.
+    WidgetLayout,
+    /// Accessibility semantics or focus changed.
+    Accessibility,
+    /// Native surface size, scale, exposure, or lifecycle changed.
+    Surface,
+    /// A complete application frame rebuild is required.
+    FullFrame,
+    /// Explicit application-defined diagnostic work.
+    Explicit,
+}
+
 /// Why a new frame is required.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum InvalidationReason {
@@ -17,12 +44,53 @@ pub enum InvalidationReason {
     StateChanged,
     /// Surface dimensions changed.
     SurfaceResized,
+    /// A platform expose event requested repaint without queued Luna work.
+    SurfaceExposed,
     /// Theme tokens changed.
     ThemeChanged,
     /// Animation needs another sample.
     Animation,
-    /// Explicit application-defined reason.
+    /// Caret, selection, focus, or another paint-only overlay changed.
+    PaintOverlay,
+    /// Text-adjacent overlay content changed.
+    TextOverlay,
+    /// Glyph pixels require regeneration.
+    TextRaster,
+    /// Text shaping or logical geometry requires regeneration.
+    TextLayout,
+    /// Widget layout requires regeneration.
+    WidgetLayout,
+    /// Accessibility semantics or focus changed.
+    AccessibilityChanged,
+    /// A complete immutable frame rebuild is required.
+    FullFrame,
+    /// Application-selected high-level category without diagnostic text.
+    Classified(InvalidationClass),
+    /// Explicit application-defined reason with diagnostic text.
     Explicit(String),
+}
+
+impl InvalidationReason {
+    /// Returns the stable diagnostic class for this concrete reason.
+    #[must_use]
+    pub const fn class(&self) -> InvalidationClass {
+        match self {
+            Self::InitialFrame => InvalidationClass::Initial,
+            Self::Animation => InvalidationClass::Animation,
+            Self::PaintOverlay => InvalidationClass::PaintOverlay,
+            Self::TextOverlay => InvalidationClass::TextOverlay,
+            Self::TextRaster => InvalidationClass::TextRaster,
+            Self::TextLayout => InvalidationClass::TextLayout,
+            Self::WidgetLayout => InvalidationClass::WidgetLayout,
+            Self::AccessibilityChanged => InvalidationClass::Accessibility,
+            Self::SurfaceResized | Self::SurfaceExposed => InvalidationClass::Surface,
+            Self::StateChanged | Self::ThemeChanged | Self::FullFrame => {
+                InvalidationClass::FullFrame
+            }
+            Self::Classified(class) => *class,
+            Self::Explicit(_) => InvalidationClass::Explicit,
+        }
+    }
 }
 
 /// Coalesced reasons for producing a frame.
@@ -97,6 +165,12 @@ impl FrameRuntime {
         self.invalidations.insert(reason);
     }
 
+    /// Returns whether at least one reason is waiting to be consumed.
+    #[must_use]
+    pub fn has_pending_frame(&self) -> bool {
+        !self.invalidations.is_empty()
+    }
+
     /// Begins a frame when work is pending, consuming current invalidations.
     pub fn begin_frame(&mut self, now_micros: u64) -> Option<FrameToken> {
         if self.invalidations.is_empty() {
@@ -125,7 +199,7 @@ impl FrameRuntime {
 
 #[cfg(test)]
 mod tests {
-    use super::{FrameRuntime, InvalidationReason};
+    use super::{FrameRuntime, InvalidationClass, InvalidationReason};
 
     #[test]
     fn duplicate_invalidations_coalesce() -> Result<(), Box<dyn std::error::Error>> {
@@ -138,7 +212,28 @@ mod tests {
             .ok_or_else(|| std::io::Error::other("a requested frame should begin"))?;
 
         assert_eq!(frame.invalidations.iter().count(), 2);
+        assert!(!runtime.has_pending_frame());
         assert!(runtime.begin_frame(101).is_none());
         Ok(())
+    }
+
+    #[test]
+    fn reasons_map_to_stable_classes() {
+        assert_eq!(
+            InvalidationReason::Animation.class(),
+            InvalidationClass::Animation
+        );
+        assert_eq!(
+            InvalidationReason::TextLayout.class(),
+            InvalidationClass::TextLayout
+        );
+        assert_eq!(
+            InvalidationReason::ThemeChanged.class(),
+            InvalidationClass::FullFrame
+        );
+        assert_eq!(
+            InvalidationReason::Classified(InvalidationClass::PaintOverlay).class(),
+            InvalidationClass::PaintOverlay
+        );
     }
 }

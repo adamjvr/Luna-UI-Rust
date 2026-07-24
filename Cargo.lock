@@ -1254,6 +1254,7 @@ version = "0.1.0"
 dependencies = [
  "luna-accessibility",
  "luna-core",
+ "luna-host-core",
  "luna-host-winit",
  "luna-input",
  "luna-render",

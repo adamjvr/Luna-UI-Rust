@@ -8,7 +8,7 @@ use luna_text::{SnapBias, TextDocument, TextLocation, TextRange, TextScroll};
 use luna_text_cosmic::TextLayoutSnapshot;
 use luna_theme::{Rgba8, Theme};
 
-/// Visual metrics and colors for Luna's M2 editor text surface.
+/// Visual metrics and colors for Luna's editor text surface.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct TextViewStyle {
     /// Padding around text content.
@@ -28,7 +28,7 @@ pub struct TextViewStyle {
 }
 
 impl TextViewStyle {
-    /// Creates the initial M2 style from Luna's semantic dark theme.
+    /// Creates the default editor style from Luna's semantic theme.
     #[must_use]
     pub const fn from_theme(theme: Theme) -> Self {
         Self {
@@ -249,8 +249,13 @@ impl Widget for TextView {
             }
         }
 
+        let content_origin = self.content_origin();
+        let raster_bounds = self.layout.raster_bounds();
         display_list.draw_image_clipped(
-            self.content_origin(),
+            PointI::new(
+                content_origin.x.saturating_add(raster_bounds.x),
+                content_origin.y.saturating_add(raster_bounds.y),
+            ),
             self.layout.image().clone(),
             viewport,
         );

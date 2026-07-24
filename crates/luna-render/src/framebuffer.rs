@@ -48,6 +48,75 @@ impl Framebuffer {
         &self.bytes
     }
 
+    /// Resets every pixel to transparent black without changing the allocation.
+    pub fn reset(&mut self) {
+        self.bytes.fill(0);
+    }
+
+    /// Copies the complete pixel payload from another framebuffer of the same size.
+    ///
+    /// Returns the number of pixels copied. A size mismatch copies nothing.
+    pub fn copy_from(&mut self, source: &Self) -> usize {
+        if self.size != source.size {
+            return 0;
+        }
+        self.bytes.copy_from_slice(&source.bytes);
+        usize::try_from(self.size.width)
+            .unwrap_or(0)
+            .saturating_mul(usize::try_from(self.size.height).unwrap_or(0))
+    }
+
+    /// Restores a clipped physical-pixel region from another framebuffer of the same size.
+    ///
+    /// Returns the number of pixels copied. The operation is row-based and does not allocate.
+    pub fn copy_rect_from(&mut self, source: &Self, bounds: RectI) -> usize {
+        if self.size != source.size {
+            return 0;
+        }
+        let framebuffer_bounds = RectI::new(0, 0, self.size.width, self.size.height);
+        let Some(clipped) = bounds.intersection(framebuffer_bounds) else {
+            return 0;
+        };
+        let width = usize::try_from(self.size.width).unwrap_or(0);
+        let start_x = usize::try_from(clipped.x).unwrap_or(0);
+        let start_y = usize::try_from(clipped.y).unwrap_or(0);
+        let copy_width = usize::try_from(clipped.width).unwrap_or(0);
+        let copy_bytes = copy_width.saturating_mul(BYTES_PER_PIXEL);
+        let end_y = start_y.saturating_add(usize::try_from(clipped.height).unwrap_or(0));
+        let mut copied = 0_usize;
+
+        for y in start_y..end_y {
+            let row_start = y
+                .saturating_mul(width)
+                .saturating_add(start_x)
+                .saturating_mul(BYTES_PER_PIXEL);
+            let row_end = row_start.saturating_add(copy_bytes);
+            let Some(source_row) = source.bytes.get(row_start..row_end) else {
+                continue;
+            };
+            let Some(destination_row) = self.bytes.get_mut(row_start..row_end) else {
+                continue;
+            };
+            destination_row.copy_from_slice(source_row);
+            copied = copied.saturating_add(copy_width);
+        }
+        copied
+    }
+
+    /// Copies pixels into caller-owned softbuffer-compatible `0x00RRGGBB` storage.
+    ///
+    /// The returned count is the number of destination pixels written. Extra destination elements
+    /// are left unchanged, which keeps the conversion safe for reused presentation buffers.
+    pub fn copy_xrgb8888(&self, destination: &mut [u32]) -> usize {
+        let mut written = 0;
+        for (output, source) in destination.iter_mut().zip(self.bytes.chunks_exact(4)) {
+            *output =
+                u32::from(source[0]) | (u32::from(source[1]) << 8) | (u32::from(source[2]) << 16);
+            written += 1;
+        }
+        written
+    }
+
     /// Converts the framebuffer into an immutable raster-image snapshot without copying pixels.
     pub fn into_raster_image(self) -> Result<RasterImage, RasterImageError> {
         RasterImage::new(self.size, self.bytes)
@@ -356,6 +425,57 @@ mod tests {
         framebuffer.blend_image(RectI::new(0, 0, 1, 1), &image);
 
         assert_eq!(&framebuffer.bytes()[0..4], &[0, 0, 128, 255]);
+        Ok(())
+    }
+    #[test]
+    fn region_copy_restores_only_the_requested_pixels() -> Result<(), Box<dyn Error>> {
+        let mut source = Framebuffer::new(SizeI::new(3, 2))?;
+        source.clear(Rgba8::opaque(10, 20, 30));
+        let mut destination = Framebuffer::new(SizeI::new(3, 2))?;
+        destination.clear(Rgba8::opaque(1, 2, 3));
+
+        let copied = destination.copy_rect_from(&source, RectI::new(1, 0, 1, 2));
+
+        assert_eq!(copied, 2);
+        assert_eq!(&destination.bytes()[0..4], &[3, 2, 1, 255]);
+        assert_eq!(&destination.bytes()[4..8], &[30, 20, 10, 255]);
+        assert_eq!(&destination.bytes()[8..12], &[3, 2, 1, 255]);
+        assert_eq!(&destination.bytes()[16..20], &[30, 20, 10, 255]);
+        Ok(())
+    }
+
+    #[test]
+    fn full_copy_requires_matching_dimensions() -> Result<(), Box<dyn Error>> {
+        let source = Framebuffer::new(SizeI::new(2, 2))?;
+        let mut destination = Framebuffer::new(SizeI::new(1, 1))?;
+
+        assert_eq!(destination.copy_from(&source), 0);
+        Ok(())
+    }
+
+    #[test]
+    fn reset_preserves_size_and_clears_pixels() -> Result<(), Box<dyn Error>> {
+        let mut framebuffer = Framebuffer::new(SizeI::new(2, 1))?;
+        framebuffer.fill_rect(RectI::new(0, 0, 2, 1), Rgba8::opaque(1, 2, 3));
+
+        framebuffer.reset();
+
+        assert_eq!(framebuffer.size(), SizeI::new(2, 1));
+        assert!(framebuffer.bytes().iter().all(|byte| *byte == 0));
+        Ok(())
+    }
+
+    #[test]
+    fn packed_xrgb_conversion_uses_caller_storage() -> Result<(), Box<dyn Error>> {
+        let mut framebuffer = Framebuffer::new(SizeI::new(2, 1))?;
+        framebuffer.fill_rect(RectI::new(0, 0, 1, 1), Rgba8::opaque(0x11, 0x22, 0x33));
+        framebuffer.fill_rect(RectI::new(1, 0, 1, 1), Rgba8::opaque(0xAA, 0xBB, 0xCC));
+        let mut output = [0_u32, 0_u32, 0xDEAD_BEEF];
+
+        let written = framebuffer.copy_xrgb8888(&mut output);
+
+        assert_eq!(written, 2);
+        assert_eq!(output, [0x0011_2233, 0x00AA_BBCC, 0xDEAD_BEEF]);
         Ok(())
     }
 }

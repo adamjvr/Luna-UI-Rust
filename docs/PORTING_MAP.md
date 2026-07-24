@@ -5,23 +5,26 @@
 | `LunaCore` | `luna-core` | IDs, geometry, and diagnostics implemented |
 | `LunaInput` | `luna-input` | Platform-neutral model plus winit translation implemented |
 | `LunaTheme` | `luna-theme` | Dark/light reference palettes and derived UI colors implemented |
-| `LunaRender` | `luna-render` | Display lists, CPU renderer, DPI scaling, raster images, and alpha composition implemented |
-| `LunaAccessibility` | `luna-accessibility` | Validated tree, text ranges, and editor-control roles implemented |
-| Native accessibility bridge | `luna-accessibility-accesskit` | Stable-ID AccessKit bridge and M3 role mappings implemented |
+| `LunaRender` | `luna-render` | Display lists, CPU renderer, DPI scaling, raster images, alpha composition, and retained dirty-region restore primitives implemented |
+| `LunaAccessibility` | `luna-accessibility` | Validated tree, text ranges, editor-control roles, and deterministic semantic fingerprints implemented |
+| Native accessibility bridge | `luna-accessibility-accesskit` | Stable-ID AccessKit bridge plus activation-aware unchanged-tree suppression implemented |
 | `LunaHostCore` | `luna-host-core` | Frame invalidation/runtime implemented |
 | `LunaLayout` | `luna-layout` | Row/column/stack/split snapshots implemented |
 | `LunaCommands` | `luna-commands` | Typed registry and key bindings implemented |
 | Swift static/editable text foundation | `luna-text` | UTF-8/grapheme-safe model implemented |
-| Swift shaping/glyph path | `luna-text-cosmic` | cosmic-text shaping/raster adapter implemented |
-| `LunaStaticTextView` / editable editor surface | `luna-ui::TextView` | Shared paint/hit/scroll/accessibility geometry implemented |
-| `LunaEditorShell` | `luna-ui::EditorShell` | M3 menu/tab/sidebar/editor/status anatomy implemented |
-| quick panel / command palette | `luna-ui::CommandPalette` | M3 reusable overlay implemented |
+| Swift shaping/glyph path | `luna-text-cosmic` | Retained logical layout plus overscanned visible-run raster implemented |
+| `LunaStaticTextView` / editable editor surface | `luna-ui::TextView` | Full logical geometry plus partial-raster placement implemented |
+| `LunaEditorShell` | `luna-ui::EditorShell` | Menu/tab/sidebar/editor/status anatomy plus active-menu projection implemented |
+| menu bar and first-level dropdowns | `luna-ui::DropdownMenu` and menu-definition types | M3.1d anchored menus, disabled/checked state, pointer/keyboard routing, and accessibility implemented |
+| quick panel / command palette | `luna-ui::CommandPalette` | Separate searchable command surface driven by the same application command catalog |
 | find/replace panel foundation | `luna-ui::FindPanel` | M3 reusable geometry/state/accessibility implemented |
-| general proof controls | `Button`, `Toggle`, `ProgressBar`, `TextLabel` | M3 reusable primitives implemented |
-| `LunaUITestApp --proof-gallery` | `luna-ui-rust-proof-gallery` | M3 dedicated native regression gallery implemented |
+| general proof controls | `Button`, `Toggle`, `ProgressBar`, `TextLabel` | Reusable primitives plus stable-slot label cache implemented |
+| `LunaUITestApp --proof-gallery` | `luna-ui-rust-proof-gallery` | Retained layout/static paint/semantics with isolated animation-lane rendering implemented |
 | default `LunaUITestApp` editor mode | `luna-ui-rust-editor-demo` | M3 dedicated editor integration harness implemented |
-| `LunaHostSDL` / `LunaHostMetal` | `luna-host-winit` plus render adapters | Native CPU host and timed update lane implemented |
-| GPU rendering | future `luna-render-wgpu` | Planned M4 |
+| `LunaHostSDL` / `LunaHostMetal` | `luna-host-winit` plus render adapters | Retained working/static CPU buffers, timed update lane, and conditional AccessKit submission implemented |
+| incremental gallery/accessibility pipeline | existing host/gallery/accessibility crates | M3.1c retained static layer, dirty-region restore, input coalescing, and semantic fingerprints implemented |
+| Swift Phase 4C first-level menu behavior | `luna-ui::DropdownMenu` plus editor demo routing | M3.1d complete for first-level menus; submenus/mnemonics remain M3.3 |
+| GPU rendering | future `luna-render-wgpu` | Planned M4 after M3.1 |
 
 ## Porting rule
 
@@ -29,3 +32,10 @@ Behavioral tests and architectural invariants are ported before feature breadth.
 invalid states out where practical, but the rewrite must not invent Moth product policy inside Luna.
 Native, text-engine, and future GPU adapters translate; they do not redefine widget or document
 semantics.
+
+## Functional parity
+
+See [`SWIFT_PARITY.md`](SWIFT_PARITY.md) for the broader feature inventory. Foundational module
+coverage is near parity. First-level dropdown menus now exist, while files, workspaces, panes,
+nested menus, context menus, completion, and direct Moth integration remain concentrated in M3.2,
+M3.3, and M6.
