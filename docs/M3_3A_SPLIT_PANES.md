@@ -142,13 +142,16 @@ M3.3a adds tests for:
 - pane accessibility action routing;
 - shared-text synchronization clamping stale caret and selection positions.
 
-## Deferred
+## Follow-up status
 
-- tab drag-and-drop and reordering;
-- pinned, preview, overflow, and scrollable tab policies;
-- moving tabs between panes;
+M3.3b now implements tab drag reordering, pinned and preview tabs, overflow scrolling, cross-pane tab
+movement, one-level child submenus, tab context menus, completion-popup foundations, richer literal
+find/replace, and an interactive vertical scrollbar.
+
+Still deferred:
+
 - directional geometric focus rather than depth-first traversal;
-- keyboard splitter resizing;
-- pane topology persistence in session state;
-- nested menus, context menus, and completion popups;
+- keyboard splitter resizing and keyboard tab movement;
+- pane topology and tab metadata persistence in session state;
+- arbitrary-depth cascading menus and asynchronous completion providers;
 - native watcher backends and incremental workspace subtree replacement.

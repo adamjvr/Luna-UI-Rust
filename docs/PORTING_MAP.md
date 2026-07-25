@@ -16,16 +16,18 @@
 | Swift shaping/glyph path | `luna-text-cosmic` | Retained logical layout plus overscanned visible-run raster implemented |
 | `LunaStaticTextView` / editable editor surface | `luna-ui::TextView` | Full logical geometry plus partial-raster placement implemented |
 | `LunaEditorShell` | `luna-ui::EditorShell` | Menu/sidebar/editor/status anatomy plus optional legacy global-tab projection implemented |
-| recursive editor panes and pane-local tabs | `luna-panes` plus `luna-ui::EditorPaneSurface` | M3.3a recursive horizontal/vertical topology, shared-view tabs, splitters, focus, close/collapse, hit testing, and accessibility implemented |
-| menu bar and first-level dropdowns | `luna-ui::DropdownMenu` and menu-definition types | M3.1d anchored menus, disabled/checked state, pointer/keyboard routing, and accessibility implemented |
+| recursive editor panes and pane-local tabs | `luna-panes` plus `luna-ui::EditorPaneSurface` | Recursive topology plus M3.3b pin/preview/order/move/overflow policy, splitters, focus, close/collapse, hit testing, and accessibility implemented |
+| menu bar and dropdowns | `luna-ui::DropdownMenu` and menu-definition types | Anchored parent/child submenu panels, disabled/checked state, mnemonics, pointer/keyboard routing, and accessibility implemented |
+| product-neutral context menus | `luna-ui::DropdownMenu` with application-owned context state | Tab-anchored Pin/Preview/Move/Close context commands implemented |
+| completion popup | `luna-ui::CompletionPopup` | Caret anchoring, candidate details, keyboard/pointer/accessibility activation, and insertion payloads implemented |
 | quick panel / command palette | `luna-ui::CommandPalette` | Separate searchable command surface driven by the same application command catalog |
-| find/replace panel foundation | `luna-ui::FindPanel` | M3 reusable geometry/state/accessibility implemented |
+| find/replace panel | `luna-ui::FindPanel` | Query/replacement fields, case/whole-word options, current/all actions, geometry, and accessibility implemented |
 | general proof controls | `Button`, `Toggle`, `ProgressBar`, `TextLabel` | Reusable primitives plus stable-slot label cache implemented |
 | `LunaUITestApp --proof-gallery` | `luna-ui-rust-proof-gallery` | Retained layout/static paint/semantics with isolated animation-lane rendering implemented |
 | Swift file/dialog service boundary | `luna-document-services` | UTF-8 reads, atomic writes, file/folder dialogs, workspace mutation choices, storage observation, and deterministic mocks implemented |
 | Swift workspace/project adapters | `luna-workspaces` | Stable recursive snapshots, create/rename/delete operations, collision policy, expansion, refresh preservation, watcher seams, and standard/memory adapters implemented |
 | Swift persistent editor session | `luna-session` | Versioned atomic recent-file and workspace-tree restoration with standard and memory stores implemented |
-| default `LunaUITestApp` editor mode | `luna-ui-rust-editor-demo` | Real files/workspaces/session behavior plus recursive split panes, synchronized shared text, pane-local state, splitters, and accessibility integrated |
+| default `LunaUITestApp` editor mode | `luna-ui-rust-editor-demo` | Real files/workspaces/sessions, recursive panes, advanced tabs, submenus, tab context menus, completion, richer find, scrollbars, and accessibility integrated |
 | `LunaHostSDL` / `LunaHostMetal` | `luna-host-winit` plus render adapters | Retained working/static CPU buffers, timed update lane, and conditional AccessKit submission implemented |
 | incremental gallery/accessibility pipeline | existing host/gallery/accessibility crates | M3.1c retained static layer, dirty-region restore, input coalescing, and semantic fingerprints implemented |
 | Swift Phase 4C first-level menu behavior | `luna-ui::DropdownMenu` plus editor demo routing | M3.1d complete for first-level menus; submenus/mnemonics remain M3.3 |
@@ -44,6 +46,6 @@ See [`SWIFT_PARITY.md`](SWIFT_PARITY.md) for the broader feature inventory. Foun
 coverage is near parity. First-level dropdown menus, document lifecycle state, UTF-8 file I/O,
 atomic Save, Save As, native dialogs, recent files, continuous external-change delivery, and one
 real recursive workspace tree, controlled workspace mutations, and persistent recent/workspace
-restoration now exist. Recursive live panes now exist; advanced tabs, nested menus, context menus, completion, native
+restoration now exist. Recursive live panes and basic advanced tabs/submenus/context/completion now exist; native
 watcher backends, and direct Moth integration remain concentrated in M3.3, later platform work, and
 M6.

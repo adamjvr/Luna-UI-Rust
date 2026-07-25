@@ -1,58 +1,66 @@
 # Current Status
 
-**Milestone:** M3.3a recursive split-pane runtime
+**Milestone:** M3.3b advanced tabs and desktop popup surfaces
 
 ## Verified baseline
 
-The project owner locally validated and committed M3.2e.2. Controlled workspace mutation,
-persistent recent/workspace state, dirty-document deletion policy, strict Clippy fixes, the editor
-demo, and the proof gallery are the accepted baseline.
+The project owner locally validated and committed M3.3a.2. Recursive split panes, synchronized
+shared documents, independent pane-view state, splitter interaction, pane-aware close behavior,
+strict compiler/Clippy fixes, the editor demo, and the proof gallery are the accepted baseline.
 
-## Implemented in M3.3a
+## Implemented in M3.3b
 
-- new product-neutral `luna-panes` crate;
-- recursive binary pane trees with stable leaf and split identities;
-- horizontal and vertical split commands;
-- pane-local ordered tabs and active-view ownership;
-- multiple `DocumentViewId` values sharing one `DocumentId` lifecycle buffer;
-- synchronized shared text revisions with independent caret, selection, and scroll;
-- per-view retained text-layout cache identities;
-- deterministic depth-first pane focus traversal with wrapping;
-- draggable splitters with clamped ratios and minimum pane extents;
-- pane collapse after closing the final local view;
-- protection against closing the final editor pane;
-- document rehoming when a closed pane held a document's only live view;
-- reusable `EditorPaneSurface` paint, hit-test, label, and accessibility geometry;
-- pane groups, tab lists, tab nodes, close buttons, editor groups, and splitter semantics;
-- pane-aware Open, New, Save, Find, Close, workspace rename/delete, pointer, and keyboard routing;
-- focused `scripts/test-m3-3a.sh` quality gate and runtime fixture generator.
+- pinned pane-local tabs with deterministic leading order;
+- one clean replaceable preview tab per pane;
+- automatic preview promotion after editing and explicit Keep Preview Open;
+- local tab drag reordering;
+- cross-pane tab movement without reopening or copying documents;
+- source-pane collapse when its final tab is moved away;
+- pane-local regular-tab overflow offsets;
+- compact pinned tabs outside the regular overflow viewport;
+- previous/next overflow controls and active-tab visibility correction;
+- reusable submenu definitions, child-panel geometry, keyboard traversal, and mnemonics;
+- Open Recent and Tabs submenus in the desktop menu bar;
+- tab context menu with exact Move to Pane choices;
+- reusable caret-anchored completion popup;
+- completion keyboard, pointer, and accessibility activation;
+- match-case and whole-word find options;
+- Replace Current and Replace All commands;
+- vertical scrollbar track, thumb, hit testing, and pointer mapping;
+- expanded accessibility for popup lists, submenus, tab state, find options, and overflow buttons;
+- focused `scripts/test-m3-3b.sh` quality gate and runtime fixture generator.
 
 ## Runtime scope
 
-One `DocumentId` still owns file identity, storage observation, dirty baseline, and save/close
-policy. Each pane tab owns an independent `DocumentViewId` plus caret, selection, scroll, focus,
-semantic identity, and retained layout cache.
+`PaneTree` owns tab order, pinned/preview metadata, overflow offsets, and movement policy. The editor
+application still owns document lifecycle decisions and keeps one canonical `DocumentId` buffer
+synchronized across pane-local `DocumentViewId` presentations.
 
-The editor synchronizes immutable text snapshots and edit revisions after each edit. This provides a
-shared logical buffer without concurrent mutable aliases and preserves the single UI-lane rule.
-Pane topology is not yet persisted in session state.
+The completion popup is a deterministic runtime proof with an application-supplied candidate list.
+It does not claim a language-server protocol, asynchronous result delivery, or Moth-owned completion
+provider. Find remains literal rather than regex-based.
 
-The existing one-second workspace polling remains the safe runtime source for tree refreshes.
-M3.3a does not claim a native watcher backend or incremental subtree replacement.
+Dropdown menus currently support a top-level panel plus one child submenu panel. The command model
+can contain deeper definitions, but arbitrary-depth cascading presentation, hover delays, and pointer
+intent handling remain deferred.
+
+The existing one-second workspace polling remains the safe runtime source for tree refreshes. M3.3b
+does not claim a production native watcher backend or incremental subtree replacement.
 
 ## Local validation required
 
 Run:
 
 ```bash
-./scripts/test-m3-3a.sh
+./scripts/test-m3-3b.sh
 ```
 
-Then verify recursive splits, shared edits, independent caret/selection/scroll, splitter dragging,
-pane focus traversal, pane-local tabs, close/collapse/rehoming behavior, accessibility actions,
-menus, command palette, file/workspace regressions, and the proof gallery.
+Then verify pinned/preview policy, overflow controls, drag reorder, cross-pane movement, nested menus,
+Alt mnemonics, tab context commands, completion insertion, find options and replacement, scrollbar
+dragging, existing file/workspace/session behavior, accessibility actions, and the proof gallery.
 
 ## Next milestone
 
-M3.3b adds advanced tab behavior and richer desktop command surfaces: tab reordering and movement,
-pinned/preview/overflow policy, nested menus, context menus, and completion-popup foundations.
+M3.3c will harden desktop interaction and persistence: pane/tab session restoration, keyboard tab
+movement, arbitrary-depth popup routing, asynchronous completion-provider boundaries, richer search
+history/options, and production-oriented native watcher delivery before the GPU backend begins.

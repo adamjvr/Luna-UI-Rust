@@ -8,28 +8,27 @@ This is not a mechanical Swift-to-Rust translation. The rewrite preserves Luna's
 contracts while expressing them through Rust ownership, explicit errors, immutable frame snapshots,
 small workspace crates, strict compiler tooling, and platform-specific leaf adapters.
 
-## M3.3a status
+## M3.3b status
 
 M0 established the deterministic core, M1 added the native host, M2 added editor-grade text, M3
 added the twin proof-gallery/editor applications, M3.1 made the CPU path incremental and added real
 first-level dropdown menus, and M3.2 completed real file, workspace, mutation, and session behavior.
 
-M3.2e.2 is locally validated and committed. M3.3a adds the first real multi-pane editor runtime:
+M3.3a.2 is locally validated and committed. M3.3b expands the pane runtime into a desktop-grade
+advanced-tab and popup interaction layer:
 
-- product-neutral recursive pane trees in the new `luna-panes` crate;
-- horizontal and vertical splits with stable pane/split identities;
-- pane-local tabs and active-view ownership;
-- multiple `DocumentViewId` values sharing one `DocumentId` lifecycle buffer;
-- synchronized shared text revisions with independent caret, selection, scroll, and cache state;
-- draggable splitters with clamped ratios and minimum pane dimensions;
-- depth-first keyboard focus traversal with wrapping;
-- pane-local close, safe pane collapse, final-pane protection, and unique-document rehoming;
-- one geometry snapshot shared by paint, pointer hit testing, labels, and accessibility;
-- pane groups, tab lists, close buttons, editor groups, and splitter accessibility nodes;
-- deterministic pane-model, widget, text synchronization, and editor-integration tests.
+- pinned and replaceable preview tabs with explicit promotion;
+- local drag reordering and cross-pane tab movement;
+- overflow buttons with pinned-first projection and active-tab visibility correction;
+- nested Open Recent, Tabs, and Move to Pane command surfaces with mnemonics;
+- tab context menus sharing application command IDs;
+- caret-anchored completion popup with keyboard, pointer, and accessibility activation;
+- match-case and whole-word find options plus Replace Current and Replace All;
+- interactive vertical scrollbar geometry and pointer mapping;
+- deterministic model, widget, editor-integration, and regression tests.
 
 File/Edit/Find/View/Help remain anchored dropdowns, while Control-P opens the independent searchable
-command palette. See `docs/M3_3A_SPLIT_PANES.md` and `docs/SWIFT_PARITY.md`.
+command palette. See `docs/M3_3B_ADVANCED_TABS_POPUPS.md` and `docs/SWIFT_PARITY.md`.
 
 ## Build and validate
 
@@ -40,10 +39,10 @@ cargo fmt --all
 ./scripts/validate.sh
 ```
 
-M3.3a includes the current focused automated gate and runtime-fixture generator:
+M3.3b includes the current focused automated gate and runtime-fixture generator:
 
 ```bash
-./scripts/test-m3-3a.sh
+./scripts/test-m3-3b.sh
 ```
 
 Run the proof gallery in release mode:
@@ -66,10 +65,10 @@ Editor menu behavior:
 
 - click **File**, **Edit**, **Find**, **View**, or **Help** to open its anchored dropdown;
 - click another heading, or move across headings while a dropdown is open, to switch menus;
-- use Up/Down/Home/End to select commands and Left/Right to switch menus;
+- use Up/Down/Home/End at the current menu level; Right opens a submenu and Left closes it;
 - use Enter or Space to activate and Escape or an outside click to dismiss;
 - disabled commands remain visible but cannot activate;
-- checked commands expose current sidebar/theme state;
+- checked commands expose current sidebar/theme state; Alt mnemonics open top-level menus;
 - **Control-P** opens the separate searchable command palette and never opens from an ordinary
   menu-heading click.
 
@@ -88,10 +87,11 @@ Editor shortcuts:
 - **Control-Shift-\** — split the focused pane downward;
 - **Control-Alt-Left/Right** — focus the previous/next pane;
 - **Control-Shift-W** — close the focused pane;
+- **Control-Space** — open completion suggestions at the caret;
 - **Control-A** — select all editor text;
 - **Escape** — close the active menu/overlay, or exit when none is open.
 
-M3.3a document, workspace, and pane behavior:
+M3.3b document, workspace, pane, and popup behavior:
 
 - New File creates an empty, clean, monotonically named Untitled document;
 - Open loads strict UTF-8 text and activates an existing tab when the canonical file is already open;
@@ -112,7 +112,14 @@ M3.3a document, workspace, and pane behavior:
 - edits in one pane synchronize the shared document text into sibling views;
 - caret, selection, scroll, focus, and text-layout caches remain pane-local;
 - closing a pane-local shared view does not close the shared document;
-- closing a pane rehomes documents that would otherwise lose their final live view.
+- closing a pane rehomes documents that would otherwise lose their final live view;
+- clean workspace activations use a replaceable preview tab and editing promotes it;
+- pinned tabs remain leading and visible while regular tabs overflow;
+- tab dragging reorders locally or moves the existing view to another pane;
+- secondary-clicking a tab opens Pin/Preview/Move/Close commands;
+- completion acceptance replaces the active identifier prefix;
+- find/replace supports case and whole-word filters plus current/all replacement;
+- the vertical scrollbar shares exact paint and pointer geometry.
 
 The editor must preserve M3.1b performance behavior: no idle frames, no reshaping for caret,
 selection, focus, or menu changes, overscanned raster reuse during ordinary scrolling, and bounded
@@ -153,8 +160,8 @@ Moth-specific product policy. See `docs/ARCHITECTURE.md`, `docs/PORTING_MAP.md`,
 `docs/M3_1C_GALLERY_ACCESSIBILITY.md`, `docs/M3_1D_DROPDOWN_MENUS.md`,
 `docs/M3_2A_DOCUMENT_LIFECYCLE.md`, `docs/M3_2B_FILE_DIALOG_SERVICES.md`,
 `docs/M3_2C_RECENT_EXTERNAL_CHANGES.md`, `docs/M3_2D_WORKSPACE_TREE.md`,
-`docs/M3_2E_WORKSPACE_OPERATIONS_SESSION.md`, `docs/M3_3A_SPLIT_PANES.md`, and
-`docs/SWIFT_PARITY.md`.
+`docs/M3_2E_WORKSPACE_OPERATIONS_SESSION.md`, `docs/M3_3A_SPLIT_PANES.md`,
+`docs/M3_3B_ADVANCED_TABS_POPUPS.md`, and `docs/SWIFT_PARITY.md`.
 
 ## License
 

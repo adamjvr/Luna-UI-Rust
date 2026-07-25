@@ -25,6 +25,8 @@ pub struct TextViewStyle {
     pub selection_background: Rgba8,
     /// Caret color.
     pub caret: Rgba8,
+    /// Width reserved for the vertical scrollbar.
+    pub scrollbar_width: u32,
 }
 
 impl TextViewStyle {
@@ -44,6 +46,7 @@ impl TextViewStyle {
                 96,
             ),
             caret: theme.foreground,
+            scrollbar_width: 10,
         }
     }
 }
@@ -113,9 +116,85 @@ impl TextView {
                 .x
                 .saturating_add(i32::try_from(self.style.gutter_width).unwrap_or(i32::MAX)),
             inner.y,
-            inner.width.saturating_sub(self.style.gutter_width),
+            inner
+                .width
+                .saturating_sub(self.style.gutter_width)
+                .saturating_sub(self.style.scrollbar_width),
             inner.height,
         )
+    }
+
+    /// Returns the vertical scrollbar track geometry.
+    #[must_use]
+    pub fn vertical_scrollbar_bounds(&self) -> RectI {
+        let inner = self.bounds.inset(self.style.content_insets);
+        let width = self.style.scrollbar_width.min(inner.width);
+        RectI::new(
+            i32::try_from(inner.right().saturating_sub(i64::from(width))).unwrap_or(inner.x),
+            inner.y,
+            width,
+            inner.height,
+        )
+    }
+
+    /// Returns the vertical scrollbar thumb geometry.
+    #[must_use]
+    pub fn vertical_scrollbar_thumb(&self) -> RectI {
+        let track = self.vertical_scrollbar_bounds();
+        let viewport = self.text_viewport();
+        let content_height = self
+            .layout
+            .content_size()
+            .height
+            .max(viewport.height)
+            .max(1);
+        let maximum = self.maximum_scroll().y.max(0);
+        if maximum == 0 || track.height == 0 {
+            return track;
+        }
+        let proportional = track.height.saturating_mul(viewport.height) / content_height.max(1);
+        let thumb_height = proportional.clamp(24_u32.min(track.height), track.height);
+        let travel = track.height.saturating_sub(thumb_height);
+        let offset = u32::try_from(self.scroll.y.max(0))
+            .unwrap_or(u32::MAX)
+            .saturating_mul(travel)
+            / u32::try_from(maximum).unwrap_or(u32::MAX).max(1);
+        RectI::new(
+            track.x,
+            track
+                .y
+                .saturating_add(i32::try_from(offset).unwrap_or(i32::MAX)),
+            track.width,
+            thumb_height,
+        )
+    }
+
+    /// Maps a pointer position on the vertical track to a clamped scroll offset.
+    #[must_use]
+    pub fn scroll_y_for_scrollbar_point(&self, point: PointI) -> i32 {
+        let track = self.vertical_scrollbar_bounds();
+        let thumb = self.vertical_scrollbar_thumb();
+        let maximum = self.maximum_scroll().y.max(0);
+        let travel = track.height.saturating_sub(thumb.height);
+        if maximum == 0 || travel == 0 {
+            return 0;
+        }
+        let centered = point
+            .y
+            .saturating_sub(track.y)
+            .saturating_sub(i32::try_from(thumb.height / 2).unwrap_or(0));
+        let track_offset = u32::try_from(centered.max(0)).unwrap_or(0).min(travel);
+        i32::try_from(
+            track_offset.saturating_mul(u32::try_from(maximum).unwrap_or(u32::MAX)) / travel,
+        )
+        .unwrap_or(i32::MAX)
+        .clamp(0, maximum)
+    }
+
+    /// Returns whether a pointer lies on the vertical scrollbar track.
+    #[must_use]
+    pub fn vertical_scrollbar_contains(&self, point: PointI) -> bool {
+        self.vertical_scrollbar_bounds().contains(point)
     }
 
     /// Returns gutter geometry.
@@ -158,6 +237,14 @@ impl TextView {
         let viewport = self.text_viewport();
         self.layout
             .maximum_scroll(SizeI::new(viewport.width, viewport.height))
+    }
+
+    /// Returns the visible widget-space caret rectangle.
+    #[must_use]
+    pub fn caret_bounds(&self) -> Option<RectI> {
+        self.layout
+            .caret_rect(self.caret)
+            .and_then(|rectangle| self.translated_content_rect(rectangle))
     }
 
     /// Returns a scroll position that keeps the caret visible.
@@ -231,6 +318,12 @@ impl Widget for TextView {
     fn build_display_list(&self, display_list: &mut DisplayList) {
         display_list.fill_rect(self.bounds, self.style.background);
         display_list.fill_rect(self.gutter_bounds(), self.style.gutter_background);
+        let scrollbar = self.vertical_scrollbar_bounds();
+        display_list.fill_rect(scrollbar, self.style.gutter_background);
+        display_list.fill_rect(
+            self.vertical_scrollbar_thumb(),
+            self.style.current_line_background,
+        );
         let viewport = self.text_viewport();
 
         if let Some(caret) = self.layout.caret_rect(self.caret) {
@@ -391,6 +484,48 @@ mod tests {
             Some(8)
         );
         assert!(frame.display_list.commands().len() >= 5);
+        Ok(())
+    }
+
+    #[test]
+    fn scrollbar_thumb_and_pointer_mapping_are_clamped() -> Result<(), Box<dyn Error>> {
+        let document = TextDocument::new(
+            (0..120)
+                .map(|index| format!("line {index}\n"))
+                .collect::<String>(),
+        );
+        let mut engine = TextEngine::new();
+        let layout = engine.shape(
+            &document,
+            TextLayoutRequest::new(400, 15.0, 22.0, Theme::luna_dark().foreground),
+        )?;
+        let view = TextView::new(
+            NodeId::new("editor")?,
+            RectI::new(0, 0, 500, 180),
+            document,
+            layout,
+            TextLocation::default(),
+            None,
+            TextScroll::new(0, 100),
+            TextViewStyle::from_theme(Theme::luna_dark()),
+            "Editor",
+            true,
+            true,
+        );
+        let track = view.vertical_scrollbar_bounds();
+        let thumb = view.vertical_scrollbar_thumb();
+        assert!(track.contains(PointI::new(thumb.x, thumb.y)));
+        assert_eq!(
+            view.scroll_y_for_scrollbar_point(PointI::new(track.x, track.y)),
+            0
+        );
+        assert_eq!(
+            view.scroll_y_for_scrollbar_point(PointI::new(
+                track.x,
+                i32::try_from(track.bottom()).unwrap_or(i32::MAX),
+            )),
+            view.maximum_scroll().y,
+        );
         Ok(())
     }
 }

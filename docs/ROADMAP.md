@@ -146,7 +146,7 @@
 
 ## M3.3 — expanded editor shell — active
 
-### M3.3a — shared-buffer split panes — implemented
+### M3.3a — shared-buffer split panes — complete
 
 - Recursive horizontal and vertical pane trees with stable identities.
 - Multiple `DocumentViewId` records sharing one `DocumentId` lifecycle buffer.
@@ -154,12 +154,22 @@
 - Pane-local tabs, close/collapse behavior, and unique-document rehoming.
 - Draggable splitters, minimum pane sizes, depth-first focus traversal, and accessibility.
 
-### M3.3b — advanced tabs and command surfaces
+### M3.3b — advanced tabs and command surfaces — implemented
 
-- Tab overflow, scrolling, pinned tabs, and active-tab visibility.
+- Tab overflow, scrolling, pinned tabs, preview tabs, and active-tab visibility.
+- Local drag reordering and cross-pane movement.
 - Nested submenus, mnemonic traversal, and broader menu focus integration.
-- Product-neutral context menus and completion popups.
-- Richer find/replace behavior and scrollbar interaction.
+- Product-neutral tab context menus and completion popups.
+- Richer find/replace behavior and interactive scrollbar geometry.
+
+### M3.3c — desktop interaction hardening
+
+- Pane topology, tab order, pinned state, and active-view session persistence.
+- Keyboard tab reordering and cross-pane movement.
+- Arbitrary-depth cascading popup state and pointer-intent behavior.
+- Asynchronous completion-provider contracts and result replacement.
+- Search history, richer search options, and additional scrollbar affordances.
+- Native watcher delivery and incremental workspace subtree integration.
 
 ## M4 — GPU backend and rendering scalability
 
@@ -185,5 +195,6 @@
 
 See [`SWIFT_PARITY.md`](SWIFT_PARITY.md). M3.1 now combines selected later-stage performance
 mechanics with first-level desktop dropdown menus. M3.2 supplies the real file/workspace runtime;
-M3.3a supplies the first live recursive pane runtime. M3.3b is the next largest visible parity gain
-through advanced tabs, nested menus, context menus, and completion surfaces.
+M3.3a supplies the first live recursive pane runtime. M3.3b adds advanced tabs, nested menus,
+context menus, completion, richer find/replace, and scrollbars. M3.3c is the remaining desktop
+interaction hardening step before the GPU backend.

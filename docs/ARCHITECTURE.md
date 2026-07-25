@@ -237,9 +237,10 @@ A `DocumentId` identifies one buffer, file identity, dirty baseline, and storage
 allows multiple views to reference the same document without duplicating lifecycle state.
 
 Caret, selection, scrolling, folding, pane focus, and presentation caches remain view-owned. M3.3a
-consumes this identity seam with synchronized per-view text snapshots. An edit commits one shared
-text revision to the canonical document and updates sibling views while preserving/clamping their
-local caret and selection; scroll remains independent.
+consumes this identity seam with synchronized per-view text snapshots. M3.3b adds pane-local pinned,
+preview, order, and overflow metadata without moving lifecycle state out of `DocumentId`. An edit
+commits one shared text revision to the canonical document and updates sibling views while
+preserving/clamping their local caret and selection; scroll remains independent.
 
 
 ## Recursive pane boundary
@@ -252,6 +253,7 @@ DocumentId lifecycle buffer
     -> one or more DocumentViewId records
     -> PaneTree
          -> Leaf: ordered pane-local views + active view
+                  + pinned partition + preview view + tab offset
          -> Split: axis + ratio + two recursive children
     -> PaneLayoutSnapshot
          -> leaf/tab/editor rectangles
@@ -262,8 +264,27 @@ DocumentId lifecycle buffer
 
 The application owns the synchronization transaction between the active view and canonical buffer.
 Closing a leaf collapses its parent into the surviving sibling; the final pane is protected. Pane
-focus, tab activation, pointer splitter dragging, and accessibility actions all resolve through the
-same stable identities on the UI lane.
+focus, tab activation, tab dragging, overflow scrolling, pointer splitter dragging, and accessibility
+actions all resolve through the same stable identities on the UI lane.
+
+## Desktop popup boundary
+
+`luna-ui` provides product-neutral geometry and semantics for dropdown submenus, context-menu
+instances, completion lists, and find actions. Applications supply command definitions, popup state,
+completion payloads, and search policy.
+
+```text
+application command/candidate/search state
+    -> immutable popup definition
+    -> shared panel/row/caret geometry
+    -> paint + pointer + keyboard + accessibility routing
+    -> application command or payload result
+```
+
+Only one editor transient surface is presented at a time. The editor demo enforces mutual exclusion
+between the top-level dropdown, tab context menu, command palette, completion popup, and find panel.
+Current dropdown presentation supports a parent panel plus one child submenu; arbitrary-depth
+cascades remain a later extension.
 
 ## Text model boundary
 
@@ -377,9 +398,10 @@ cost visible. Application errors propagate to the caller rather than being hidde
 ## Swift parity boundary
 
 The architectural spine is near parity with Swift Luna UI, but feature breadth is not. Rust currently
-has stronger retained editor-raster and concrete AccessKit paths, while Swift remains substantially
-ahead in nested submenus, context menus, completion, native watcher breadth, advanced tabs, richer
-pane movement/docking, and paired Moth integration. [`SWIFT_PARITY.md`](SWIFT_PARITY.md) is the governing inventory;
+has stronger retained editor-raster and concrete AccessKit paths. M3.3b closes the basic advanced-tab,
+submenu, tab-context-menu, completion-popup, find-option, and scrollbar gaps, while Swift remains
+ahead in arbitrary-depth popup behavior, asynchronous providers, native watcher breadth, pane
+persistence/docking, and paired Moth integration. [`SWIFT_PARITY.md`](SWIFT_PARITY.md) is the governing inventory;
 performance milestones must not be described as equivalent to editor-product feature parity.
 
 ## Safety policy

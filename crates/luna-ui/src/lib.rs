@@ -27,7 +27,7 @@ pub use dropdown_menu::{
 };
 pub use editor_panes::{
     EditorPaneSurface, EditorPaneSurfaceHit, EditorPaneSurfaceLayout, EditorPaneSurfaceState,
-    PanePresentation, PaneTab, PaneTabFrame,
+    PanePresentation, PaneTab, PaneTabFrame, PaneTabStripFrame, TabScrollDirection,
 };
 pub use editor_shell::{
     EditorShell, EditorShellHit, EditorShellLayout, EditorShellMetrics, EditorShellState,
@@ -35,7 +35,8 @@ pub use editor_shell::{
 };
 pub use frame::{RetainedDisplayList, UiFrame, UiFrameError};
 pub use overlays::{
-    CommandPalette, CommandPaletteLayout, CommandPaletteState, FindField, FindPanel,
+    CommandPalette, CommandPaletteLayout, CommandPaletteState, CompletionItem, CompletionPopup,
+    CompletionPopupLayout, CompletionPopupState, CompletionRowFrame, FindField, FindPanel,
     FindPanelLayout, FindPanelState, PaletteItem, PaletteRowFrame,
 };
 pub use proof_gallery::{ProofCardFrame, ProofGallery, ProofGalleryLayout, ProofGalleryState};

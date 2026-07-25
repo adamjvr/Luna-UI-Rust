@@ -51,6 +51,9 @@ pub struct PaneLeaf {
     id: PaneId,
     views: Vec<DocumentViewId>,
     active_view: DocumentViewId,
+    pinned_views: Vec<DocumentViewId>,
+    preview_view: Option<DocumentViewId>,
+    tab_scroll_offset: usize,
 }
 
 impl PaneLeaf {
@@ -70,6 +73,36 @@ impl PaneLeaf {
     #[must_use]
     pub const fn active_view(&self) -> DocumentViewId {
         self.active_view
+    }
+
+    /// Returns pinned views in their display order.
+    #[must_use]
+    pub fn pinned_views(&self) -> &[DocumentViewId] {
+        &self.pinned_views
+    }
+
+    /// Returns the pane-local preview view, when one exists.
+    #[must_use]
+    pub const fn preview_view(&self) -> Option<DocumentViewId> {
+        self.preview_view
+    }
+
+    /// Returns whether `view_id` is pinned in this pane.
+    #[must_use]
+    pub fn is_pinned(&self, view_id: DocumentViewId) -> bool {
+        self.pinned_views.contains(&view_id)
+    }
+
+    /// Returns whether `view_id` is the transient preview tab.
+    #[must_use]
+    pub fn is_preview(&self, view_id: DocumentViewId) -> bool {
+        self.preview_view == Some(view_id)
+    }
+
+    /// Returns the first regular tab index projected into the overflow viewport.
+    #[must_use]
+    pub const fn tab_scroll_offset(&self) -> usize {
+        self.tab_scroll_offset
     }
 }
 
@@ -245,6 +278,8 @@ pub enum PaneError {
     CannotCloseLastPane,
     /// A tab operation would leave a leaf with no active view before reconciliation.
     EmptyPane,
+    /// A pinned tab cannot be converted into a transient preview tab.
+    CannotPreviewPinned,
 }
 
 impl Display for PaneError {
@@ -254,6 +289,7 @@ impl Display for PaneError {
             Self::UnknownView(_) => write!(formatter, "unknown document view"),
             Self::CannotCloseLastPane => write!(formatter, "cannot close the final editor pane"),
             Self::EmptyPane => write!(formatter, "pane must own at least one document view"),
+            Self::CannotPreviewPinned => write!(formatter, "pinned tabs cannot be previews"),
         }
     }
 }
@@ -279,6 +315,9 @@ impl PaneTree {
                 id: root_id,
                 views: vec![initial_view],
                 active_view: initial_view,
+                pinned_views: Vec::new(),
+                preview_view: None,
+                tab_scroll_offset: 0,
             }),
             focused_pane: root_id,
         }
@@ -381,6 +420,215 @@ impl PaneTree {
         Ok(())
     }
 
+    /// Reorders a view inside one pane while preserving the pinned-first partition.
+    pub fn reorder_view(
+        &mut self,
+        pane_id: PaneId,
+        view_id: DocumentViewId,
+        target_index: usize,
+    ) -> Result<(), PaneError> {
+        let leaf = find_leaf_mut(&mut self.root, pane_id).ok_or(PaneError::UnknownPane(pane_id))?;
+        let current = leaf
+            .views
+            .iter()
+            .position(|candidate| *candidate == view_id)
+            .ok_or(PaneError::UnknownView(view_id))?;
+        let is_pinned = leaf.pinned_views.contains(&view_id);
+        let adjusted_target = if current < target_index {
+            target_index.saturating_sub(1)
+        } else {
+            target_index
+        };
+        leaf.views.remove(current);
+        let pinned_count = leaf.pinned_views.len();
+        let insertion = if is_pinned {
+            adjusted_target.min(pinned_count.saturating_sub(1))
+        } else {
+            adjusted_target.clamp(pinned_count, leaf.views.len())
+        };
+        leaf.views.insert(insertion, view_id);
+        if is_pinned {
+            leaf.pinned_views.retain(|candidate| *candidate != view_id);
+            let pin_index = insertion.min(leaf.pinned_views.len());
+            leaf.pinned_views.insert(pin_index, view_id);
+        }
+        leaf.active_view = view_id;
+        leaf.tab_scroll_offset = leaf
+            .tab_scroll_offset
+            .min(leaf.views.len().saturating_sub(1));
+        self.focused_pane = pane_id;
+        Ok(())
+    }
+
+    /// Moves one view between panes, collapsing an emptied source pane.
+    pub fn move_view(
+        &mut self,
+        source_pane: PaneId,
+        target_pane: PaneId,
+        view_id: DocumentViewId,
+        target_index: usize,
+    ) -> Result<PaneId, PaneError> {
+        if source_pane == target_pane {
+            self.reorder_view(source_pane, view_id, target_index)?;
+            return Ok(source_pane);
+        }
+        if self.leaf(target_pane).is_none() {
+            return Err(PaneError::UnknownPane(target_pane));
+        }
+        let (is_pinned, is_preview, source_will_empty) = {
+            let source = self
+                .leaf(source_pane)
+                .ok_or(PaneError::UnknownPane(source_pane))?;
+            if !source.views.contains(&view_id) {
+                return Err(PaneError::UnknownView(view_id));
+            }
+            (
+                source.is_pinned(view_id),
+                source.is_preview(view_id),
+                source.views.len() == 1,
+            )
+        };
+        {
+            let source = find_leaf_mut(&mut self.root, source_pane)
+                .ok_or(PaneError::UnknownPane(source_pane))?;
+            source.views.retain(|candidate| *candidate != view_id);
+            source
+                .pinned_views
+                .retain(|candidate| *candidate != view_id);
+            if source.preview_view == Some(view_id) {
+                source.preview_view = None;
+            }
+            if !source.views.is_empty() && source.active_view == view_id {
+                source.active_view = source.views[0];
+            }
+            source.tab_scroll_offset = source
+                .tab_scroll_offset
+                .min(source.views.len().saturating_sub(1));
+        }
+        if source_will_empty {
+            let _ = collapse_leaf(&mut self.root, source_pane);
+        }
+        let target = find_leaf_mut(&mut self.root, target_pane)
+            .ok_or(PaneError::UnknownPane(target_pane))?;
+        let pinned_count = target.pinned_views.len();
+        let insertion = if is_pinned {
+            target_index.min(pinned_count)
+        } else {
+            target_index.clamp(pinned_count, target.views.len())
+        };
+        target.views.insert(insertion, view_id);
+        if is_pinned {
+            target
+                .pinned_views
+                .insert(insertion.min(target.pinned_views.len()), view_id);
+        }
+        if is_preview && !is_pinned {
+            target.preview_view = Some(view_id);
+        }
+        target.active_view = view_id;
+        target.tab_scroll_offset = target
+            .tab_scroll_offset
+            .min(target.views.len().saturating_sub(1));
+        self.focused_pane = target_pane;
+        Ok(target_pane)
+    }
+
+    /// Pins a view and moves it into the pane's leading pinned partition.
+    pub fn pin_view(&mut self, pane_id: PaneId, view_id: DocumentViewId) -> Result<(), PaneError> {
+        let leaf = find_leaf_mut(&mut self.root, pane_id).ok_or(PaneError::UnknownPane(pane_id))?;
+        let index = leaf
+            .views
+            .iter()
+            .position(|candidate| *candidate == view_id)
+            .ok_or(PaneError::UnknownView(view_id))?;
+        if leaf.pinned_views.contains(&view_id) {
+            return Ok(());
+        }
+        leaf.views.remove(index);
+        let insertion = leaf.pinned_views.len();
+        leaf.views.insert(insertion, view_id);
+        leaf.pinned_views.push(view_id);
+        if leaf.preview_view == Some(view_id) {
+            leaf.preview_view = None;
+        }
+        leaf.active_view = view_id;
+        leaf.tab_scroll_offset = leaf
+            .tab_scroll_offset
+            .min(leaf.views.len().saturating_sub(1));
+        self.focused_pane = pane_id;
+        Ok(())
+    }
+
+    /// Unpins a view and moves it to the first regular-tab position.
+    pub fn unpin_view(
+        &mut self,
+        pane_id: PaneId,
+        view_id: DocumentViewId,
+    ) -> Result<(), PaneError> {
+        let leaf = find_leaf_mut(&mut self.root, pane_id).ok_or(PaneError::UnknownPane(pane_id))?;
+        if !leaf.views.contains(&view_id) {
+            return Err(PaneError::UnknownView(view_id));
+        }
+        if !leaf.pinned_views.contains(&view_id) {
+            return Ok(());
+        }
+        leaf.views.retain(|candidate| *candidate != view_id);
+        leaf.pinned_views.retain(|candidate| *candidate != view_id);
+        let insertion = leaf.pinned_views.len();
+        leaf.views.insert(insertion, view_id);
+        leaf.active_view = view_id;
+        leaf.tab_scroll_offset = 0;
+        self.focused_pane = pane_id;
+        Ok(())
+    }
+
+    /// Marks one unpinned view as the pane-local preview tab.
+    pub fn set_preview_view(
+        &mut self,
+        pane_id: PaneId,
+        view_id: DocumentViewId,
+    ) -> Result<Option<DocumentViewId>, PaneError> {
+        let leaf = find_leaf_mut(&mut self.root, pane_id).ok_or(PaneError::UnknownPane(pane_id))?;
+        if !leaf.views.contains(&view_id) {
+            return Err(PaneError::UnknownView(view_id));
+        }
+        if leaf.pinned_views.contains(&view_id) {
+            return Err(PaneError::CannotPreviewPinned);
+        }
+        let previous = leaf.preview_view.replace(view_id);
+        leaf.active_view = view_id;
+        self.focused_pane = pane_id;
+        Ok(previous.filter(|previous| *previous != view_id))
+    }
+
+    /// Promotes a preview view into a normal persistent tab.
+    pub fn promote_preview(
+        &mut self,
+        pane_id: PaneId,
+        view_id: DocumentViewId,
+    ) -> Result<(), PaneError> {
+        let leaf = find_leaf_mut(&mut self.root, pane_id).ok_or(PaneError::UnknownPane(pane_id))?;
+        if !leaf.views.contains(&view_id) {
+            return Err(PaneError::UnknownView(view_id));
+        }
+        if leaf.preview_view == Some(view_id) {
+            leaf.preview_view = None;
+        }
+        Ok(())
+    }
+
+    /// Updates the regular-tab overflow offset for one pane.
+    pub fn set_tab_scroll_offset(
+        &mut self,
+        pane_id: PaneId,
+        offset: usize,
+    ) -> Result<(), PaneError> {
+        let leaf = find_leaf_mut(&mut self.root, pane_id).ok_or(PaneError::UnknownPane(pane_id))?;
+        let regular_count = leaf.views.len().saturating_sub(leaf.pinned_views.len());
+        leaf.tab_scroll_offset = offset.min(regular_count.saturating_sub(1));
+        Ok(())
+    }
+
     /// Splits the focused pane and places `new_view` in the newly created second pane.
     pub fn split_focused(&mut self, axis: PaneAxis, new_view: DocumentViewId) -> PaneId {
         let source = self.focused_pane;
@@ -404,6 +652,9 @@ impl PaneTree {
             id: new_leaf_id,
             views: vec![new_view],
             active_view: new_view,
+            pinned_views: Vec::new(),
+            preview_view: None,
+            tab_scroll_offset: 0,
         });
         let replaced = replace_leaf_with_split(&mut self.root, pane_id, split_id, axis, new_leaf);
         if !replaced {
@@ -436,10 +687,17 @@ impl PaneTree {
             let leaf =
                 find_leaf_mut(&mut self.root, pane_id).ok_or(PaneError::UnknownPane(pane_id))?;
             leaf.views.remove(view_index);
+            leaf.pinned_views.retain(|candidate| *candidate != view_id);
+            if leaf.preview_view == Some(view_id) {
+                leaf.preview_view = None;
+            }
             let next_index = view_index.min(leaf.views.len().saturating_sub(1));
             if leaf.active_view == view_id {
                 leaf.active_view = leaf.views[next_index];
             }
+            leaf.tab_scroll_offset = leaf
+                .tab_scroll_offset
+                .min(leaf.views.len().saturating_sub(1));
             self.focused_pane = pane_id;
             return Ok(PaneCloseResult {
                 removed_views: vec![view_id],
@@ -878,6 +1136,94 @@ mod tests {
                 .is_ok()
         );
         assert_eq!(panes.splits()[0].ratio_milli(), 900);
+        Ok(())
+    }
+
+    #[test]
+    fn pinned_preview_and_reorder_invariants_are_preserved() -> TestResult {
+        let (mut documents, mut registry, first_view) = views()?;
+        let second_view = registry.create_view(document(&mut documents, "two")?);
+        let third_view = registry.create_view(document(&mut documents, "three")?);
+        let mut panes = PaneTree::new(first_view);
+        let pane = panes.focused_pane();
+        panes.add_view(pane, second_view)?;
+        panes.add_view(pane, third_view)?;
+        panes.pin_view(pane, third_view)?;
+        assert_eq!(
+            panes.leaf(pane).map(|leaf| leaf.views()),
+            Some(&[third_view, first_view, second_view][..])
+        );
+        assert!(panes.set_preview_view(pane, second_view)?.is_none());
+        assert_eq!(
+            panes.leaf(pane).and_then(|leaf| leaf.preview_view()),
+            Some(second_view)
+        );
+        panes.reorder_view(pane, second_view, 0)?;
+        assert_eq!(
+            panes.leaf(pane).map(|leaf| leaf.views()),
+            Some(&[third_view, second_view, first_view][..])
+        );
+        assert_eq!(
+            panes.set_preview_view(pane, third_view),
+            Err(PaneError::CannotPreviewPinned)
+        );
+        panes.promote_preview(pane, second_view)?;
+        assert_eq!(panes.leaf(pane).and_then(|leaf| leaf.preview_view()), None);
+        Ok(())
+    }
+
+    #[test]
+    fn reordering_regular_tabs_right_uses_display_insertion_coordinates() -> TestResult {
+        let (mut documents, mut registry, first_view) = views()?;
+        let second_view = registry.create_view(document(&mut documents, "two")?);
+        let third_view = registry.create_view(document(&mut documents, "three")?);
+        let mut panes = PaneTree::new(first_view);
+        let pane = panes.focused_pane();
+        panes.add_view(pane, second_view)?;
+        panes.add_view(pane, third_view)?;
+
+        panes.reorder_view(pane, first_view, 3)?;
+
+        assert_eq!(
+            panes.leaf(pane).map(|leaf| leaf.views()),
+            Some(&[second_view, third_view, first_view][..])
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn moving_the_only_view_collapses_source_and_preserves_metadata() -> TestResult {
+        let (mut documents, mut registry, first_view) = views()?;
+        let second_view = registry.create_view(document(&mut documents, "two")?);
+        let mut panes = PaneTree::new(first_view);
+        let first_pane = panes.focused_pane();
+        let second_pane = panes.split_focused(PaneAxis::Horizontal, second_view);
+        panes.pin_view(first_pane, first_view)?;
+        panes.move_view(first_pane, second_pane, first_view, 0)?;
+        assert_eq!(panes.leaves().len(), 1);
+        let leaf = panes
+            .leaf(second_pane)
+            .ok_or(PaneError::UnknownPane(second_pane))?;
+        assert_eq!(leaf.views(), &[first_view, second_view]);
+        assert!(leaf.is_pinned(first_view));
+        Ok(())
+    }
+
+    #[test]
+    fn tab_scroll_offsets_clamp_to_regular_tabs() -> TestResult {
+        let (mut documents, mut registry, first_view) = views()?;
+        let second_view = registry.create_view(document(&mut documents, "two")?);
+        let third_view = registry.create_view(document(&mut documents, "three")?);
+        let mut panes = PaneTree::new(first_view);
+        let pane = panes.focused_pane();
+        panes.add_view(pane, second_view)?;
+        panes.add_view(pane, third_view)?;
+        panes.pin_view(pane, first_view)?;
+        panes.set_tab_scroll_offset(pane, 99)?;
+        assert_eq!(
+            panes.leaf(pane).map(|leaf| leaf.tab_scroll_offset()),
+            Some(1)
+        );
         Ok(())
     }
 }
