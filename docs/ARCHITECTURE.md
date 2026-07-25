@@ -16,6 +16,9 @@ luna-core
   ├── luna-accessibility
   └── luna-render
 
+luna-documents
+  └── std path and collection contracts only
+
 luna-text
   └── unicode-segmentation
 
@@ -49,6 +52,7 @@ native leaf adapters
 applications
   ├── luna-ui-rust-proof-gallery
   └── luna-ui-rust-editor-demo
+        └── luna-documents
 ```
 
 Dependencies point toward small product-neutral contracts. Platform integrations and stateful
@@ -83,6 +87,29 @@ building, rendering, AccessKit submission, and presentation still occur only in
 `WindowEvent::RedrawRequested`.
 
 This prevents proof animation from turning ordinary editor applications into polling loops.
+
+## Document lifecycle boundary
+
+`luna-documents` owns identity and lifecycle decisions without owning bytes, dialogs, watchers, or
+editor views. Filesystem adapters must canonicalize platform paths before constructing a
+`FileIdentity`; Luna does not infer symlink, case-folding, sandbox, or volume policy.
+
+```text
+filesystem/dialog/watcher adapter
+    -> canonical FileIdentity + opaque StorageRevision
+    -> DocumentRegistry
+         -> stable DocumentId
+         -> saved edit revision and dirty decision
+         -> SaveRequirement
+         -> CloseRequirement
+         -> ExternalState
+    -> application-owned EditableText view state
+```
+
+`DocumentRegistry` prevents duplicate file opens and reserves monotonic untitled names. A dirty
+close produces `SaveOrDiscard`; it never silently chooses a product policy. Save produces a decision
+(`None`, `SaveAs`, `WriteFile`, or `Unsupported`) that later adapters execute. Caret, selection,
+scroll, split-pane state, and command policy remain in the application layer.
 
 ## Text model boundary
 

@@ -11,6 +11,7 @@
 | `LunaHostCore` | `luna-host-core` | Frame invalidation/runtime implemented |
 | `LunaLayout` | `luna-layout` | Row/column/stack/split snapshots implemented |
 | `LunaCommands` | `luna-commands` | Typed registry and key bindings implemented |
+| Swift document/session identity and lifecycle | `luna-documents` | M3.2a stable IDs, file identity, duplicate prevention, dirty/save/close decisions, and external state implemented |
 | Swift static/editable text foundation | `luna-text` | UTF-8/grapheme-safe model implemented |
 | Swift shaping/glyph path | `luna-text-cosmic` | Retained logical layout plus overscanned visible-run raster implemented |
 | `LunaStaticTextView` / editable editor surface | `luna-ui::TextView` | Full logical geometry plus partial-raster placement implemented |
@@ -20,11 +21,11 @@
 | find/replace panel foundation | `luna-ui::FindPanel` | M3 reusable geometry/state/accessibility implemented |
 | general proof controls | `Button`, `Toggle`, `ProgressBar`, `TextLabel` | Reusable primitives plus stable-slot label cache implemented |
 | `LunaUITestApp --proof-gallery` | `luna-ui-rust-proof-gallery` | Retained layout/static paint/semantics with isolated animation-lane rendering implemented |
-| default `LunaUITestApp` editor mode | `luna-ui-rust-editor-demo` | M3 dedicated editor integration harness implemented |
+| default `LunaUITestApp` editor mode | `luna-ui-rust-editor-demo` | M3.2a registry-backed document lifecycle integrated; real I/O remains M3.2b |
 | `LunaHostSDL` / `LunaHostMetal` | `luna-host-winit` plus render adapters | Retained working/static CPU buffers, timed update lane, and conditional AccessKit submission implemented |
 | incremental gallery/accessibility pipeline | existing host/gallery/accessibility crates | M3.1c retained static layer, dirty-region restore, input coalescing, and semantic fingerprints implemented |
 | Swift Phase 4C first-level menu behavior | `luna-ui::DropdownMenu` plus editor demo routing | M3.1d complete for first-level menus; submenus/mnemonics remain M3.3 |
-| GPU rendering | future `luna-render-wgpu` | Planned M4 after M3.1 |
+| GPU rendering | future `luna-render-wgpu` | Planned M4 after M3.2/M3.3 editor breadth |
 
 ## Porting rule
 
@@ -36,6 +37,6 @@ semantics.
 ## Functional parity
 
 See [`SWIFT_PARITY.md`](SWIFT_PARITY.md) for the broader feature inventory. Foundational module
-coverage is near parity. First-level dropdown menus now exist, while files, workspaces, panes,
-nested menus, context menus, completion, and direct Moth integration remain concentrated in M3.2,
-M3.3, and M6.
+coverage is near parity. First-level dropdown menus and the document lifecycle model now exist. Actual file I/O, dialogs,
+workspaces, panes, nested menus, context menus, completion, and direct Moth integration remain
+concentrated in later M3.2, M3.3, and M6 work.

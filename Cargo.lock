@@ -1134,6 +1134,10 @@ name = "luna-core"
 version = "0.1.0"
 
 [[package]]
+name = "luna-documents"
+version = "0.1.0"
+
+[[package]]
 name = "luna-host-core"
 version = "0.1.0"
 
@@ -1227,6 +1231,7 @@ version = "0.1.0"
 dependencies = [
  "luna-accessibility",
  "luna-core",
+ "luna-documents",
  "luna-host-winit",
  "luna-input",
  "luna-render",

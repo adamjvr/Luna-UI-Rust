@@ -9,6 +9,7 @@ members = [
     "crates/luna-accessibility-accesskit",
     "crates/luna-commands",
     "crates/luna-core",
+    "crates/luna-documents",
     "crates/luna-host-core",
     "crates/luna-host-winit",
     "crates/luna-input",

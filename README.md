@@ -1,49 +1,38 @@
 # Luna-UI-Rust
 
 **Luna-UI-Rust** is a clean Rust-native rewrite of Luna UI: the product-neutral UI, input,
-layout, rendering, accessibility, command, text, and native-host foundation used to build
+layout, rendering, accessibility, command, document, text, and native-host foundation used to build
 editor-class desktop applications such as Moth Text.
 
 This is not a mechanical Swift-to-Rust translation. The rewrite preserves Luna's architectural
 contracts while expressing them through Rust ownership, explicit errors, immutable frame snapshots,
 small workspace crates, strict compiler tooling, and platform-specific leaf adapters.
 
-## M3.1 status
+## M3.2 status
 
-M0 established the deterministic core, M1 added the native host, M2 added editor-grade text, and M3
-added the twin proof-gallery/editor applications plus reusable editor anatomy. M3.1 makes the CPU
-path incremental and completes the first functional editor-surface correction pass before real
-files/workspaces and GPU rendering.
+M0 established the deterministic core, M1 added the native host, M2 added editor-grade text, M3
+added the twin proof-gallery/editor applications, and M3.1 made the CPU path incremental while
+adding real first-level desktop dropdown menus.
 
-M3.1a through M3.1c are complete, validated, and committed. They provide retained host buffers,
-typed invalidation, frame-stage metrics, shared immutable document snapshots, retained editor text
-layout and raster bands, bounded chrome labels, retained proof-gallery static scenes, coalesced
-pointer motion, deterministic accessibility fingerprints, and conditional AccessKit translation.
+M3.1a through M3.1d are complete and locally validated. File/Edit/Find/View/Help open anchored
+dropdowns, while Control-P opens the independent searchable command palette.
 
-M3.1d adds real desktop dropdown menus and separates them from the command palette. M3.1d.1
-corrects the native integration after runtime testing showed that menu-heading clicks could still be
-consumed by transient command-palette handling:
+M3.2a begins the real document/workspace phase with a new product-neutral `luna-documents` crate:
 
-- reusable `MenuDefinition`, `MenuCommand`, `MenuItem`, `DropdownMenuState`, and `DropdownMenu`
-  contracts;
-- one application-owned command catalog projected into File/Edit/Find/View/Help dropdowns and the
-  searchable command palette;
-- top-level menu-heading clicks receive priority over every open transient surface;
-- opening a dropdown forcibly closes palette and find state before the frame is built;
-- the command palette is opened only by Control-P and is not projected as a dropdown row;
-- independent dropdown, command-palette, and find-panel state;
-- anchored and viewport-clamped menu geometry;
-- separators, shortcut labels, disabled commands, and checked commands;
-- pointer opening, outside-click dismissal, hover selection, and menu-heading traversal;
-- Up/Down/Home/End navigation, Left/Right menu switching, Enter/Space activation, and Escape
-  dismissal;
-- shared paint, hit-test, and accessibility geometry for every visible menu row;
-- accessibility menu/menu-item semantics with disabled, checked, focused, and expanded state;
-- precise overlay invalidation without document reshaping.
+- monotonic stable `DocumentId` values for tabs, caches, hit routing, and accessibility;
+- monotonic untitled naming that is not reused after close;
+- adapter-canonicalized `FileIdentity` values and duplicate-open prevention;
+- saved edit revisions and explicit dirty-state evaluation;
+- opaque storage revisions plus in-sync, externally modified, and missing-file state;
+- explicit Save decisions: no-op, Save As, direct file write, or unsupported source;
+- explicit close decisions: safe close or Save/Discard/Cancel required;
+- Save As reassignment with duplicate-file protection;
+- editor-demo integration that blocks dirty close and never simulates a successful file write.
 
-M3.2 is next and begins the largest functional catch-up toward Swift Luna UI: real document/file
-lifecycle, shared views, project/workspace adapters, Save As, conflict state, and watcher boundaries.
-See `docs/SWIFT_PARITY.md` for the current feature comparison.
+M3.2b is next: real UTF-8 open/save/save-as and dirty-close services behind mockable filesystem and
+dialog boundaries. Workspace trees, watchers, recent files, and independent shared-buffer views
+follow in later M3.2 subphases. See `docs/M3_2A_DOCUMENT_LIFECYCLE.md` and
+`docs/SWIFT_PARITY.md`.
 
 ## Build and validate
 
@@ -86,12 +75,20 @@ Editor shortcuts:
 - **Control-P** — command palette;
 - **Control-F** — find panel;
 - **Control-H** — find/replace panel;
-- **Control-S** — mark the active document saved;
+- **Control-S** — evaluate Save; untitled documents report that Save As is required;
 - **Control-N** — create a new document;
 - **Control-B** — toggle the sidebar;
-- **Control-W** — close the active tab when more than one is open;
+- **Control-W** — close a clean tab; dirty tabs require a future Save/Discard/Cancel dialog;
 - **Control-A** — select all editor text;
 - **Escape** — close the active menu/overlay, or exit when none is open.
+
+M3.2a document behavior:
+
+- New File creates an empty, clean, monotonically named Untitled document;
+- Save on an untitled document reports that Save As is required rather than faking persistence;
+- dirty tab close is blocked until a future Save/Discard/Cancel service resolves it;
+- clean close releases both editor-view state and registry identity;
+- the sidebar projects the same stable document IDs used by tabs and caches.
 
 The editor must preserve M3.1b performance behavior: no idle frames, no reshaping for caret,
 selection, focus, or menu changes, overscanned raster reuse during ordinary scrolling, and bounded
@@ -114,6 +111,7 @@ native event / AccessKit action / scheduled logical update
          -> dropdown-menu projection
          -> command-palette projection
          -> keyboard/accessibility dispatch
+    -> product-neutral document registry and lifecycle decision
     -> platform-neutral Luna application state
     -> retained text/layout/chrome or retained static scene
     -> dynamic display list + shared validated semantic snapshot
@@ -124,8 +122,8 @@ native event / AccessKit action / scheduled logical update
 Widgets do not call graphics APIs, create native windows, own operating-system event loops, or embed
 Moth-specific product policy. See `docs/ARCHITECTURE.md`, `docs/PORTING_MAP.md`,
 `docs/M3_1A_HOST_PIPELINE.md`, `docs/M3_1B_TEXT_CACHE.md`,
-`docs/M3_1C_GALLERY_ACCESSIBILITY.md`, `docs/M3_1D_DROPDOWN_MENUS.md`, and
-`docs/SWIFT_PARITY.md`.
+`docs/M3_1C_GALLERY_ACCESSIBILITY.md`, `docs/M3_1D_DROPDOWN_MENUS.md`,
+`docs/M3_2A_DOCUMENT_LIFECYCLE.md`, and `docs/SWIFT_PARITY.md`.
 
 ## License
 

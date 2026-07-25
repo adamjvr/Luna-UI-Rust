@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 
-//! Native M3.1d editor integration harness for Luna UI Rust.
+//! Native M3.2a editor integration harness for Luna UI Rust.
 //!
 //! This application mirrors the purpose of Swift LunaUITestApp's default editor mode: reusable
 //! shell anatomy and editor text are exercised together without embedding Moth Text product
 //! policy in Luna. It provides menus, tabs, a project sidebar, status chrome, editable text,
-//! real dropdown menus, a separate command palette, find panel, dirty tracking, accessibility,
+//! real dropdown menus, a separate command palette, find panel, document lifecycle tracking,
+//! accessibility,
 //! retained document layouts, overscanned glyph rasters, and stable-slot chrome-label caching.
 //!
 //! Shortcuts: Control-P command palette, Control-F find, Control-H replace, Control-S save,
@@ -14,6 +15,9 @@
 
 use luna_accessibility::{AccessibilityNode, AccessibilityRole};
 use luna_core::{InsetsI, NodeId, PointI, RectI, SizeI};
+use luna_documents::{
+    CloseRequirement, DocumentId, DocumentRecord, DocumentRegistry, DocumentSource, SaveRequirement,
+};
 use luna_host_winit::{
     AccessibilityActionKind, AccessibilityActionRequest, ApplicationError, HostControl,
     InvalidationClass, NativeApplication, WindowConfig, run_native,
@@ -46,12 +50,14 @@ const MENU_ID: &str = "m3-editor-dropdown-menu";
 
 const README_TEXT: &str = concat!(
     "# Luna UI Rust\n\n",
-    "M3.1d adds real dropdown menus without replacing the command palette.\n\n",
+    "M3.2a adds product-neutral document identity and lifecycle state.\n\n",
     "- Deterministic shell geometry\n",
     "- Revision-keyed document shaping\n",
     "- Viewport-band glyph rasterization\n",
     "- Stable-slot editor chrome labels\n",
     "- Shared menu and palette command IDs\n",
+    "- Stable document IDs and monotonic untitled names\n",
+    "- Explicit save and close requirements\n",
     "- Shared accessibility geometry\n\n",
     "Click File/Edit/Find/View/Help, or press Control-P for the palette.\n",
 );
@@ -73,26 +79,34 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct DemoDocument {
-    id: String,
-    title: String,
+    id: DocumentId,
     editor: EditableText,
-    saved_revision: u64,
     scroll: TextScroll,
 }
 
 impl DemoDocument {
-    fn new(id: impl Into<String>, title: impl Into<String>, text: impl Into<String>) -> Self {
+    fn new(id: DocumentId, text: impl Into<String>) -> Self {
         Self {
-            id: id.into(),
-            title: title.into(),
+            id,
             editor: EditableText::new(text),
-            saved_revision: 0,
             scroll: TextScroll::default(),
         }
     }
 
-    const fn is_dirty(&self) -> bool {
-        self.editor.edit_revision() != self.saved_revision
+    fn title<'a>(&self, registry: &'a DocumentRegistry) -> &'a str {
+        registry
+            .get(self.id)
+            .map_or("Unknown document", DocumentRecord::title)
+    }
+
+    fn is_dirty(&self, registry: &DocumentRegistry) -> bool {
+        registry
+            .get(self.id)
+            .is_some_and(|record| record.is_dirty(self.editor.edit_revision()))
+    }
+
+    fn stable_key(&self) -> String {
+        self.id.stable_key()
     }
 }
 
@@ -103,6 +117,7 @@ struct EditorDemoApplication {
     palette_id: NodeId,
     find_id: NodeId,
     menu_id: NodeId,
+    document_registry: DocumentRegistry,
     documents: Vec<DemoDocument>,
     active_index: usize,
     engine: TextEngine,
@@ -120,12 +135,16 @@ struct EditorDemoApplication {
     drag_anchor: Option<TextLocation>,
     text_is_focused: bool,
     reveal_caret_on_next_frame: bool,
-    next_untitled_number: u32,
+    lifecycle_notice: Option<String>,
     frame_build_count: u64,
 }
 
 impl EditorDemoApplication {
     fn new() -> Result<Self, ApplicationError> {
+        let mut document_registry = DocumentRegistry::new();
+        let readme_id = document_registry.register_virtual("readme", "README.md", 0)?;
+        let editor_id = document_registry.register_virtual("editor", "EditorSurface.rs", 0)?;
+        let theme_id = document_registry.register_virtual("theme", "Theme.json", 0)?;
         Ok(Self {
             root_id: NodeId::new(ROOT_ID)?,
             shell_id: NodeId::new(SHELL_ID)?,
@@ -133,10 +152,11 @@ impl EditorDemoApplication {
             palette_id: NodeId::new(PALETTE_ID)?,
             find_id: NodeId::new(FIND_ID)?,
             menu_id: NodeId::new(MENU_ID)?,
+            document_registry,
             documents: vec![
-                DemoDocument::new("readme", "README.md", README_TEXT),
-                DemoDocument::new("editor", "EditorSurface.rs", EDITOR_TEXT),
-                DemoDocument::new("theme", "Theme.json", THEME_TEXT),
+                DemoDocument::new(readme_id, README_TEXT),
+                DemoDocument::new(editor_id, EDITOR_TEXT),
+                DemoDocument::new(theme_id, THEME_TEXT),
             ],
             active_index: 1,
             engine: TextEngine::new(),
@@ -146,7 +166,7 @@ impl EditorDemoApplication {
             viewport: RectI::new(0, 0, 1_180, 760),
             theme: Theme::luna_dark(),
             sidebar_is_visible: true,
-            selected_sidebar_id: Some("editor".to_owned()),
+            selected_sidebar_id: Some(editor_id.stable_key()),
             palette: None,
             menu: DropdownMenuState::default(),
             find: None,
@@ -154,7 +174,7 @@ impl EditorDemoApplication {
             drag_anchor: None,
             text_is_focused: true,
             reveal_caret_on_next_frame: true,
-            next_untitled_number: 1,
+            lifecycle_notice: None,
             frame_build_count: 0,
         })
     }
@@ -174,6 +194,16 @@ impl EditorDemoApplication {
 
     fn menu_definitions(&self) -> Vec<MenuDefinition> {
         let active = self.active_document();
+        let save_is_enabled = self
+            .document_registry
+            .get(active.id)
+            .map(|record| record.save_requirement(active.editor.edit_revision()))
+            .is_some_and(|requirement| {
+                matches!(
+                    requirement,
+                    SaveRequirement::SaveAs | SaveRequirement::WriteFile { .. }
+                )
+            });
         let find_navigation_is_enabled = self.find.is_some() && !self.find_matches.is_empty();
         vec![
             MenuDefinition::new(
@@ -186,7 +216,7 @@ impl EditorDemoApplication {
                     ),
                     MenuItem::Separator,
                     MenuItem::command(
-                        MenuCommand::new("save", "Save", "Ctrl+S").with_enabled(active.is_dirty()),
+                        MenuCommand::new("save", "Save", "Ctrl+S").with_enabled(save_is_enabled),
                     ),
                     MenuItem::command(
                         MenuCommand::new("save-as", "Save As…", "Ctrl+Shift+S").with_enabled(false),
@@ -289,7 +319,38 @@ impl EditorDemoApplication {
 
     fn shell_state(&self) -> EditorShellState {
         let active = self.active_document();
+        let active_title = active.title(&self.document_registry);
         let menu_definitions = self.menu_definitions();
+        let mut sidebar_items = vec![SidebarItem::folder("workspace", "Open Documents", 0, true)];
+        sidebar_items.extend(self.documents.iter().map(|document| {
+            SidebarItem::file(
+                document.stable_key(),
+                document.title(&self.document_registry),
+                1,
+            )
+        }));
+        let status_left = self.lifecycle_notice.as_ref().map_or_else(
+            || {
+                format!(
+                    "{}{}",
+                    active_title,
+                    if active.is_dirty(&self.document_registry) {
+                        " — Modified"
+                    } else {
+                        ""
+                    }
+                )
+            },
+            |notice| format!("{active_title} — {notice}"),
+        );
+        let source_label = self
+            .document_registry
+            .get(active.id)
+            .map_or("Unknown", |record| match record.source() {
+                DocumentSource::Untitled { .. } => "Untitled",
+                DocumentSource::File(_) => "File",
+                DocumentSource::Virtual { .. } => "Virtual",
+            });
         EditorShellState {
             menus: menu_definitions
                 .iter()
@@ -299,34 +360,21 @@ impl EditorDemoApplication {
                 .documents
                 .iter()
                 .map(|document| ShellTab {
-                    id: document.id.clone(),
-                    title: document.title.clone(),
-                    is_dirty: document.is_dirty(),
+                    id: document.stable_key(),
+                    title: document.title(&self.document_registry).to_owned(),
+                    is_dirty: document.is_dirty(&self.document_registry),
                     is_closable: self.documents.len() > 1,
                 })
                 .collect(),
             active_menu_id: self.menu.active_menu_id.clone(),
-            active_tab_id: Some(active.id.clone()),
-            sidebar_items: vec![
-                SidebarItem::folder("workspace", "Luna-UI-Rust", 0, true),
-                SidebarItem::file("readme", "README.md", 1),
-                SidebarItem::file("editor", "EditorSurface.rs", 1),
-                SidebarItem::file("theme", "Theme.json", 1),
-            ],
+            active_tab_id: Some(active.stable_key()),
+            sidebar_items,
             selected_sidebar_id: self.selected_sidebar_id.clone(),
             sidebar_is_visible: self.sidebar_is_visible,
             sidebar_width: 236,
-            status_left: format!(
-                "{}{}",
-                active.title,
-                if active.is_dirty() {
-                    " — Modified"
-                } else {
-                    ""
-                }
-            ),
+            status_left,
             status_right: format!(
-                "Ln {}, Col {}  UTF-8",
+                "Ln {}, Col {}  UTF-8  {source_label}",
                 active.editor.caret().line_index.saturating_add(1),
                 active.editor.caret().utf8_column.saturating_add(1)
             ),
@@ -385,7 +433,7 @@ impl EditorDemoApplication {
             document.editor.selection(),
             document.scroll,
             TextViewStyle::from_theme(self.theme),
-            format!("Editor for {}", document.title),
+            format!("Editor for {}", document.title(&self.document_registry)),
             self.text_is_focused
                 && self.palette.is_none()
                 && self.find.is_none()
@@ -395,9 +443,9 @@ impl EditorDemoApplication {
     }
 
     fn current_text_view(&self) -> Option<TextView> {
-        let document_id = &self.active_document().id;
+        let document_id = self.active_document().stable_key();
         self.text_layouts
-            .get(document_id)
+            .get(&document_id)
             .and_then(TextLayoutCache::snapshot)
             .cloned()
             .map(|layout| self.text_view_from_layout(layout))
@@ -412,7 +460,7 @@ impl EditorDemoApplication {
         let active_index = self
             .active_index
             .min(self.documents.len().saturating_sub(1));
-        let document_id = self.documents[active_index].id.clone();
+        let document_id = self.documents[active_index].stable_key();
         let revision = self.documents[active_index].editor.edit_revision();
         let document = self.documents[active_index].editor.document();
         let cache = self.text_layouts.entry(document_id).or_default();
@@ -676,11 +724,10 @@ impl EditorDemoApplication {
                 self.new_document();
                 InvalidationClass::WidgetLayout
             }
-            "save" if self.active_document().is_dirty() => {
+            "save" => {
                 self.save_active();
                 InvalidationClass::TextOverlay
             }
-            "save" => return HostControl::Continue,
             "close-tab" if self.documents.len() > 1 => {
                 self.close_active();
                 InvalidationClass::WidgetLayout
@@ -729,42 +776,84 @@ impl EditorDemoApplication {
     }
 
     fn new_document(&mut self) {
-        let number = self.next_untitled_number;
-        self.next_untitled_number = self.next_untitled_number.saturating_add(1);
-        let id = format!("untitled-{number}");
-        self.documents.push(DemoDocument::new(
-            id.clone(),
-            format!("Untitled-{number}"),
-            "// New Luna document\n",
-        ));
+        let editor = EditableText::new(String::new());
+        let id = self
+            .document_registry
+            .create_untitled(editor.edit_revision());
+        self.documents.push(DemoDocument {
+            id,
+            editor,
+            scroll: TextScroll::default(),
+        });
         self.active_index = self.documents.len().saturating_sub(1);
-        self.selected_sidebar_id = None;
+        self.selected_sidebar_id = Some(id.stable_key());
+        self.lifecycle_notice = Some(format!(
+            "Created {}; Save requires a destination",
+            self.active_document().title(&self.document_registry)
+        ));
         self.reveal_caret_on_next_frame = true;
     }
 
     fn save_active(&mut self) {
-        let revision = self.active_document().editor.edit_revision();
-        self.active_document_mut().saved_revision = revision;
+        let document = self.active_document();
+        let requirement = self
+            .document_registry
+            .get(document.id)
+            .map(|record| record.save_requirement(document.editor.edit_revision()));
+        self.lifecycle_notice = match requirement {
+            Some(SaveRequirement::None) => Some("Document is already saved".to_owned()),
+            Some(SaveRequirement::SaveAs) => {
+                Some("Save As is required; filesystem adapters arrive in M3.2b".to_owned())
+            }
+            Some(SaveRequirement::WriteFile { .. }) => {
+                Some("File write adapter arrives in M3.2b".to_owned())
+            }
+            Some(SaveRequirement::Unsupported) => {
+                Some("Generated demo documents do not have a writable file target".to_owned())
+            }
+            None => Some("Document lifecycle record is unavailable".to_owned()),
+        };
     }
 
     fn close_active(&mut self) {
         if self.documents.len() <= 1 {
+            self.lifecycle_notice = Some("At least one document must remain open".to_owned());
             return;
         }
-        let removed_id = self.documents[self.active_index].id.clone();
+        let active_id = self.active_document().id;
+        let revision = self.active_document().editor.edit_revision();
+        let close_requirement = self
+            .document_registry
+            .get(active_id)
+            .map(|record| record.close_requirement(revision));
+        if close_requirement == Some(CloseRequirement::SaveOrDiscard) {
+            self.lifecycle_notice = Some(format!(
+                "{} has unsaved changes; Save, Discard, or Cancel is required",
+                self.active_document().title(&self.document_registry)
+            ));
+            return;
+        }
+        let removed_key = active_id.stable_key();
         self.documents.remove(self.active_index);
-        self.text_layouts.remove(&removed_id);
+        let _ = self.document_registry.remove(active_id);
+        self.text_layouts.remove(&removed_key);
         self.active_index = self
             .active_index
             .min(self.documents.len().saturating_sub(1));
-        self.selected_sidebar_id = Some(self.active_document().id.clone());
+        self.selected_sidebar_id = Some(self.active_document().stable_key());
+        self.lifecycle_notice = None;
         self.reveal_caret_on_next_frame = true;
     }
 
     fn activate_document(&mut self, id: &str) {
-        if let Some(index) = self.documents.iter().position(|document| document.id == id) {
+        if let Some(index) = self
+            .documents
+            .iter()
+            .position(|document| document.stable_key() == id)
+        {
             self.active_index = index;
             self.selected_sidebar_id = Some(id.to_owned());
+            self.lifecycle_notice = None;
             self.reveal_caret_on_next_frame = true;
             self.text_is_focused =
                 self.palette.is_none() && self.find.is_none() && !self.menu.is_open();
@@ -1013,6 +1102,9 @@ impl EditorDemoApplication {
         if !changed {
             return HostControl::Continue;
         }
+        if invalidation == InvalidationClass::TextLayout {
+            self.lifecycle_notice = None;
+        }
         self.reveal_caret_on_next_frame = reveal;
         HostControl::Invalidate(invalidation)
     }
@@ -1119,12 +1211,16 @@ impl EditorDemoApplication {
             let title = self
                 .documents
                 .iter()
-                .find(|document| document.id == frame.id)
+                .find(|document| document.stable_key() == frame.id)
                 .map_or(frame.title.clone(), |document| {
                     format!(
                         "{}{}",
-                        document.title,
-                        if document.is_dirty() { " •" } else { "" }
+                        document.title(&self.document_registry),
+                        if document.is_dirty(&self.document_registry) {
+                            " •"
+                        } else {
+                            ""
+                        }
                     )
                 });
             let width = frame.bounds.width.saturating_sub(34);
@@ -1438,7 +1534,10 @@ impl NativeApplication for EditorDemoApplication {
             selection,
             scroll,
             TextViewStyle::from_theme(self.theme),
-            format!("Editor for {}", self.active_document().title),
+            format!(
+                "Editor for {}",
+                self.active_document().title(&self.document_registry)
+            ),
             self.text_is_focused
                 && self.palette.is_none()
                 && self.find.is_none()
@@ -1593,6 +1692,7 @@ impl NativeApplication for EditorDemoApplication {
                 {
                     let result = self.active_document_mut().editor.insert_text(text);
                     if result.did_change {
+                        self.lifecycle_notice = None;
                         self.reveal_caret_on_next_frame = true;
                         return HostControl::Invalidate(InvalidationClass::TextLayout);
                     }
@@ -1620,6 +1720,7 @@ impl NativeApplication for EditorDemoApplication {
                     if !result.did_change {
                         return HostControl::Continue;
                     }
+                    self.lifecycle_notice = None;
                     self.reveal_caret_on_next_frame = true;
                     InvalidationClass::TextLayout
                 };
@@ -1857,6 +1958,13 @@ impl NativeApplication for EditorDemoApplication {
                     self.activate_document(&id);
                     return HostControl::Invalidate(InvalidationClass::Accessibility);
                 }
+                Some(EditorShellHit::CloseTab(id))
+                    if request.kind == AccessibilityActionKind::Click =>
+                {
+                    self.activate_document(&id);
+                    self.close_active();
+                    return HostControl::Invalidate(InvalidationClass::Accessibility);
+                }
                 Some(EditorShellHit::Editor) => {
                     self.menu.close();
                     self.palette = None;
@@ -1962,6 +2070,122 @@ mod tests {
         assert!(items.iter().any(|item| item.id == "new-file"));
         assert!(!items.iter().any(|item| item.id == "open"));
         assert!(!items.iter().any(|item| item.id == "save-as"));
+        Ok(())
+    }
+
+    #[test]
+    fn untitled_documents_use_monotonic_registry_titles() -> Result<(), Box<dyn Error + Send + Sync>>
+    {
+        let mut application = EditorDemoApplication::new()?;
+        application.new_document();
+        assert_eq!(
+            application
+                .document_registry
+                .get(application.active_document().id)
+                .map(|record| record.title()),
+            Some("Untitled-1")
+        );
+
+        application.close_active();
+        application.new_document();
+        assert_eq!(
+            application
+                .document_registry
+                .get(application.active_document().id)
+                .map(|record| record.title()),
+            Some("Untitled-2")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn dirty_document_close_is_blocked_pending_user_decision()
+    -> Result<(), Box<dyn Error + Send + Sync>> {
+        let mut application = EditorDemoApplication::new()?;
+        application.new_document();
+        let count = application.documents.len();
+        let result = application
+            .active_document_mut()
+            .editor
+            .insert_text("changed");
+        assert!(result.did_change);
+
+        application.close_active();
+
+        assert_eq!(application.documents.len(), count);
+        assert!(
+            application
+                .lifecycle_notice
+                .as_deref()
+                .is_some_and(|notice| { notice.contains("Save, Discard, or Cancel") })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn clean_close_removes_document_and_registry_record() -> Result<(), Box<dyn Error + Send + Sync>>
+    {
+        let mut application = EditorDemoApplication::new()?;
+        application.new_document();
+        let id = application.active_document().id;
+
+        application.close_active();
+
+        assert!(
+            application
+                .documents
+                .iter()
+                .all(|document| document.id != id)
+        );
+        assert!(application.document_registry.get(id).is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn virtual_document_save_does_not_fake_a_successful_write()
+    -> Result<(), Box<dyn Error + Send + Sync>> {
+        let mut application = EditorDemoApplication::new()?;
+        let result = application
+            .active_document_mut()
+            .editor
+            .insert_text("changed");
+        assert!(result.did_change);
+        assert!(
+            application
+                .active_document()
+                .is_dirty(&application.document_registry)
+        );
+
+        application.save_active();
+
+        assert!(
+            application
+                .active_document()
+                .is_dirty(&application.document_registry)
+        );
+        assert!(
+            application
+                .lifecycle_notice
+                .as_deref()
+                .is_some_and(|notice| { notice.contains("do not have a writable file target") })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn clean_untitled_save_reports_save_as_requirement() -> Result<(), Box<dyn Error + Send + Sync>>
+    {
+        let mut application = EditorDemoApplication::new()?;
+        application.new_document();
+
+        let _ = application.execute_command("save");
+
+        assert!(
+            application
+                .lifecycle_notice
+                .as_deref()
+                .is_some_and(|notice| { notice.contains("Save As is required") })
+        );
         Ok(())
     }
 }

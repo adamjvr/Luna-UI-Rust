@@ -35,7 +35,7 @@
 - Expanded accessibility roles for menus, tabs, trees, dialogs, status, checkboxes, and progress.
 - Optional host update cadence through winit `WaitUntil`, with rendering in `RedrawRequested`.
 
-## M3.1 — incremental frame pipeline and performance baseline — active
+## M3.1 — incremental frame pipeline and performance baseline — complete
 
 ### M3.1a — retained host pipeline and instrumentation — complete
 
@@ -72,7 +72,7 @@
 - Initial activation and deactivation-safe native accessibility behavior.
 - Retained-scene, semantic-skip, cache, and input-coalescing diagnostics.
 
-### M3.1d / M3.1d.1 — dropdown menus and routing correction — implemented, validation required
+### M3.1d — dropdown menus and routing correction — complete
 
 - M3.1d.1 priority routing: menu-heading presses replace any open palette/find surface in one event.
 - Command palette removed from dropdown projection; Ctrl+P remains its exclusive opening path.
@@ -89,14 +89,31 @@
 - Shared command execution across keyboard, menus, palette, pointer, and accessibility.
 - Overlay-only menu invalidation with no document reshape or reraster.
 
-## M3.2 — real document and workspace runtime — next
+## M3.2 — real document and workspace runtime — active
 
-- Real file open/save lifecycle and external-change detection.
-- Document identity, revision ownership, dirty state, and save-conflict handling.
-- Shared buffers with independent editor views.
-- Product-neutral file/project/workspace adapter contracts.
-- Project tree snapshots and watcher integration.
-- Untitled/new-file and Save As lifecycle without Moth-specific policy.
+### M3.2a — document identity and lifecycle model — implemented
+
+- Product-neutral `luna-documents` crate.
+- Stable document IDs and monotonic untitled naming.
+- Adapter-canonicalized file identities and duplicate-open prevention.
+- Saved edit revisions, dirty state, storage revisions, and external conflict state.
+- Explicit Save and close requirements without filesystem or product policy.
+- Save As identity reassignment and index release on close.
+- Editor-demo integration with dirty-close protection and honest non-I/O Save status.
+
+### M3.2b — file and dialog service boundaries — next
+
+- Product-neutral UTF-8 file read/write service contracts.
+- Open, Save As, overwrite/conflict, and dirty-close dialog contracts.
+- Mock adapters and deterministic lifecycle tests.
+- Native host adapters after headless contracts pass.
+
+### M3.2c–M3.2e — remaining runtime
+
+- atomic writes, invalid-encoding handling, recent files, and external-change delivery;
+- workspace/folder adapters and project-tree snapshots;
+- shared document buffers with independent editor views;
+- watcher integration and save-conflict hardening.
 
 ## M3.3 — expanded editor shell
 

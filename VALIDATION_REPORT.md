@@ -1,113 +1,76 @@
-# M3.1d.1 Validation Report
+# M3.2a Validation Report
 
-## Verified baseline
+## Verified input baseline
 
-The project owner confirmed that M3.1d compiled and was committed, but native runtime testing found
-that top-level menu clicks still presented the command-palette interface rather than reliable anchored
-dropdowns. M3.1d.1 is a correction built directly on that reported runtime state.
+The project owner confirmed that the cumulative M3.1d repair plus compiler and Clippy hotfixes build
+and run correctly. Native testing confirmed that all top-level headings open real dropdowns and that
+the command palette remains a separate Control-P surface.
 
-## M3.1d.1 correction set
+## M3.2a change set
 
-- top-level menu pointer hits are resolved before palette/find/editor overlay handling;
-- opening any dropdown clears every other transient surface;
-- the command palette is removed from dropdown projection and remains available through Ctrl+P;
-- runtime diagnostics identify menu open/close state explicitly;
-- dropdown presentation is narrower and shadowed, without the palette's backdrop, title, or query box;
-- regression coverage clicks File while the palette is already open and verifies one anchored menu,
-  no palette, no find panel, and one transient surface.
-
-## Original M3.1d change set
-
-- `crates/luna-ui/src/dropdown_menu.rs`
-  - product-neutral command/menu definitions and interaction state;
-  - anchored viewport-clamped dropdown geometry;
-  - separators, shortcuts, enabled/disabled state, checked state, and selected state;
-  - pointer and accessibility command resolution;
-  - menu/menu-item semantics;
-  - deterministic keyboard-selection, clamping, disabled-command, and accessibility tests.
-- `crates/luna-ui/src/editor_shell.rs`
-  - application-supplied active menu ID;
-  - active-heading paint state;
-  - expanded/collapsed and focused accessibility state;
-  - regression coverage for selected menu headings.
-- `crates/luna-ui/src/lib.rs`
-  - public exports for the reusable dropdown-menu model and widget.
-- `apps/luna-ui-rust-editor-demo/src/main.rs`
-  - one File/Edit/Find/View/Help command catalog;
-  - independent menu, palette, and find-panel state;
-  - shared dropdown and command-palette projections;
-  - real menu pointer, keyboard, and accessibility routing;
-  - outside-click dismissal and cross-heading traversal;
-  - common command execution for shortcuts, menus, palette, pointer, and accessibility;
-  - disabled command omission from the current palette projection;
-  - regression tests proving menu/palette separation and command projection.
-- project documentation
-  - M3.1d status, architecture, roadmap, porting map, Swift parity, runtime instructions, and this
-    validation report.
+- `crates/luna-documents`
+  - stable document IDs;
+  - canonical file identity contract;
+  - storage revision and external-change state;
+  - save and close requirements;
+  - document registry, duplicate indexes, untitled numbering, Save As reassignment, and removal;
+  - lifecycle and duplicate-prevention tests.
+- `apps/luna-ui-rust-editor-demo`
+  - registry-backed metadata and stable IDs;
+  - monotonic clean untitled documents;
+  - honest Save behavior without simulated writes;
+  - dirty-close protection and status feedback;
+  - open-document sidebar projection;
+  - lifecycle integration tests.
+- workspace and documentation
+  - new member/dependency and lockfile entry;
+  - architecture, roadmap, porting map, parity, current-status, and milestone documentation.
 
 ## Structural checks performed in the generation environment
 
-- all workspace manifests and TOML configuration files parse;
-- all workspace members and local path dependencies remain present;
-- modified Rust files retain MPL-2.0 SPDX identifiers;
+- all 23 TOML files parse;
+- the workspace contains 19 members after adding `luna-documents`;
+- all local path dependencies resolve to present directories;
+- all Rust files retain MPL-2.0 SPDX identifiers;
+- delimiter and lexical scans pass across all Rust files;
 - no unsafe blocks or declarations were introduced;
 - no `.unwrap()`, `.expect()`, `panic!`, `todo!`, or `unimplemented!` calls were introduced;
-- changed Rust source remains within the repository's 100-column policy before rustfmt;
-- dropdown keyboard traversal skips separators and disabled commands;
-- disabled rows cannot resolve to executable pointer or accessibility commands;
-- menu and palette state are independent;
-- menu-heading clicks take dispatch priority even while the palette is open;
-- top-level menu headings cannot call or project `open_palette`;
-- one-transient-surface assertions guard menu, palette, and find construction;
-- command shortcuts, menu rows, palette rows, and accessibility converge on one executor;
-- menu interaction does not mutate text-layout or raster cache state;
-- repository-root overlay and full-source archive round trips are verified during packaging;
-- no commit-message text file is included.
+- Cargo.lock contains the new local package and editor dependency;
+- the editor no longer owns duplicate title, saved-revision, or untitled-sequence fields;
+- file identity requires an absolute path with no current/parent components;
+- duplicate file registration returns the existing document;
+- Save As cannot steal a file identity from another open document;
+- dirty close cannot remove the document or registry record;
+- clean close removes both view and lifecycle state;
+- virtual documents cannot report a false successful save.
 
-## Toolchain limitation
+## Toolchain requirement
 
-This generation environment does not contain `rustc`, Cargo, rustfmt, or Clippy and cannot resolve
-outbound toolchain downloads. It therefore does not claim compiler or native-runtime validation for
-the new M3.1d.1 code.
-
-Run the complete local gate before committing:
+The generation environment does not contain Rust tooling. Run the complete local quality gate:
 
 ```bash
 cargo fmt --all
+cargo check --workspace --all-targets
 ./scripts/validate.sh
 cargo run --release -p luna-ui-rust-editor-demo
-cargo run --release -p luna-ui-rust-proof-gallery
 ```
 
-## Runtime acceptance record
+## Runtime acceptance
 
 ```text
-File heading opens File dropdown:
-Edit heading opens Edit dropdown:
-Find heading opens Find dropdown:
-View heading opens View dropdown:
-Help heading opens Help dropdown:
-Palette open, then one File click replaces it with anchored dropdown:
-Ordinary menu click opens command palette unexpectedly:
-Ctrl+P opens searchable command palette:
-Menu runtime log reports `palette=false find=false`:
-Same-heading click closes dropdown:
-Cross-heading click/hover switches dropdown:
-Outside click dismisses dropdown:
-Disabled command activation attempts:
-Checked sidebar/theme state correct:
-Up/Down/Home/End navigation correct:
-Left/Right menu switching correct:
-Enter/Space activation correct:
-Escape dismissal correct:
-Menu and palette command-result parity:
-Text-layout misses while opening/navigating menus:
-Text-raster misses while opening/navigating menus:
-Editor idle frames after 10 seconds:
-Proof-gallery M3.1c regression:
-Accessibility heading/dropdown/command behavior:
+New File creates an empty clean Untitled-1 tab:
+Closing clean Untitled-1 succeeds:
+Creating another new file produces Untitled-2:
+Typing marks the active tab modified:
+Closing a dirty tab is blocked with Save/Discard/Cancel status:
+Control-S on an untitled document reports Save As required:
+Virtual demo documents do not report a successful filesystem save:
+Tabs and Open Documents sidebar activate the same stable document:
+File/Edit/Find/View/Help dropdown behavior remains correct:
+Control-P command palette behavior remains correct:
+M3.1b text-cache behavior remains correct:
+M3.1c proof-gallery behavior remains correct:
 ```
 
-Any formatting, compiler, strict-Clippy, test, rustdoc, painting, hit-test, keyboard, pointer,
-accessibility, command-routing, editor-cache, proof-gallery, or native-runtime regression blocks
-M3.2.
+Any compiler, strict-Clippy, test, rustdoc, lifecycle, menu, text-cache, accessibility, or native
+runtime regression blocks M3.2b.

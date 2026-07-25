@@ -11,6 +11,7 @@ publish.workspace = true
 [dependencies]
 luna-accessibility = { path = "../../crates/luna-accessibility" }
 luna-core = { path = "../../crates/luna-core" }
+luna-documents = { path = "../../crates/luna-documents" }
 luna-host-winit = { path = "../../crates/luna-host-winit" }
 luna-input = { path = "../../crates/luna-input" }
 luna-render = { path = "../../crates/luna-render" }

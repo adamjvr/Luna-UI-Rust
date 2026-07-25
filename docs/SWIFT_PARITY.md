@@ -4,25 +4,25 @@ This document records the functional relationship between Luna-UI-Rust and the o
 Luna UI implementation. It is a directional feature-inventory assessment, not a line-count or API
 percentage guarantee.
 
-## Current estimate after M3.1d
+## Current estimate after M3.2a
 
 ```text
 foundational architecture       70–80% parity
 core text/editing mechanics     65–75% parity
 reusable editor UI              45–55% parity
-file/workspace/pane integration 15–25% parity
-total Swift functional surface  approximately 50–55%
+file/workspace/pane integration 20–30% parity
+total Swift functional surface  approximately 52–57%
 ```
 
 Rust is no longer a framework skeleton. It has a native host, backend-neutral display lists, a CPU
 renderer, real text shaping, editable Unicode geometry, accessibility, reusable editor anatomy,
 typed invalidation, retained framebuffers, retained document layout/raster state, static gallery
-retention, conditional semantic translation, and functional first-level desktop dropdown menus.
-Swift remains broader and closer to a complete reusable editor platform.
+retention, conditional semantic translation, functional first-level desktop dropdown menus,
+and a product-neutral document lifecycle model. Swift remains broader and closer to a complete reusable editor platform.
 
 ## Capability matrix
 
-| Area | Luna-UI-Rust after M3.1d | Swift Luna UI | Relative state |
+| Area | Luna-UI-Rust after M3.2a | Swift Luna UI | Relative state |
 |---|---|---|---|
 | Core architecture | IDs, geometry, input, commands, layout, themes, rendering, accessibility, and host boundaries | Same broad spine with more downstream use | Near parity |
 | CPU rendering | Display lists, images, alpha composition, retained host/static layers, dirty-region restore | CPU framebuffer and proof-frame caching | Near parity |
@@ -35,8 +35,8 @@ Swift remains broader and closer to a complete reusable editor platform.
 | Menus | Functional first-level dropdowns, checked/disabled rows, shortcuts, pointer/keyboard navigation, and accessibility | First-level menus plus submenus and deeper command-state integration | Swift moderately ahead |
 | Context menus | Not yet implemented | Product-neutral context definitions and routing | Missing in Rust |
 | Completion popup | Not yet implemented | Anchored popup, details, keyboard/pointer activation, and result payloads | Missing in Rust |
-| Documents | In-memory demo documents, revisions, dirty state, and retained text caches | Shared document snapshots, independent views, and product-neutral adapters | Swift well ahead |
-| File lifecycle | Simulated save/new/close | Real UTF-8 open/save, untitled files, Save As, and dirty-close decisions | Missing in Rust |
+| Documents | Stable IDs, canonical file identity, duplicate prevention, untitled lifecycle, dirty/save/close decisions, external state, and retained text caches | Shared buffers, independent views, complete adapters, and product integration | Swift ahead |
+| File lifecycle | Lifecycle decisions and dirty-close protection; no byte I/O or dialogs yet | Real UTF-8 open/save, untitled files, Save As, and dirty-close services | Swift well ahead |
 | Native dialogs | Not yet implemented | Host-owned Open, Save As, and dirty-close service boundary | Missing in Rust |
 | Projects/workspaces | Demonstration sidebar rows | Workspace/project adapters and tree snapshots | Missing in Rust |
 | Split panes | Planned | Recursive pane trees, divider dragging, focus traversal, and pane-bound views | Missing in Rust |
@@ -63,6 +63,7 @@ LunaAccessibility    -> luna-accessibility
 native accessibility -> luna-accessibility-accesskit
 LunaHostCore         -> luna-host-core
 LunaHostSDL/Metal    -> luna-host-winit
+LunaDocuments        -> luna-documents
 LunaText             -> luna-text + luna-text-cosmic
 LunaUI               -> luna-ui
 ```
@@ -93,8 +94,8 @@ and skip unchanged accessibility translation.
 
 ## Where Swift remains ahead
 
-M3.1d closes the first-level dropdown gap, but Swift still implements nested submenus, context menus,
-completion popups, richer command availability, richer find/replace behavior, real document/file
+M3.2a closes the document-identity/lifecycle-model gap, but Swift still implements nested
+submenus, context menus, completion popups, richer command availability, richer find/replace behavior, real document/file
 lifecycle, host dialog seams, workspace/project adapters, recursive split panes, independent pane
 presentation state, pinned/overflow tabs, and direct paired Moth integration. It also has
 substantially broader phase-specific regression coverage.
@@ -108,12 +109,13 @@ scalability phases.
 ```text
 M3.1c -> complete incremental engine-performance groundwork
 M3.1d -> first-level desktop dropdown menus and command-surface separation
-M3.2  -> real documents, files, workspace adapters, and independent views
+M3.2a -> stable document identity, lifecycle decisions, and duplicate prevention
+M3.2b+ -> real file/dialog/workspace adapters and independent views
 M3.3  -> split panes, advanced tabs, nested menus, context menus, and completion
 M4    -> wgpu renderer
 M5    -> syntax spans, Sublime themes, undo/redo, multiple cursors, and IME
 M6    -> direct Moth integration and platform hardening
 ```
 
-The largest visible parity gain will still occur in M3.2 and M3.3. M3.1d improves visible editor
-behavior without pretending that first-level menus equal complete editor-product breadth.
+The largest visible parity gain will still occur in later M3.2 and M3.3 work. M3.2a supplies the
+correct lifecycle seam without pretending that a decision model equals real file and workspace I/O.
