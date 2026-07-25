@@ -4,14 +4,14 @@ This document records the functional relationship between Luna-UI-Rust and the o
 Luna UI implementation. It is a directional feature-inventory assessment, not a line-count or API
 percentage guarantee.
 
-## Current estimate after M3.2c
+## Current estimate after M3.2d
 
 ```text
-foundational architecture       72–82% parity
+foundational architecture       74–84% parity
 core text/editing mechanics     65–75% parity
-reusable editor UI              48–58% parity
-file/workspace/pane integration 30–40% parity
-total Swift functional surface  approximately 57–62%
+reusable editor UI              50–60% parity
+file/workspace/pane integration 38–48% parity
+total Swift functional surface  approximately 60–65%
 ```
 
 Rust is no longer a framework skeleton. It has a native host, backend-neutral display lists, a CPU
@@ -19,19 +19,19 @@ renderer, real text shaping, editable Unicode geometry, accessibility, reusable 
 typed invalidation, retained framebuffers, retained document layout/raster state, static gallery
 retention, conditional semantic translation, functional first-level desktop dropdown menus,
 a product-neutral document lifecycle model, real UTF-8 file operations, atomic optimistic saves,
-and native Linux dialog boundaries. Swift remains broader and closer to a complete reusable editor
-platform.
+native Linux dialog boundaries, and a real recursive workspace tree with stable refresh state.
+Swift remains broader and closer to a complete reusable editor platform.
 
 ## Capability matrix
 
-| Area | Luna-UI-Rust after M3.2c | Swift Luna UI | Relative state |
+| Area | Luna-UI-Rust after M3.2d | Swift Luna UI | Relative state |
 |---|---|---|---|
 | Core architecture | IDs, geometry, input, commands, layout, themes, rendering, accessibility, and host boundaries | Same broad spine with more downstream use | Near parity |
 | CPU rendering | Display lists, images, alpha composition, retained host/static layers, dirty-region restore | CPU framebuffer and proof-frame caching | Near parity |
 | Text shaping | cosmic-text fallback, bidi, grapheme and caret geometry | HarfBuzz/FreeType cluster geometry | Near parity |
 | Text caching | Retained per-document logical layout and overscanned raster bands | Exact shaped rows; visible-row virtualization remains an active scalability target | Rust ahead in scroll-time raster reuse |
 | Basic editing | Insertion, deletion, caret, selection, scrolling, hit testing, and editable semantics | Same foundation with deeper gesture/view integration | Mostly parity |
-| Editor shell | Menu-bar anatomy, tabs, sidebar, editor lane, and status bar | Richer shell interaction and workspace projection | Swift ahead |
+| Editor shell | Menu bar, tabs, real workspace sidebar, editor lane, and status bar | Richer shell interaction, pane ownership, and workspace operations | Swift ahead |
 | Command palette | Filtering, selection, activation, and accessibility | Unified command runtime, availability, and disabled-state behavior | Swift ahead |
 | Find/replace | Reusable panel geometry and state | Literal/regex search, options, replace-current, and replace-all | Swift well ahead |
 | Menus | Functional first-level dropdowns, checked/disabled rows, shortcuts, pointer/keyboard navigation, and accessibility | First-level menus plus submenus and deeper command-state integration | Swift moderately ahead |
@@ -40,7 +40,7 @@ platform.
 | Documents | Stable IDs, canonical identity, recent files, dirty/save/close decisions, storage snapshots, modified/replaced/missing/recreated delivery, and retained text caches | Shared buffers, independent views, complete adapters, and product integration | Swift ahead |
 | File lifecycle | Strict UTF-8 Open, Save, Save As, atomic replacement, duplicate activation, dirty-close resolution, and optimistic conflict handling | Real UTF-8 lifecycle with broader host/product integration | Swift moderately ahead |
 | Native dialogs | Product-neutral contract plus Zenity/KDialog Linux adapter and deterministic scripted adapter | Host-owned cross-platform Open, Save As, dirty-close, and product integration | Swift ahead in breadth/platform coverage |
-| Projects/workspaces | Demonstration sidebar rows | Workspace/project adapters and tree snapshots | Missing in Rust |
+| Projects/workspaces | Open Folder, recursive snapshots, stable IDs, expansion, refresh, error projection, and file activation | Deeper adapters, operations, persistence, and product integration | Swift ahead, core tree gap closed |
 | Split panes | Planned | Recursive pane trees, divider dragging, focus traversal, and pane-bound views | Missing in Rust |
 | Tab mechanics | Basic document tabs | Pinned tabs, overflow geometry, and active-tab visibility | Swift ahead |
 | Accessibility | Validated semantic trees and a concrete AccessKit bridge with fingerprinted update suppression | Broader semantic coverage because more widgets exist | Rust stronger bridge; Swift broader surface |
@@ -67,6 +67,7 @@ LunaHostCore         -> luna-host-core
 LunaHostSDL/Metal    -> luna-host-winit
 LunaDocuments        -> luna-documents
 file/dialog services  -> luna-document-services
+workspace trees       -> luna-workspaces
 LunaText             -> luna-text + luna-text-cosmic
 LunaUI               -> luna-ui
 ```
@@ -97,11 +98,11 @@ and skip unchanged accessibility translation.
 
 ## Where Swift remains ahead
 
-M3.2c closes much of the recent-file and external-change lifecycle gap, but Swift still implements nested
-submenus, context menus, completion popups, richer command availability, richer find/replace
-behavior, persistent recent files, native event watchers, workspace/project adapters, recursive
-split panes, independent pane presentation state, pinned/overflow tabs, and direct paired Moth
-integration. It also has
+M3.2d closes the basic workspace-tree gap, but Swift still implements nested submenus, context
+menus, completion popups, richer command availability, richer find/replace behavior, persistent
+recent/workspace sessions, native event watchers, workspace mutation operations, recursive split
+panes, independent pane presentation state, pinned/overflow tabs, and direct paired Moth integration.
+It also has
 substantially broader phase-specific regression coverage.
 
 ## Roadmap interpretation
@@ -116,13 +117,14 @@ M3.1d -> first-level desktop dropdown menus and command-surface separation
 M3.2a -> stable document identity, lifecycle decisions, and duplicate prevention
 M3.2b -> UTF-8 file services, atomic saves, native dialogs, and close/conflict resolution
 M3.2c -> recent files, storage snapshots, external-change delivery, and reload notices
-M3.2d+ -> workspace adapters, persistence, native watchers, and independent views
+M3.2d -> recursive workspace snapshots, Open Folder, expansion, refresh, and sidebar activation
+M3.2e -> workspace operations, persistence, native watchers, and independent views
 M3.3  -> split panes, advanced tabs, nested menus, context menus, and completion
 M4    -> wgpu renderer
 M5    -> syntax spans, Sublime themes, undo/redo, multiple cursors, and IME
 M6    -> direct Moth integration and platform hardening
 ```
 
-The largest visible parity gain will still occur in later M3.2 and M3.3 work. M3.2c now provides
-real file persistence and dialog behavior; workspace trees, native watcher backends, shared buffers, and
-panes remain the major application-integration gaps.
+The largest remaining visible parity gain will occur in M3.2e and M3.3. M3.2d now provides real
+file persistence, dialogs, and a recursive workspace tree; mutation operations, persistence, native
+watcher backends, shared buffers, and panes remain the major application-integration gaps.

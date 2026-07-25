@@ -18,8 +18,8 @@ M3.1a through M3.1d are complete and locally validated. File/Edit/Find/View/Help
 dropdowns, while Control-P opens the independent searchable command palette.
 
 M3.2a established product-neutral document identity and lifecycle decisions through
-`luna-documents`. M3.2b connected those decisions to real UTF-8 files and native dialogs. M3.2c adds
-recent-file state and continuous external-change delivery:
+`luna-documents`. M3.2b connected those decisions to real UTF-8 files and native dialogs. M3.2c added
+recent-file state and continuous external-change delivery. M3.2d adds real workspace trees:
 
 - synchronous, product-neutral `TextFileService` and `DocumentDialogService` boundaries;
 - strict UTF-8 loading with invalid-encoding errors rather than lossy replacement;
@@ -36,11 +36,19 @@ recent-file state and continuous external-change delivery:
 - revision-plus-instance storage snapshots that distinguish modified, replaced, missing, and
   recreated files;
 - 750 ms UI-thread observation with no redraw when storage is unchanged;
-- status/accessibility notices and explicit Reload from Disk behavior.
+- status/accessibility notices and explicit Reload from Disk behavior;
+- product-neutral `luna-workspaces` snapshots, stable node IDs, expansion, selection, and reveal;
+- Open Folder through Zenity/KDialog and scripted folder-dialog tests;
+- recursive sidebar rows sorted directories before files;
+- explicit hidden-entry, symlink, and maximum-depth policies;
+- permission/depth/error projection without discarding the complete tree;
+- one-second workspace refresh with unchanged-state frame suppression;
+- workspace-file activation through the existing duplicate-safe UTF-8 Open path.
 
-Workspace trees and independent shared-buffer views follow in M3.2d and M3.2e. See
+Filesystem mutations, persistent sessions, and independent shared-buffer views follow in M3.2e. See
 `docs/M3_2A_DOCUMENT_LIFECYCLE.md`, `docs/M3_2B_FILE_DIALOG_SERVICES.md`,
-`docs/M3_2C_RECENT_EXTERNAL_CHANGES.md`, and `docs/SWIFT_PARITY.md`.
+`docs/M3_2C_RECENT_EXTERNAL_CHANGES.md`, `docs/M3_2D_WORKSPACE_TREE.md`, and
+`docs/SWIFT_PARITY.md`.
 
 ## Build and validate
 
@@ -51,10 +59,10 @@ cargo fmt --all
 ./scripts/validate.sh
 ```
 
-M3.2c also includes a focused automated gate and runtime-fixture generator:
+M3.2d includes a focused automated gate and workspace runtime-fixture generator:
 
 ```bash
-./scripts/test-m3-2c.sh
+./scripts/test-m3-2d.sh
 ```
 
 Run the proof gallery in release mode:
@@ -90,6 +98,8 @@ Editor shortcuts:
 - **Control-F** — find panel;
 - **Control-H** — find/replace panel;
 - **Control-O** — open a UTF-8 text file through a native file chooser;
+- **Control-Shift-O** — open a directory as the workspace;
+- **Control-Shift-R** — refresh the current workspace;
 - **Control-S** — save to the current file or open Save As for untitled/virtual content;
 - **Control-Shift-S** — Save As to a new destination;
 - **Control-N** — create a new document;
@@ -98,7 +108,7 @@ Editor shortcuts:
 - **Control-A** — select all editor text;
 - **Escape** — close the active menu/overlay, or exit when none is open.
 
-M3.2c document behavior:
+M3.2d document and workspace behavior:
 
 - New File creates an empty, clean, monotonically named Untitled document;
 - Open loads strict UTF-8 text and activates an existing tab when the canonical file is already open;
@@ -111,7 +121,13 @@ M3.2c document behavior:
 - successful Open/Save/Save As updates an eight-entry in-memory recent-file list;
 - external in-place edits, replacements, deletion, and recreation are distinguished;
 - unchanged observations produce no redraw;
-- Reload from Disk explicitly adopts observed content and clears external state.
+- Reload from Disk explicitly adopts observed content and clears external state;
+- Open Folder replaces the current workspace tree without closing open documents;
+- directories appear before files, hidden entries stay excluded, and symlinks remain non-followed;
+- folder expansion and selection survive meaningful rescans when their paths still exist;
+- workspace file activation reuses duplicate-safe UTF-8 Open behavior;
+- external create, rename, and delete operations appear after the next workspace refresh;
+- Close Workspace restores the Open Documents sidebar fallback.
 
 The editor must preserve M3.1b performance behavior: no idle frames, no reshaping for caret,
 selection, focus, or menu changes, overscanned raster reuse during ordinary scrolling, and bounded
@@ -137,6 +153,7 @@ native event / AccessKit action / scheduled logical update
     -> product-neutral document registry and lifecycle decision
     -> UTF-8 file/dialog service + storage observation boundary
     -> MRU recent-file projection + external-state transition
+    -> workspace scan snapshot + expansion/selection reconciliation
     -> platform-neutral Luna application state
     -> retained text/layout/chrome or retained static scene
     -> dynamic display list + shared validated semantic snapshot
@@ -149,7 +166,8 @@ Moth-specific product policy. See `docs/ARCHITECTURE.md`, `docs/PORTING_MAP.md`,
 `docs/M3_1A_HOST_PIPELINE.md`, `docs/M3_1B_TEXT_CACHE.md`,
 `docs/M3_1C_GALLERY_ACCESSIBILITY.md`, `docs/M3_1D_DROPDOWN_MENUS.md`,
 `docs/M3_2A_DOCUMENT_LIFECYCLE.md`, `docs/M3_2B_FILE_DIALOG_SERVICES.md`,
-`docs/M3_2C_RECENT_EXTERNAL_CHANGES.md`, and `docs/SWIFT_PARITY.md`.
+`docs/M3_2C_RECENT_EXTERNAL_CHANGES.md`, `docs/M3_2D_WORKSPACE_TREE.md`, and
+`docs/SWIFT_PARITY.md`.
 
 ## License
 

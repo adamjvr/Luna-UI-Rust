@@ -1,18 +1,19 @@
 // SPDX-License-Identifier: MPL-2.0
 
-//! Native M3.2c editor integration harness for Luna UI Rust.
+//! Native M3.2d editor integration harness for Luna UI Rust.
 //!
 //! This application mirrors the purpose of Swift LunaUITestApp's default editor mode: reusable
 //! shell anatomy and editor text are exercised together without embedding Moth Text product
 //! policy in Luna. It provides menus, tabs, a project sidebar, status chrome, editable text,
 //! real dropdown menus, a separate command palette, find panel, document lifecycle tracking,
 //! UTF-8 open/save services, native dialog boundaries, accessibility,
-//! retained document layouts, recent-file projection, UI-thread external observation,
-//! overscanned glyph rasters, and stable-slot chrome-label caching.
+//! retained document layouts, recent-file projection, UI-thread external observation, real
+//! workspace trees, overscanned glyph rasters, and stable-slot chrome-label caching.
 //!
 //! Shortcuts: Control-P command palette, Control-O open, Control-F find, Control-H replace,
-//! Control-S save, Control-Shift-S Save As, Control-N new document, Control-B sidebar, Control-W
-//! close tab, Control-A select all, and Escape
+//! Control-S save, Control-Shift-S Save As, Control-Shift-O Open Folder, Control-Shift-R refresh
+//! workspace, Control-N new document, Control-B sidebar, Control-W close tab, Control-A select all,
+//! and Escape
 //! closes the active menu/overlay or exits when no transient surface is open.
 
 use luna_accessibility::{AccessibilityNode, AccessibilityRole};
@@ -45,6 +46,10 @@ use luna_ui::{
     MenuCommand, MenuDefinition, MenuItem, PaletteItem, ShellMenu, ShellTab, SidebarItem,
     TextAlignment, TextLabel, TextLabelCache, TextView, TextViewStyle, UiFrame, Widget,
 };
+use luna_workspaces::{
+    StdWorkspaceService, WorkspaceModel, WorkspaceNodeKind, WorkspaceNodeStatus,
+    WorkspaceScanOptions, WorkspaceService,
+};
 use std::collections::HashMap;
 use std::error::Error;
 use std::ops::Range;
@@ -58,11 +63,12 @@ const PALETTE_ID: &str = "m3-editor-palette";
 const FIND_ID: &str = "m3-editor-find";
 const MENU_ID: &str = "m3-editor-dropdown-menu";
 const EXTERNAL_POLL_INTERVAL: Duration = Duration::from_millis(750);
+const WORKSPACE_REFRESH_INTERVAL: Duration = Duration::from_millis(1_000);
 const RECENT_FILE_LIMIT: usize = 8;
 
 const README_TEXT: &str = concat!(
     "# Luna UI Rust\n\n",
-    "M3.2c adds recent files and external-change observation.\n\n",
+    "M3.2d adds real workspace and project-tree runtime.\n\n",
     "- Deterministic shell geometry\n",
     "- Revision-keyed document shaping\n",
     "- Viewport-band glyph rasterization\n",
@@ -72,7 +78,9 @@ const README_TEXT: &str = concat!(
     "- Explicit save and close requirements\n",
     "- Real Open, Save, Save As, and dirty-close resolution\n",
     "- Atomic writes with optimistic conflict checks\n",
-    "- Shared accessibility geometry\n\n",
+    "- Shared accessibility geometry\n",
+    "- Open Folder and recursive workspace sidebar rows\n",
+    "- Stable expansion and refresh state\n\n",
     "Click File/Edit/Find/View/Help, or press Control-P for the palette.\n",
 );
 const EDITOR_TEXT: &str = concat!(
@@ -141,6 +149,9 @@ struct EditorDemoApplication {
     document_registry: DocumentRegistry,
     file_service: Box<dyn TextFileService>,
     dialog_service: Box<dyn DocumentDialogService>,
+    workspace_service: Box<dyn WorkspaceService>,
+    workspace: Option<WorkspaceModel>,
+    workspace_options: WorkspaceScanOptions,
     recent_files: RecentFileList,
     documents: Vec<DemoDocument>,
     active_index: usize,
@@ -161,6 +172,7 @@ struct EditorDemoApplication {
     reveal_caret_on_next_frame: bool,
     lifecycle_notice: Option<String>,
     observation_elapsed: Duration,
+    workspace_refresh_elapsed: Duration,
     frame_build_count: u64,
 }
 
@@ -176,6 +188,14 @@ impl EditorDemoApplication {
         file_service: Box<dyn TextFileService>,
         dialog_service: Box<dyn DocumentDialogService>,
     ) -> Result<Self, ApplicationError> {
+        Self::with_all_services(file_service, dialog_service, Box::new(StdWorkspaceService))
+    }
+
+    fn with_all_services(
+        file_service: Box<dyn TextFileService>,
+        dialog_service: Box<dyn DocumentDialogService>,
+        workspace_service: Box<dyn WorkspaceService>,
+    ) -> Result<Self, ApplicationError> {
         let mut document_registry = DocumentRegistry::new();
         let readme_id = document_registry.register_virtual("readme", "README.md", 0)?;
         let editor_id = document_registry.register_virtual("editor", "EditorSurface.rs", 0)?;
@@ -190,6 +210,9 @@ impl EditorDemoApplication {
             document_registry,
             file_service,
             dialog_service,
+            workspace_service,
+            workspace: None,
+            workspace_options: WorkspaceScanOptions::default(),
             recent_files: RecentFileList::new(RECENT_FILE_LIMIT),
             documents: vec![
                 DemoDocument::new(readme_id, README_TEXT),
@@ -214,6 +237,7 @@ impl EditorDemoApplication {
             reveal_caret_on_next_frame: true,
             lifecycle_notice: None,
             observation_elapsed: Duration::ZERO,
+            workspace_refresh_elapsed: Duration::ZERO,
             frame_build_count: 0,
         })
     }
@@ -249,7 +273,22 @@ impl EditorDemoApplication {
         let mut file_items = vec![
             MenuItem::command(MenuCommand::new("new-file", "New File", "Ctrl+N")),
             MenuItem::command(MenuCommand::new("open", "Open…", "Ctrl+O")),
+            MenuItem::command(MenuCommand::new(
+                "open-folder",
+                "Open Folder…",
+                "Ctrl+Shift+O",
+            )),
         ];
+        if self.workspace.is_some() {
+            file_items.extend([
+                MenuItem::command(MenuCommand::new(
+                    "refresh-workspace",
+                    "Refresh Workspace",
+                    "Ctrl+Shift+R",
+                )),
+                MenuItem::command(MenuCommand::new("close-workspace", "Close Workspace", "")),
+            ]);
+        }
         if !self.recent_files.entries().is_empty() {
             file_items.push(MenuItem::Separator);
             file_items.extend(self.recent_files.entries().iter().enumerate().map(
@@ -375,18 +414,63 @@ impl EditorDemoApplication {
             .collect()
     }
 
-    fn shell_state(&self) -> EditorShellState {
-        let active = self.active_document();
-        let active_title = active.title(&self.document_registry);
-        let menu_definitions = self.menu_definitions();
-        let mut sidebar_items = vec![SidebarItem::folder("workspace", "Open Documents", 0, true)];
-        sidebar_items.extend(self.documents.iter().map(|document| {
+    fn sidebar_items(&self) -> Vec<SidebarItem> {
+        if let Some(workspace) = &self.workspace {
+            return workspace
+                .visible_rows()
+                .into_iter()
+                .map(|row| {
+                    let title = match &row.status {
+                        WorkspaceNodeStatus::Available => match row.kind {
+                            WorkspaceNodeKind::Symlink => format!("{} ↗", row.title),
+                            WorkspaceNodeKind::Directory | WorkspaceNodeKind::File => row.title,
+                        },
+                        WorkspaceNodeStatus::PermissionDenied => {
+                            format!("{} (permission denied)", row.title)
+                        }
+                        WorkspaceNodeStatus::DepthLimit => {
+                            format!("{} (depth limit)", row.title)
+                        }
+                        WorkspaceNodeStatus::Unreadable(_) => {
+                            format!("{} (unreadable)", row.title)
+                        }
+                    };
+                    match row.kind {
+                        WorkspaceNodeKind::Directory => SidebarItem::folder(
+                            row.id.stable_key(),
+                            title,
+                            row.depth,
+                            row.is_expanded,
+                        ),
+                        WorkspaceNodeKind::File | WorkspaceNodeKind::Symlink => {
+                            SidebarItem::file(row.id.stable_key(), title, row.depth)
+                        }
+                    }
+                })
+                .collect();
+        }
+
+        let mut items = vec![SidebarItem::folder(
+            "open-documents",
+            "Open Documents",
+            0,
+            true,
+        )];
+        items.extend(self.documents.iter().map(|document| {
             SidebarItem::file(
                 document.stable_key(),
                 document.title(&self.document_registry),
                 1,
             )
         }));
+        items
+    }
+
+    fn shell_state(&self) -> EditorShellState {
+        let active = self.active_document();
+        let active_title = active.title(&self.document_registry);
+        let menu_definitions = self.menu_definitions();
+        let sidebar_items = self.sidebar_items();
         let status_left = self.active_external_notice().map_or_else(
             || {
                 self.lifecycle_notice.as_ref().map_or_else(
@@ -798,6 +882,18 @@ impl EditorDemoApplication {
                 self.open_file();
                 InvalidationClass::WidgetLayout
             }
+            "open-folder" => {
+                self.open_workspace();
+                InvalidationClass::WidgetLayout
+            }
+            "refresh-workspace" => {
+                let _ = self.refresh_workspace(true);
+                InvalidationClass::WidgetLayout
+            }
+            "close-workspace" => {
+                self.close_workspace();
+                InvalidationClass::WidgetLayout
+            }
             "save" => {
                 let _ = self.save_active();
                 InvalidationClass::WidgetLayout
@@ -873,12 +969,194 @@ impl EditorDemoApplication {
             scroll: TextScroll::default(),
         });
         self.active_index = self.documents.len().saturating_sub(1);
-        self.selected_sidebar_id = Some(id.stable_key());
+        self.select_active_in_sidebar();
         self.lifecycle_notice = Some(format!(
             "Created {}; Save will open a destination dialog",
             self.active_document().title(&self.document_registry)
         ));
         self.reveal_caret_on_next_frame = true;
+    }
+
+    fn workspace_selection_for_document(&self, id: DocumentId) -> Option<String> {
+        let workspace = self.workspace.as_ref()?;
+        let record = self.document_registry.get(id)?;
+        let DocumentSource::File(identity) = record.source() else {
+            return None;
+        };
+        workspace
+            .snapshot()
+            .node_for_path(identity.path())
+            .map(|node| node.id().stable_key().to_owned())
+    }
+
+    fn select_active_in_sidebar(&mut self) {
+        let active_id = self.active_document().id;
+        self.selected_sidebar_id = self
+            .workspace_selection_for_document(active_id)
+            .or_else(|| self.workspace.is_none().then(|| active_id.stable_key()));
+        if let Some(workspace) = self.workspace.as_mut() {
+            let selected = self
+                .selected_sidebar_id
+                .as_deref()
+                .and_then(|key| workspace.snapshot().node_for_stable_key(key))
+                .map(|node| node.id().clone());
+            if let Some(selected) = selected {
+                let _ = workspace.reveal(&selected);
+            } else {
+                let _ = workspace.select(None);
+            }
+        }
+    }
+
+    fn open_workspace(&mut self) {
+        let selected = match self.dialog_service.choose_open_folder() {
+            Ok(Some(path)) => path,
+            Ok(None) => {
+                self.lifecycle_notice = Some("Open Folder canceled".to_owned());
+                return;
+            }
+            Err(error) => {
+                self.lifecycle_notice = Some(format!("Open Folder dialog unavailable: {error}"));
+                return;
+            }
+        };
+        match self
+            .workspace_service
+            .scan(&selected, self.workspace_options)
+        {
+            Ok(snapshot) => {
+                let root_title = snapshot.root().file_name().map_or_else(
+                    || snapshot.root().display().to_string(),
+                    |name| name.to_string_lossy().into_owned(),
+                );
+                let root_id = snapshot.root_id().clone();
+                let root_key = root_id.stable_key().to_owned();
+                let mut workspace = WorkspaceModel::new(snapshot);
+                let _ = workspace.select(Some(root_id));
+                self.workspace = Some(workspace);
+                self.sidebar_is_visible = true;
+                self.selected_sidebar_id = Some(root_key);
+                self.lifecycle_notice = Some(format!("Opened workspace {root_title}"));
+                self.workspace_refresh_elapsed = Duration::ZERO;
+            }
+            Err(error) => {
+                self.lifecycle_notice = Some(format!("Open Folder failed: {error}"));
+            }
+        }
+    }
+
+    fn close_workspace(&mut self) {
+        if self.workspace.take().is_some() {
+            self.select_active_in_sidebar();
+            self.lifecycle_notice = Some("Workspace closed".to_owned());
+        }
+    }
+
+    fn refresh_workspace(&mut self, announce_unchanged: bool) -> bool {
+        let Some(root) = self
+            .workspace
+            .as_ref()
+            .map(|workspace| workspace.snapshot().root().to_path_buf())
+        else {
+            if announce_unchanged {
+                self.lifecycle_notice = Some("No workspace is open".to_owned());
+            }
+            return false;
+        };
+        let snapshot = match self.workspace_service.scan(&root, self.workspace_options) {
+            Ok(snapshot) => snapshot,
+            Err(error) => {
+                let notice = format!("Workspace refresh failed: {error}");
+                let changed = self.lifecycle_notice.as_deref() != Some(notice.as_str());
+                self.lifecycle_notice = Some(notice);
+                return changed;
+            }
+        };
+        let changed = self
+            .workspace
+            .as_mut()
+            .is_some_and(|workspace| workspace.refresh(snapshot));
+        if changed {
+            self.selected_sidebar_id = self
+                .workspace
+                .as_ref()
+                .and_then(|workspace| workspace.selected())
+                .map(|id| id.stable_key().to_owned());
+            if self.selected_sidebar_id.is_none() {
+                self.select_active_in_sidebar();
+            }
+            if announce_unchanged {
+                self.lifecycle_notice = Some("Workspace refreshed".to_owned());
+            }
+        } else if announce_unchanged {
+            self.lifecycle_notice = Some("Workspace is already up to date".to_owned());
+        }
+        changed || announce_unchanged
+    }
+
+    fn focus_sidebar_item(&mut self, id: &str) {
+        let workspace_node = self.workspace.as_ref().and_then(|workspace| {
+            workspace
+                .snapshot()
+                .node_for_stable_key(id)
+                .map(|node| node.id().clone())
+        });
+        if let Some(node_id) = workspace_node {
+            if let Some(workspace) = self.workspace.as_mut() {
+                let _ = workspace.select(Some(node_id.clone()));
+            }
+            self.selected_sidebar_id = Some(node_id.stable_key().to_owned());
+        } else {
+            self.activate_document(id);
+        }
+    }
+
+    fn handle_sidebar_activation(&mut self, id: &str) {
+        let workspace_target = self.workspace.as_ref().and_then(|workspace| {
+            workspace.snapshot().node_for_stable_key(id).map(|node| {
+                (
+                    node.id().clone(),
+                    node.kind(),
+                    node.path().to_path_buf(),
+                    node.status().clone(),
+                )
+            })
+        });
+        let Some((node_id, kind, path, status)) = workspace_target else {
+            self.activate_document(id);
+            return;
+        };
+        if let Some(workspace) = self.workspace.as_mut() {
+            let _ = workspace.select(Some(node_id.clone()));
+        }
+        self.selected_sidebar_id = Some(node_id.stable_key().to_owned());
+        match (kind, status) {
+            (WorkspaceNodeKind::Directory, WorkspaceNodeStatus::Available) => {
+                if let Some(workspace) = self.workspace.as_mut() {
+                    let _ = workspace.toggle_expanded(&node_id);
+                }
+                self.lifecycle_notice = None;
+            }
+            (WorkspaceNodeKind::File, WorkspaceNodeStatus::Available) => self.open_path(&path),
+            (WorkspaceNodeKind::Symlink, _) => {
+                self.lifecycle_notice = Some(format!(
+                    "Symbolic links are shown but not followed: {}",
+                    path.display()
+                ));
+            }
+            (_, WorkspaceNodeStatus::PermissionDenied) => {
+                self.lifecycle_notice = Some(format!("Permission denied: {}", path.display()));
+            }
+            (_, WorkspaceNodeStatus::DepthLimit) => {
+                self.lifecycle_notice = Some(format!(
+                    "Workspace depth limit reached at {}",
+                    path.display()
+                ));
+            }
+            (_, WorkspaceNodeStatus::Unreadable(message)) => {
+                self.lifecycle_notice = Some(format!("Cannot read {}: {message}", path.display()));
+            }
+        }
     }
 
     fn open_file(&mut self) {
@@ -940,7 +1218,7 @@ impl EditorDemoApplication {
                     scroll: TextScroll::default(),
                 });
                 self.active_index = self.documents.len().saturating_sub(1);
-                self.selected_sidebar_id = Some(id.stable_key());
+                self.select_active_in_sidebar();
                 self.lifecycle_notice = Some(format!("Opened {title}"));
                 self.reveal_caret_on_next_frame = true;
             }
@@ -1065,6 +1343,8 @@ impl EditorDemoApplication {
         }
         self.recent_files
             .record(written.identity().clone(), title.clone());
+        let _ = self.refresh_workspace(false);
+        self.select_active_in_sidebar();
         self.lifecycle_notice = Some(format!("Saved {title}"));
         true
     }
@@ -1091,6 +1371,8 @@ impl EditorDemoApplication {
         let title = file_title(written.identity());
         self.recent_files
             .record(written.identity().clone(), title.clone());
+        let _ = self.refresh_workspace(false);
+        self.select_active_in_sidebar();
         self.lifecycle_notice = Some(format!("Saved {title}"));
         Ok(())
     }
@@ -1292,7 +1574,7 @@ impl EditorDemoApplication {
         self.active_index = self
             .active_index
             .min(self.documents.len().saturating_sub(1));
-        self.selected_sidebar_id = Some(self.active_document().stable_key());
+        self.select_active_in_sidebar();
         self.lifecycle_notice = None;
         self.reveal_caret_on_next_frame = true;
     }
@@ -1309,7 +1591,7 @@ impl EditorDemoApplication {
             .position(|document| document.stable_key() == id)
         {
             self.active_index = index;
-            self.selected_sidebar_id = Some(id.to_owned());
+            self.select_active_in_sidebar();
             self.lifecycle_notice = None;
             self.reveal_caret_on_next_frame = true;
             self.text_is_focused =
@@ -1695,10 +1977,15 @@ impl EditorDemoApplication {
                 13.0,
             )?;
         }
+        let sidebar_header = if self.workspace.is_some() {
+            "WORKSPACE"
+        } else {
+            "OPEN DOCUMENTS"
+        };
         self.append_label(
             display_list,
             "m3-editor-sidebar-header-label",
-            "PROJECT",
+            sidebar_header,
             shell
                 .layout()
                 .sidebar_header
@@ -2052,20 +2339,26 @@ impl NativeApplication for EditorDemoApplication {
     }
 
     fn frame_interval(&self) -> Option<Duration> {
-        Some(EXTERNAL_POLL_INTERVAL)
+        Some(Duration::from_millis(250))
     }
 
     fn update(&mut self, elapsed: Duration) -> HostControl {
         self.observation_elapsed = self.observation_elapsed.saturating_add(elapsed);
-        if self.observation_elapsed < EXTERNAL_POLL_INTERVAL {
-            return HostControl::Continue;
+        self.workspace_refresh_elapsed = self.workspace_refresh_elapsed.saturating_add(elapsed);
+        let mut invalidation = None;
+        if self.observation_elapsed >= EXTERNAL_POLL_INTERVAL {
+            self.observation_elapsed = Duration::ZERO;
+            if self.poll_external_changes() {
+                invalidation = Some(InvalidationClass::TextOverlay);
+            }
         }
-        self.observation_elapsed = Duration::ZERO;
-        if self.poll_external_changes() {
-            HostControl::Invalidate(InvalidationClass::TextOverlay)
-        } else {
-            HostControl::Continue
+        if self.workspace_refresh_elapsed >= WORKSPACE_REFRESH_INTERVAL {
+            self.workspace_refresh_elapsed = Duration::ZERO;
+            if self.refresh_workspace(false) {
+                invalidation = Some(InvalidationClass::WidgetLayout);
+            }
         }
+        invalidation.map_or(HostControl::Continue, HostControl::Invalidate)
     }
 
     fn handle_input(&mut self, event: InputEvent) -> HostControl {
@@ -2131,6 +2424,18 @@ impl NativeApplication for EditorDemoApplication {
                                 && keyboard.modifiers.contains(Modifiers::SHIFT) =>
                         {
                             Some("save-as")
+                        }
+                        Key::Character(value)
+                            if value.eq_ignore_ascii_case("o")
+                                && keyboard.modifiers.contains(Modifiers::SHIFT) =>
+                        {
+                            Some("open-folder")
+                        }
+                        Key::Character(value)
+                            if value.eq_ignore_ascii_case("r")
+                                && keyboard.modifiers.contains(Modifiers::SHIFT) =>
+                        {
+                            Some("refresh-workspace")
                         }
                         Key::Character(value) if value.eq_ignore_ascii_case("s") => Some("save"),
                         Key::Character(value) if value.eq_ignore_ascii_case("o") => Some("open"),
@@ -2277,7 +2582,7 @@ impl NativeApplication for EditorDemoApplication {
                                 return HostControl::Invalidate(InvalidationClass::WidgetLayout);
                             }
                             Some(EditorShellHit::SidebarItem(id)) => {
-                                self.activate_document(&id);
+                                self.handle_sidebar_activation(&id);
                                 return HostControl::Invalidate(InvalidationClass::WidgetLayout);
                             }
                             Some(EditorShellHit::Menu(_)) => {}
@@ -2430,8 +2735,16 @@ impl NativeApplication for EditorDemoApplication {
                 {
                     return self.open_menu(&menu_id);
                 }
-                Some(EditorShellHit::Tab(id) | EditorShellHit::SidebarItem(id)) => {
+                Some(EditorShellHit::Tab(id)) => {
                     self.activate_document(&id);
+                    return HostControl::Invalidate(InvalidationClass::Accessibility);
+                }
+                Some(EditorShellHit::SidebarItem(id)) => {
+                    if request.kind == AccessibilityActionKind::Click {
+                        self.handle_sidebar_activation(&id);
+                    } else {
+                        self.focus_sidebar_item(&id);
+                    }
                     return HostControl::Invalidate(InvalidationClass::Accessibility);
                 }
                 Some(EditorShellHit::CloseTab(id))
@@ -2472,8 +2785,9 @@ mod tests {
         TextFileService,
     };
     use luna_documents::{DocumentRecord, DocumentSource, ExternalState};
-    use luna_host_winit::NativeApplication;
+    use luna_host_winit::{AccessibilityActionKind, AccessibilityActionRequest, NativeApplication};
     use luna_input::{InputEvent, Modifiers, PointerButton, PointerEvent, PointerEventKind};
+    use luna_workspaces::{MemoryWorkspaceService, WorkspaceNodeKind};
     use std::error::Error;
     use std::path::{Path, PathBuf};
 
@@ -2492,6 +2806,24 @@ mod tests {
         dialogs: &ScriptedDialogService,
     ) -> TestResult<EditorDemoApplication> {
         EditorDemoApplication::with_services(Box::new(files.clone()), Box::new(dialogs.clone()))
+    }
+
+    fn test_workspace_service() -> TestResult<MemoryWorkspaceService> {
+        Ok(MemoryWorkspaceService::new(PathBuf::from(
+            "/luna-editor-tests",
+        ))?)
+    }
+
+    fn test_application_with_workspace(
+        files: &MemoryTextFileService,
+        dialogs: &ScriptedDialogService,
+        workspace: &MemoryWorkspaceService,
+    ) -> TestResult<EditorDemoApplication> {
+        EditorDemoApplication::with_all_services(
+            Box::new(files.clone()),
+            Box::new(dialogs.clone()),
+            Box::new(workspace.clone()),
+        )
     }
 
     #[test]
@@ -3100,6 +3432,7 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert!(enabled_ids.contains(&"open"));
+        assert!(enabled_ids.contains(&"open-folder"));
         assert!(enabled_ids.contains(&"save"));
         assert!(enabled_ids.contains(&"save-as"));
         Ok(())
@@ -3132,6 +3465,298 @@ mod tests {
             loaded.identity().path(),
             Path::new("/luna-editor-tests/relative.txt")
         );
+        Ok(())
+    }
+    #[test]
+    fn open_folder_projects_real_workspace_rows() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let workspace = test_workspace_service()?;
+        workspace.insert_file(Path::new("src/main.rs"))?;
+        files.insert_utf8(Path::new("src/main.rs"), "fn main() {}\n")?;
+        dialogs.push_open_folder(Some(PathBuf::from("/luna-editor-tests")));
+        let mut application = test_application_with_workspace(&files, &dialogs, &workspace)?;
+
+        let _ = application.execute_command("open-folder");
+
+        let model = application
+            .workspace
+            .as_ref()
+            .ok_or_else(|| std::io::Error::other("workspace was not opened"))?;
+        assert_eq!(model.snapshot().root(), Path::new("/luna-editor-tests"));
+        let rows = application.sidebar_items();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].title, "luna-editor-tests");
+        assert_eq!(rows[1].title, "src");
+        assert!(application.sidebar_is_visible);
+        Ok(())
+    }
+
+    #[test]
+    fn folder_activation_expands_and_file_activation_opens_document() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let workspace = test_workspace_service()?;
+        workspace.insert_file(Path::new("src/main.rs"))?;
+        files.insert_utf8(Path::new("src/main.rs"), "fn main() {}\n")?;
+        dialogs.push_open_folder(Some(PathBuf::from("/luna-editor-tests")));
+        let mut application = test_application_with_workspace(&files, &dialogs, &workspace)?;
+        application.open_workspace();
+
+        let source_id = application
+            .workspace
+            .as_ref()
+            .and_then(|model| {
+                model
+                    .snapshot()
+                    .node_for_path(Path::new("/luna-editor-tests/src"))
+            })
+            .ok_or_else(|| std::io::Error::other("source directory missing"))?
+            .id()
+            .stable_key()
+            .to_owned();
+        application.handle_sidebar_activation(&source_id);
+        assert_eq!(application.sidebar_items().len(), 3);
+
+        let file_id = application
+            .workspace
+            .as_ref()
+            .and_then(|model| {
+                model
+                    .snapshot()
+                    .node_for_path(Path::new("/luna-editor-tests/src/main.rs"))
+            })
+            .ok_or_else(|| std::io::Error::other("workspace file missing"))?
+            .id()
+            .stable_key()
+            .to_owned();
+        application.handle_sidebar_activation(&file_id);
+
+        assert_eq!(
+            application
+                .active_document()
+                .title(&application.document_registry),
+            "main.rs"
+        );
+        assert_eq!(
+            application.selected_sidebar_id.as_deref(),
+            Some(file_id.as_str())
+        );
+        assert_eq!(application.documents.len(), 4);
+        Ok(())
+    }
+
+    #[test]
+    fn accessibility_focus_selects_workspace_row_without_activating_it() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let workspace = test_workspace_service()?;
+        workspace.insert_file(Path::new("src/main.rs"))?;
+        files.insert_utf8(Path::new("src/main.rs"), "fn main() {}\n")?;
+        dialogs.push_open_folder(Some(PathBuf::from("/luna-editor-tests")));
+        let mut application = test_application_with_workspace(&files, &dialogs, &workspace)?;
+        application.open_workspace();
+        let source_node_id = application
+            .workspace
+            .as_ref()
+            .and_then(|model| {
+                model
+                    .snapshot()
+                    .node_for_path(Path::new("/luna-editor-tests/src"))
+            })
+            .ok_or_else(|| std::io::Error::other("source directory missing"))?
+            .id()
+            .clone();
+        let source_key = source_node_id.stable_key().to_owned();
+        let shell = application.create_shell()?;
+        let source_frame = shell
+            .layout()
+            .sidebar_rows
+            .iter()
+            .find(|frame| frame.id == source_key)
+            .ok_or_else(|| std::io::Error::other("source sidebar row missing"))?;
+        let document_count = application.documents.len();
+
+        let _ = application.handle_accessibility_action(AccessibilityActionRequest {
+            target: Some(source_frame.node_id.clone()),
+            kind: AccessibilityActionKind::Focus,
+        });
+
+        assert_eq!(application.documents.len(), document_count);
+        assert_eq!(
+            application.selected_sidebar_id.as_deref(),
+            Some(source_key.as_str())
+        );
+        assert!(
+            application
+                .workspace
+                .as_ref()
+                .is_some_and(|model| !model.is_expanded(&source_node_id))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn workspace_refresh_preserves_expansion_and_adds_rows() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let workspace = test_workspace_service()?;
+        workspace.insert_file(Path::new("src/main.rs"))?;
+        files.insert_utf8(Path::new("src/main.rs"), "fn main() {}\n")?;
+        dialogs.push_open_folder(Some(PathBuf::from("/luna-editor-tests")));
+        let mut application = test_application_with_workspace(&files, &dialogs, &workspace)?;
+        application.open_workspace();
+        let source_id = application
+            .workspace
+            .as_ref()
+            .and_then(|model| {
+                model
+                    .snapshot()
+                    .node_for_path(Path::new("/luna-editor-tests/src"))
+            })
+            .ok_or_else(|| std::io::Error::other("source directory missing"))?
+            .id()
+            .stable_key()
+            .to_owned();
+        application.handle_sidebar_activation(&source_id);
+        workspace.insert_file(Path::new("src/lib.rs"))?;
+        files.insert_utf8(Path::new("src/lib.rs"), "pub fn demo() {}\n")?;
+
+        assert!(application.refresh_workspace(false));
+
+        let rows = application.sidebar_items();
+        assert!(rows.iter().any(|row| row.title == "lib.rs"));
+        assert!(rows.iter().any(|row| row.title == "main.rs"));
+        assert!(
+            rows.iter()
+                .any(|row| row.id == source_id && row.is_expanded)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn opening_workspace_file_twice_activates_existing_tab() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let workspace = test_workspace_service()?;
+        workspace.insert_file(Path::new("README.md"))?;
+        files.insert_utf8(Path::new("README.md"), "# Workspace\n")?;
+        dialogs.push_open_folder(Some(PathBuf::from("/luna-editor-tests")));
+        let mut application = test_application_with_workspace(&files, &dialogs, &workspace)?;
+        application.open_workspace();
+        let file_key = application
+            .workspace
+            .as_ref()
+            .and_then(|model| {
+                model
+                    .snapshot()
+                    .node_for_path(Path::new("/luna-editor-tests/README.md"))
+            })
+            .ok_or_else(|| std::io::Error::other("README row missing"))?
+            .id()
+            .stable_key()
+            .to_owned();
+
+        application.handle_sidebar_activation(&file_key);
+        let count = application.documents.len();
+        application.handle_sidebar_activation(&file_key);
+
+        assert_eq!(application.documents.len(), count);
+        assert_eq!(
+            application
+                .active_document()
+                .title(&application.document_registry),
+            "README.md"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn symlink_rows_are_visible_but_not_opened() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let workspace = test_workspace_service()?;
+        workspace.insert_symlink(Path::new("linked"))?;
+        dialogs.push_open_folder(Some(PathBuf::from("/luna-editor-tests")));
+        let mut application = test_application_with_workspace(&files, &dialogs, &workspace)?;
+        application.open_workspace();
+        let link = application
+            .workspace
+            .as_ref()
+            .and_then(|model| {
+                model
+                    .snapshot()
+                    .node_for_path(Path::new("/luna-editor-tests/linked"))
+            })
+            .ok_or_else(|| std::io::Error::other("symlink row missing"))?;
+        assert_eq!(link.kind(), WorkspaceNodeKind::Symlink);
+        let link_key = link.id().stable_key().to_owned();
+        let count = application.documents.len();
+
+        application.handle_sidebar_activation(&link_key);
+
+        assert_eq!(application.documents.len(), count);
+        assert!(
+            application
+                .lifecycle_notice
+                .as_deref()
+                .is_some_and(|notice| notice.contains("not followed"))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn close_workspace_restores_open_document_sidebar() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let workspace = test_workspace_service()?;
+        dialogs.push_open_folder(Some(PathBuf::from("/luna-editor-tests")));
+        let mut application = test_application_with_workspace(&files, &dialogs, &workspace)?;
+        application.open_workspace();
+        assert!(application.workspace.is_some());
+
+        application.close_workspace();
+
+        assert!(application.workspace.is_none());
+        assert_eq!(application.sidebar_items()[0].title, "Open Documents");
+        let active_key = application.active_document().stable_key();
+        assert_eq!(
+            application.selected_sidebar_id.as_deref(),
+            Some(active_key.as_str())
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn file_menu_projects_workspace_commands_only_while_open() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let workspace = test_workspace_service()?;
+        let mut application = test_application_with_workspace(&files, &dialogs, &workspace)?;
+        let closed_ids = application
+            .menu_definitions()
+            .into_iter()
+            .find(|menu| menu.id == "file")
+            .ok_or_else(|| std::io::Error::other("missing File menu"))?
+            .items
+            .into_iter()
+            .filter_map(|item| item.as_command().map(|command| command.id.clone()))
+            .collect::<Vec<_>>();
+        assert!(closed_ids.iter().any(|id| id == "open-folder"));
+        assert!(!closed_ids.iter().any(|id| id == "refresh-workspace"));
+
+        dialogs.push_open_folder(Some(PathBuf::from("/luna-editor-tests")));
+        application.open_workspace();
+        let open_ids = application
+            .menu_definitions()
+            .into_iter()
+            .find(|menu| menu.id == "file")
+            .ok_or_else(|| std::io::Error::other("missing File menu"))?
+            .items
+            .into_iter()
+            .filter_map(|item| item.as_command().map(|command| command.id.clone()))
+            .collect::<Vec<_>>();
+        assert!(open_ids.iter().any(|id| id == "refresh-workspace"));
+        assert!(open_ids.iter().any(|id| id == "close-workspace"));
+        let palette_ids = application
+            .palette_items()
+            .into_iter()
+            .map(|item| item.id)
+            .collect::<Vec<_>>();
+        assert!(palette_ids.iter().any(|id| id == "refresh-workspace"));
+        assert!(palette_ids.iter().any(|id| id == "close-workspace"));
         Ok(())
     }
 }

@@ -539,7 +539,7 @@ impl Widget for EditorShell {
                 AccessibilityRole::Tree,
                 self.layout.sidebar,
             )
-            .with_label("Project files")
+            .with_label("Workspace and open documents")
             .with_children(
                 self.layout
                     .sidebar_rows
@@ -549,15 +549,27 @@ impl Widget for EditorShell {
             ),
         );
         for frame in &self.layout.sidebar_rows {
-            nodes.push(
-                AccessibilityNode::new(
-                    frame.node_id.clone(),
-                    AccessibilityRole::TreeItem,
-                    frame.bounds,
-                )
-                .with_label(frame.title.clone())
-                .with_focused(frame.is_selected),
-            );
+            let mut node = AccessibilityNode::new(
+                frame.node_id.clone(),
+                AccessibilityRole::TreeItem,
+                frame.bounds,
+            )
+            .with_label(frame.title.clone())
+            .with_focused(frame.is_selected);
+            if let Some(item) = self
+                .state
+                .sidebar_items
+                .iter()
+                .find(|item| item.id == frame.id)
+                && item.kind == SidebarItemKind::Folder
+            {
+                node = node.with_value(if item.is_expanded {
+                    "Expanded"
+                } else {
+                    "Collapsed"
+                });
+            }
+            nodes.push(node);
         }
         nodes.push(
             AccessibilityNode::new(
@@ -870,6 +882,30 @@ mod tests {
         assert!(edit_frame.is_selected);
         assert!(shell.accessibility_nodes().iter().any(|node| {
             node.id == edit_frame.node_id && node.value.as_deref() == Some("Expanded")
+        }));
+        Ok(())
+    }
+
+    #[test]
+    fn folder_sidebar_accessibility_exposes_expansion_state() -> Result<(), Box<dyn Error>> {
+        let shell = EditorShell::new(
+            NodeId::new("shell")?,
+            RectI::new(0, 0, 800, 600),
+            Theme::luna_dark(),
+            EditorShellState {
+                sidebar_items: vec![SidebarItem::folder("src", "src", 0, true)],
+                selected_sidebar_id: Some("src".to_owned()),
+                ..EditorShellState::default()
+            },
+            EditorShellMetrics::default(),
+        )?;
+        let frame = shell
+            .layout()
+            .sidebar_rows
+            .first()
+            .ok_or_else(|| std::io::Error::other("sidebar row missing"))?;
+        assert!(shell.accessibility_nodes().iter().any(|node| {
+            node.id == frame.node_id && node.value.as_deref() == Some("Expanded") && node.is_focused
         }));
         Ok(())
     }

@@ -20,6 +20,7 @@ luna-text = { path = "../../crates/luna-text" }
 luna-text-cosmic = { path = "../../crates/luna-text-cosmic" }
 luna-theme = { path = "../../crates/luna-theme" }
 luna-ui = { path = "../../crates/luna-ui" }
+luna-workspaces = { path = "../../crates/luna-workspaces" }
 
 [lints]
 workspace = true

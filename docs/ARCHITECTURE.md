@@ -22,6 +22,9 @@ luna-documents
 luna-document-services
   └── luna-documents
 
+luna-workspaces
+  └── std path, filesystem, and collection contracts only
+
 luna-text
   └── unicode-segmentation
 
@@ -56,7 +59,8 @@ applications
   ├── luna-ui-rust-proof-gallery
   └── luna-ui-rust-editor-demo
         ├── luna-documents
-        └── luna-document-services
+        ├── luna-document-services
+        └── luna-workspaces
 ```
 
 Dependencies point toward small product-neutral contracts. Platform integrations and stateful
@@ -147,6 +151,40 @@ Native dialogs are a leaf concern. `SystemDialogService` shells out directly to 
 Linux and passes arguments without a command shell. Tests use `MemoryTextFileService` and
 `ScriptedDialogService`, so open/save/close/conflict behavior remains deterministic and does not
 create windows or touch the host filesystem.
+
+## Workspace-tree boundary
+
+`luna-workspaces` owns recursive folder snapshots and tree interaction state without owning document
+buffers, dialogs, or mutation policy.
+
+```text
+native folder dialog
+    -> application-selected root path
+    -> WorkspaceService::scan(root, options)
+         -> exact stable WorkspaceNodeId values
+         -> immutable WorkspaceSnapshot
+         -> directory/file/symlink kind
+         -> availability state and ordered children
+    -> WorkspaceModel
+         -> expansion
+         -> selection
+         -> ancestor reveal
+         -> refresh reconciliation
+    -> editor-shell SidebarItem projection
+```
+
+The standard adapter canonicalizes the root, does not follow symlinks, sorts directories before
+files, and preserves partial trees when child directories are unreadable. The deterministic memory
+adapter supports the same snapshot and refresh contracts without touching host storage.
+
+The proof editor rescans once per second through `NativeApplication::update`. Snapshot comparison and
+model mutation stay on the UI lane. Unchanged scans request no frame, while changed scans invalidate
+widget layout without discarding document text caches. A future native watcher may perform discovery
+elsewhere, but snapshot delivery must still cross the explicit UI-thread boundary.
+
+Create, rename, delete, collision, and persistent-session policy are intentionally not methods on the
+snapshot model. They belong to a later operation/service layer so observation remains immutable and
+safe to test.
 
 ## Text model boundary
 
@@ -261,7 +299,7 @@ cost visible. Application errors propagate to the caller rather than being hidde
 
 The architectural spine is near parity with Swift Luna UI, but feature breadth is not. Rust currently
 has stronger retained editor-raster and concrete AccessKit paths, while Swift remains substantially
-ahead in nested submenus, context menus, completion, real files/workspaces, split panes, advanced
+ahead in nested submenus, context menus, completion, advanced workspace operations, split panes, advanced
 tabs, and paired Moth integration. [`SWIFT_PARITY.md`](SWIFT_PARITY.md) is the governing inventory;
 performance milestones must not be described as equivalent to editor-product feature parity.
 

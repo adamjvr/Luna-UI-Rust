@@ -113,7 +113,7 @@
 - Editor integration for Open, Save, Save As, duplicate activation, close resolution, and conflict
   reload/overwrite/cancel.
 
-### M3.2c — recent files and external-change delivery — implemented
+### M3.2c — recent files and external-change delivery — complete
 
 - bounded MRU recent-file model with canonical identities;
 - File-menu and command-palette recent-file projections;
@@ -125,21 +125,27 @@
 - save/conflict handling for clean or dirty documents with external state;
 - deterministic observation and editor integration tests.
 
-### M3.2d — workspace and project-tree runtime — next
+### M3.2d — workspace and project-tree runtime — implemented
 
-- product-neutral folder/workspace adapters;
-- recursive project-tree snapshots and stable filesystem identities;
-- expansion state, refresh, and sidebar activation;
-- create, rename, and delete operation contracts;
-- error and permission-state projection.
+- product-neutral `luna-workspaces` model and scan adapters;
+- exact stable path identities and immutable recursive snapshots;
+- directories-before-files ordering with hidden, symlink, and depth policies;
+- expansion, selection, ancestor reveal, and refresh preservation;
+- permission, depth-limit, and unreadable-node projection;
+- native Open Folder and scripted folder-dialog results;
+- real sidebar rows with pointer, keyboard-command, and accessibility routing;
+- duplicate-safe workspace-file activation;
+- one-second UI-thread refresh with unchanged-state suppression;
+- deterministic standard-library, in-memory, and editor-integration tests.
 
-### M3.2e — shared buffers and session runtime
+### M3.2e — workspace operations, shared buffers, and session runtime — next
 
-
-- workspace/folder adapters and project-tree snapshots;
-- filesystem create, rename, and delete operations;
+- filesystem create file/folder, rename, and delete operations;
+- operation confirmation, collision, and dirty-document policy;
+- persistent recent-file and workspace/session state;
 - shared document buffers with independent editor views;
-- watcher integration and workspace/session restoration.
+- native watcher adapters and incremental subtree refresh;
+- workspace/session restoration.
 
 ## M3.3 — expanded editor shell
 

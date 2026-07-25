@@ -112,11 +112,12 @@ and Save As dialogs, dirty-close choices, and save-conflict resolution through t
 `luna-document-services` crate.
 
 M3.2c now adds bounded in-memory recent files, UI-thread observation delivery, missing/recreated
-notices, and explicit Reload from Disk behavior.
+notices, and explicit Reload from Disk behavior. M3.2d adds the product-neutral workspace tree,
+Open Folder, sidebar expansion, selection, refresh preservation, and workspace-file activation.
 
 Still deferred:
 
-- persistent recent-file/session storage;
-- native event-based watcher backends;
-- workspace/folder tree adapters;
+- persistent recent-file/workspace/session storage;
+- native event-based watcher backends and incremental subtree updates;
+- workspace create, rename, and delete operations;
 - shared buffers with independent editor views.

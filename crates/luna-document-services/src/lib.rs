@@ -11,7 +11,8 @@
 //! preconditions, and same-directory atomic replacement. [`SystemDialogService`] uses an installed
 //! Linux desktop dialog helper (`zenity` first, then `kdialog`) without adding toolkit dependencies
 //! to the Luna workspace. [`MemoryTextFileService`] and [`ScriptedDialogService`] provide fully
-//! deterministic adapters for unit tests.
+//! deterministic adapters for unit tests. The dialog boundary also includes workspace-folder
+//! selection so products can compose document and project lifecycles without toolkit coupling.
 
 use luna_documents::{FileIdentity, StorageInstance, StorageRevision, StorageSnapshot};
 use std::cell::{Cell, RefCell};
@@ -530,6 +531,9 @@ pub trait DocumentDialogService {
     /// Chooses one file to open, or returns `None` when canceled.
     fn choose_open_file(&mut self) -> Result<Option<PathBuf>, DialogError>;
 
+    /// Chooses one directory to open as a workspace, or returns `None` when canceled.
+    fn choose_open_folder(&mut self) -> Result<Option<PathBuf>, DialogError>;
+
     /// Chooses one Save As destination, or returns `None` when canceled.
     fn choose_save_file(
         &mut self,
@@ -734,6 +738,29 @@ impl DocumentDialogService for SystemDialogService {
                     OsString::from("--getopenfilename"),
                     OsString::from("."),
                     OsString::from("Text files (*.txt *.md *.rs *.toml *.json);;All files (*)"),
+                ],
+            )?),
+            SystemDialogBackend::Unavailable => Err(DialogError::unavailable()),
+        }
+    }
+
+    fn choose_open_folder(&mut self) -> Result<Option<PathBuf>, DialogError> {
+        match self.backend {
+            SystemDialogBackend::Zenity => Self::selected_path(self.run(
+                "zenity",
+                &[
+                    OsString::from("--file-selection"),
+                    OsString::from("--directory"),
+                    OsString::from("--title=Open Workspace Folder"),
+                ],
+            )?),
+            SystemDialogBackend::KDialog => Self::selected_path(self.run(
+                "kdialog",
+                &[
+                    OsString::from("--title"),
+                    OsString::from("Open Workspace Folder"),
+                    OsString::from("--getexistingdirectory"),
+                    OsString::from("."),
                 ],
             )?),
             SystemDialogBackend::Unavailable => Err(DialogError::unavailable()),
@@ -1104,6 +1131,7 @@ pub struct ScriptedDialogService {
 #[derive(Clone, Debug, Default)]
 struct ScriptedDialogState {
     open_files: VecDeque<Option<PathBuf>>,
+    open_folders: VecDeque<Option<PathBuf>>,
     save_files: VecDeque<Option<PathBuf>>,
     close_choices: VecDeque<DirtyCloseChoice>,
     conflict_choices: VecDeque<SaveConflictChoice>,
@@ -1113,6 +1141,11 @@ impl ScriptedDialogService {
     /// Appends one open-dialog result.
     pub fn push_open_file(&self, path: Option<PathBuf>) {
         self.state.borrow_mut().open_files.push_back(path);
+    }
+
+    /// Appends one workspace-folder dialog result.
+    pub fn push_open_folder(&self, path: Option<PathBuf>) {
+        self.state.borrow_mut().open_folders.push_back(path);
     }
 
     /// Appends one Save As dialog result.
@@ -1134,6 +1167,10 @@ impl ScriptedDialogService {
 impl DocumentDialogService for ScriptedDialogService {
     fn choose_open_file(&mut self) -> Result<Option<PathBuf>, DialogError> {
         Ok(self.state.borrow_mut().open_files.pop_front().flatten())
+    }
+
+    fn choose_open_folder(&mut self) -> Result<Option<PathBuf>, DialogError> {
+        Ok(self.state.borrow_mut().open_folders.pop_front().flatten())
     }
 
     fn choose_save_file(
@@ -1392,6 +1429,7 @@ mod tests {
     fn scripted_dialogs_return_queued_choices() -> Result<(), Box<dyn Error>> {
         let scripted = ScriptedDialogService::default();
         scripted.push_open_file(Some(PathBuf::from("/tmp/open.txt")));
+        scripted.push_open_folder(Some(PathBuf::from("/tmp/workspace")));
         scripted.push_save_file(Some(PathBuf::from("/tmp/save.txt")));
         scripted.push_dirty_close(DirtyCloseChoice::Discard);
         scripted.push_save_conflict(SaveConflictChoice::Reload);
@@ -1400,6 +1438,10 @@ mod tests {
         assert_eq!(
             dialogs.choose_open_file()?,
             Some(PathBuf::from("/tmp/open.txt"))
+        );
+        assert_eq!(
+            dialogs.choose_open_folder()?,
+            Some(PathBuf::from("/tmp/workspace"))
         );
         assert_eq!(
             dialogs.choose_save_file("save.txt", None)?,

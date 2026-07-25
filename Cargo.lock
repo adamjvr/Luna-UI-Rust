@@ -1247,6 +1247,7 @@ dependencies = [
  "luna-text-cosmic",
  "luna-theme",
  "luna-ui",
+ "luna-workspaces",
 ]
 
 [[package]]
@@ -1289,6 +1290,10 @@ dependencies = [
  "luna-theme",
  "luna-ui",
 ]
+
+[[package]]
+name = "luna-workspaces"
+version = "0.1.0"
 
 [[package]]
 name = "memchr"

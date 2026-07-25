@@ -113,6 +113,6 @@ The deterministic adapters cover:
 
 ## Deferred
 
-M3.2d introduces workspace/folder adapters and real project-tree snapshots. Persistent recent-file
-storage, native event-based watcher backends, and session restoration remain application/platform
-adapter work after the polling contract is proven.
+M3.2d now provides workspace/folder adapters and real project-tree snapshots. Persistent
+recent/workspace storage, native event-based watcher backends, filesystem mutations, shared buffers,
+and session restoration remain M3.2e or later application/platform work.

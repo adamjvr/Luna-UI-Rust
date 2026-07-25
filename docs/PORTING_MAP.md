@@ -21,8 +21,9 @@
 | find/replace panel foundation | `luna-ui::FindPanel` | M3 reusable geometry/state/accessibility implemented |
 | general proof controls | `Button`, `Toggle`, `ProgressBar`, `TextLabel` | Reusable primitives plus stable-slot label cache implemented |
 | `LunaUITestApp --proof-gallery` | `luna-ui-rust-proof-gallery` | Retained layout/static paint/semantics with isolated animation-lane rendering implemented |
-| Swift file/dialog service boundary | `luna-document-services` | M3.2c UTF-8 reads, atomic writes, native dialogs, storage observation, and deterministic mocks implemented |
-| default `LunaUITestApp` editor mode | `luna-ui-rust-editor-demo` | Real Open, Save, Save As, duplicate activation, dirty-close resolution, and conflict reload/overwrite integrated |
+| Swift file/dialog service boundary | `luna-document-services` | M3.2d UTF-8 reads, atomic writes, file/folder dialogs, storage observation, and deterministic mocks implemented |
+| Swift workspace/project adapters | `luna-workspaces` | Stable recursive snapshots, scan policies, expansion, selection, reveal, refresh preservation, standard and memory adapters implemented |
+| default `LunaUITestApp` editor mode | `luna-ui-rust-editor-demo` | Real files plus Open Folder, project-tree rows, duplicate activation, refresh, and accessibility integrated |
 | `LunaHostSDL` / `LunaHostMetal` | `luna-host-winit` plus render adapters | Retained working/static CPU buffers, timed update lane, and conditional AccessKit submission implemented |
 | incremental gallery/accessibility pipeline | existing host/gallery/accessibility crates | M3.1c retained static layer, dirty-region restore, input coalescing, and semantic fingerprints implemented |
 | Swift Phase 4C first-level menu behavior | `luna-ui::DropdownMenu` plus editor demo routing | M3.1d complete for first-level menus; submenus/mnemonics remain M3.3 |
@@ -39,6 +40,7 @@ semantics.
 
 See [`SWIFT_PARITY.md`](SWIFT_PARITY.md) for the broader feature inventory. Foundational module
 coverage is near parity. First-level dropdown menus, document lifecycle state, UTF-8 file I/O,
-atomic Save, Save As, native dialogs, recent files, and continuous external-change delivery now exist. Workspaces, panes, nested menus,
+atomic Save, Save As, native dialogs, recent files, continuous external-change delivery, and one
+real recursive workspace tree now exist. Workspace mutations and persistence, panes, nested menus,
 context menus, completion, and direct Moth integration remain concentrated in later M3.2, M3.3,
 and M6 work.

@@ -1,42 +1,51 @@
 # Current Status
 
-**Milestone:** M3.2c recent files and external-change delivery
+**Milestone:** M3.2d workspace and project-tree runtime
 
 ## Verified baseline
 
-The project owner locally validated and committed M3.2b.1. Strict UTF-8 Open, atomic Save and Save
-As, native Linux dialogs, protected dirty close, duplicate activation, and optimistic conflict
-resolution are the accepted baseline.
+The project owner locally validated and committed M3.2c. Recent files, storage snapshots,
+modified/replaced/missing/recreated detection, UI-thread file observation, and explicit Reload from
+Disk are the accepted baseline.
 
-## Implemented in M3.2c
+## Implemented in M3.2d
 
-- opaque `StorageInstance` and combined `StorageSnapshot` lifecycle values;
-- Modified, Replaced, Missing, and Recreated external-state distinctions;
-- Unix device/inode storage instances and deterministic in-memory instances;
-- `TextFileService::observe_file` for present/missing snapshots;
-- bounded MRU `RecentFileList` with canonical identities;
-- recent-file File-menu and command-palette projections;
-- duplicate recent-file activation and clear-recent command;
-- 750 ms observation through `NativeApplication::update` on the UI thread;
-- no redraw or accessibility update when observations are unchanged;
-- active-document status and accessibility notices for external state;
-- dynamically enabled Reload from Disk command;
-- explicit reload that replaces editor text, resets scroll, updates the baseline, and clears state;
-- Save/conflict policy for clean documents whose storage changed or disappeared;
-- deterministic tests for in-place modification, replacement, missing, recreation, MRU behavior,
-  recent command routing, polling transitions, and reload.
+- new product-neutral `luna-workspaces` crate;
+- exact stable node IDs derived from absolute normalized path bytes;
+- immutable recursive workspace snapshots and path indexes;
+- deterministic directories-before-files ordering;
+- explicit hidden-file, symlink, and maximum-depth policies;
+- symlinks shown as non-followed leaves by default;
+- Available, PermissionDenied, DepthLimit, and Unreadable node projection;
+- mutable expansion, selection, ancestor reveal, and monotonic model generation;
+- refresh reconciliation that preserves surviving expansion and selection;
+- unchanged-snapshot suppression;
+- standard-library recursive scanner;
+- deterministic in-memory workspace adapter;
+- native Open Folder through Zenity or KDialog;
+- scripted folder-dialog results for tests;
+- File-menu, command-palette, shortcut, pointer, and accessibility integration;
+- real workspace rows in the editor sidebar;
+- folder expansion/collapse and file activation through the existing UTF-8 Open path;
+- duplicate workspace-file activation instead of duplicate tabs;
+- one-second workspace refresh through the UI-thread update contract;
+- automatic row appearance/disappearance after external create, rename, or delete;
+- Close Workspace restoration of the Open Documents fallback;
+- focused `scripts/test-m3-2d.sh` quality gate and runtime fixture generator.
 
 ## Runtime scope
 
-The editor continuously polls open file-backed documents without a worker thread. This is the first
-safe delivery contract: storage adapters observe bytes and metadata, while editor mutation stays on
-the native UI thread. Unix file instances distinguish an in-place write from atomic replacement.
+The proof editor owns one workspace at a time. Opening another folder replaces the current workspace
+model without closing documents. Saving into the workspace refreshes and reveals the new path.
+Workspace scans are synchronous and delivered entirely on the native UI thread in this phase.
+Identical snapshots request no frame; changed snapshots invalidate only widget layout.
 
-Recent files are intentionally in memory. Luna does not yet choose a product profile directory,
-persistence format, retention policy, or privacy behavior.
+Hidden dot entries are excluded. Symlinks are visible but never followed. Recursive scans stop at a
+configurable depth and retain partial trees when child directories are unreadable.
 
 ## Next milestone
 
-M3.2d introduces workspace/folder adapters, recursive project-tree snapshots, expansion state, and
-sidebar activation from real filesystem content. Persistent recents and native event watcher
-backends remain later application/platform adapters.
+M3.2e adds workspace file/folder create, rename, and delete operations; operation confirmation and
+conflict policy; persistent workspace/session state; and shared document buffers with independent
+editor views. Native event watcher adapters and incremental subtree refresh remain later platform
+hardening work.
