@@ -96,12 +96,12 @@
 - Product-neutral `luna-documents` crate.
 - Stable document IDs and monotonic untitled naming.
 - Adapter-canonicalized file identities and duplicate-open prevention.
-- Saved edit revisions, dirty state, storage revisions, and external conflict state.
+- Saved edit revisions, dirty state, storage snapshots, and external conflict state.
 - Explicit Save and close requirements without filesystem or product policy.
 - Save As identity reassignment and index release on close.
 - Editor-demo integration with dirty-close protection and honest non-I/O Save status.
 
-### M3.2b — file and dialog service boundaries — implemented
+### M3.2b — file and dialog service boundaries — complete
 
 - Product-neutral UTF-8 file read/write service contracts.
 - Strict invalid-encoding errors without lossy replacement.
@@ -113,15 +113,28 @@
 - Editor integration for Open, Save, Save As, duplicate activation, close resolution, and conflict
   reload/overwrite/cancel.
 
-### M3.2c — recent files and external-change delivery — next
+### M3.2c — recent files and external-change delivery — implemented
 
-- recent-file model and application projection;
-- external storage revision polling/delivery without UI-thread mutation;
-- modified/missing-file notices and explicit reload decisions;
-- save-conflict state projected into status and accessibility;
-- hardening for files removed, replaced, or recreated between observations.
+- bounded MRU recent-file model with canonical identities;
+- File-menu and command-palette recent-file projections;
+- content revision plus concrete storage-instance snapshots;
+- modified, replaced, missing, and recreated-file distinctions;
+- 750 ms storage polling delivered through the UI-thread update contract;
+- no redraw for unchanged observations;
+- status/accessibility notices and explicit Reload from Disk;
+- save/conflict handling for clean or dirty documents with external state;
+- deterministic observation and editor integration tests.
 
-### M3.2d–M3.2e — remaining runtime
+### M3.2d — workspace and project-tree runtime — next
+
+- product-neutral folder/workspace adapters;
+- recursive project-tree snapshots and stable filesystem identities;
+- expansion state, refresh, and sidebar activation;
+- create, rename, and delete operation contracts;
+- error and permission-state projection.
+
+### M3.2e — shared buffers and session runtime
+
 
 - workspace/folder adapters and project-tree snapshots;
 - filesystem create, rename, and delete operations;

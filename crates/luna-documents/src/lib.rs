@@ -4,7 +4,7 @@
 //!
 //! This crate deliberately does not read files, show dialogs, watch directories, or own editor
 //! view state. Platform and product adapters provide canonical file identities and storage
-//! revisions, while applications keep caret, selection, scroll, and rendering state above this
+//! snapshots, while applications keep caret, selection, scroll, and rendering state above this
 //! layer. The resulting model is deterministic and can be tested without touching the filesystem.
 
 use std::collections::BTreeMap;
@@ -93,6 +93,55 @@ impl StorageRevision {
     }
 }
 
+/// Opaque identity for one concrete storage object backing a canonical path.
+///
+/// On Unix this normally derives from device and inode values. Other adapters may use an
+/// equivalent file identifier. Luna compares instances only for equality and does not interpret
+/// their numeric representation.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct StorageInstance(u128);
+
+impl StorageInstance {
+    /// Creates an opaque storage-instance identifier.
+    #[must_use]
+    pub const fn new(value: u128) -> Self {
+        Self(value)
+    }
+
+    /// Returns the adapter-provided value.
+    #[must_use]
+    pub const fn value(self) -> u128 {
+        self.0
+    }
+}
+
+/// Revision and concrete storage instance observed together.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct StorageSnapshot {
+    revision: StorageRevision,
+    instance: StorageInstance,
+}
+
+impl StorageSnapshot {
+    /// Creates a storage snapshot from a content revision and instance identifier.
+    #[must_use]
+    pub const fn new(revision: StorageRevision, instance: StorageInstance) -> Self {
+        Self { revision, instance }
+    }
+
+    /// Returns the content revision.
+    #[must_use]
+    pub const fn revision(self) -> StorageRevision {
+        self.revision
+    }
+
+    /// Returns the concrete storage-instance identifier.
+    #[must_use]
+    pub const fn instance(self) -> StorageInstance {
+        self.instance
+    }
+}
+
 /// Durable source associated with an open document.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DocumentSource {
@@ -116,13 +165,23 @@ pub enum ExternalState {
     /// Storage still matches the editor's known baseline.
     #[default]
     InSync,
-    /// Storage changed to a different observed revision.
+    /// The original storage object remains present but its content changed.
     Modified {
-        /// Revision observed by the storage adapter.
-        observed_revision: StorageRevision,
+        /// Snapshot observed by the storage adapter.
+        observed: StorageSnapshot,
+    },
+    /// The canonical path now refers to a different storage object.
+    Replaced {
+        /// Snapshot observed for the replacement object.
+        observed: StorageSnapshot,
     },
     /// The file associated with the document no longer exists.
     Missing,
+    /// A file appeared again after the path had previously been observed missing.
+    Recreated {
+        /// Snapshot observed for the recreated object.
+        observed: StorageSnapshot,
+    },
 }
 
 /// Result of asking whether a document may close without user intervention.
@@ -145,8 +204,8 @@ pub enum SaveRequirement {
     WriteFile {
         /// Canonical destination identity.
         identity: FileIdentity,
-        /// Storage revision expected by an optimistic-conflict check.
-        expected_storage_revision: Option<StorageRevision>,
+        /// Complete storage snapshot expected by an optimistic-conflict check.
+        expected_storage_snapshot: Option<StorageSnapshot>,
         /// External state that may require overwrite/reload/cancel policy.
         external_state: ExternalState,
     },
@@ -161,7 +220,7 @@ pub struct DocumentRecord {
     source: DocumentSource,
     title: String,
     saved_edit_revision: u64,
-    storage_revision: Option<StorageRevision>,
+    storage_snapshot: Option<StorageSnapshot>,
     external_state: ExternalState,
 }
 
@@ -193,7 +252,16 @@ impl DocumentRecord {
     /// Returns the adapter-provided storage revision known at the last load or save.
     #[must_use]
     pub const fn storage_revision(&self) -> Option<StorageRevision> {
-        self.storage_revision
+        match self.storage_snapshot {
+            Some(snapshot) => Some(snapshot.revision()),
+            None => None,
+        }
+    }
+
+    /// Returns the complete storage snapshot known at the last load or save.
+    #[must_use]
+    pub const fn storage_snapshot(&self) -> Option<StorageSnapshot> {
+        self.storage_snapshot
     }
 
     /// Returns the currently observed external state.
@@ -224,10 +292,13 @@ impl DocumentRecord {
         match &self.source {
             DocumentSource::Untitled { .. } => SaveRequirement::SaveAs,
             DocumentSource::Virtual { .. } => SaveRequirement::Unsupported,
-            DocumentSource::File(identity) if self.is_dirty(current_edit_revision) => {
+            DocumentSource::File(identity)
+                if self.is_dirty(current_edit_revision)
+                    || self.external_state != ExternalState::InSync =>
+            {
                 SaveRequirement::WriteFile {
                     identity: identity.clone(),
-                    expected_storage_revision: self.storage_revision,
+                    expected_storage_snapshot: self.storage_snapshot,
                     external_state: self.external_state,
                 }
             }
@@ -239,19 +310,28 @@ impl DocumentRecord {
     pub fn mark_saved(
         &mut self,
         current_edit_revision: u64,
-        storage_revision: Option<StorageRevision>,
+        storage_snapshot: Option<StorageSnapshot>,
     ) {
         self.saved_edit_revision = current_edit_revision;
-        self.storage_revision = storage_revision;
+        self.storage_snapshot = storage_snapshot;
         self.external_state = ExternalState::InSync;
     }
 
-    /// Records a storage revision observed after the last load or save.
-    pub fn observe_storage_revision(&mut self, observed_revision: StorageRevision) {
-        self.external_state = if self.storage_revision == Some(observed_revision) {
-            ExternalState::InSync
-        } else {
-            ExternalState::Modified { observed_revision }
+    /// Records a storage snapshot observed after the last load or save.
+    pub fn observe_storage_snapshot(&mut self, observed: StorageSnapshot) {
+        if matches!(
+            self.external_state,
+            ExternalState::Missing | ExternalState::Recreated { .. }
+        ) {
+            self.external_state = ExternalState::Recreated { observed };
+            return;
+        }
+        self.external_state = match self.storage_snapshot {
+            Some(expected) if expected == observed => ExternalState::InSync,
+            Some(expected) if expected.instance() != observed.instance() => {
+                ExternalState::Replaced { observed }
+            }
+            _ => ExternalState::Modified { observed },
         };
     }
 
@@ -268,6 +348,77 @@ pub enum OpenFileOutcome {
     Opened(DocumentId),
     /// The canonical file identity was already present.
     AlreadyOpen(DocumentId),
+}
+
+/// One entry in a bounded most-recently-used file list.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RecentFileEntry {
+    identity: FileIdentity,
+    title: String,
+}
+
+impl RecentFileEntry {
+    /// Returns the canonical file identity.
+    #[must_use]
+    pub const fn identity(&self) -> &FileIdentity {
+        &self.identity
+    }
+
+    /// Returns the user-visible recent-file title.
+    #[must_use]
+    pub fn title(&self) -> &str {
+        &self.title
+    }
+}
+
+/// Bounded in-memory most-recently-used file list.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RecentFileList {
+    capacity: usize,
+    entries: Vec<RecentFileEntry>,
+}
+
+impl RecentFileList {
+    /// Creates an empty recent-file list with the supplied maximum entry count.
+    #[must_use]
+    pub const fn new(capacity: usize) -> Self {
+        Self {
+            capacity,
+            entries: Vec::new(),
+        }
+    }
+
+    /// Returns entries from most recent to least recent.
+    #[must_use]
+    pub fn entries(&self) -> &[RecentFileEntry] {
+        &self.entries
+    }
+
+    /// Records a file as most recent, moving an existing identity to the front.
+    pub fn record(&mut self, identity: FileIdentity, title: impl Into<String>) {
+        self.entries.retain(|entry| entry.identity != identity);
+        if self.capacity == 0 {
+            return;
+        }
+        self.entries.insert(
+            0,
+            RecentFileEntry {
+                identity,
+                title: title.into(),
+            },
+        );
+        self.entries.truncate(self.capacity);
+    }
+
+    /// Removes one identity from the list.
+    pub fn remove(&mut self, identity: &FileIdentity) {
+        self.entries.retain(|entry| &entry.identity != identity);
+    }
+
+    /// Removes every recent-file entry.
+    pub fn clear(&mut self) {
+        self.entries.clear();
+    }
 }
 
 /// Deterministic registry for open document identities and lifecycle records.
@@ -327,7 +478,7 @@ impl DocumentRegistry {
             source: DocumentSource::Untitled { sequence },
             title: format!("Untitled-{sequence}"),
             saved_edit_revision: initial_edit_revision,
-            storage_revision: None,
+            storage_snapshot: None,
             external_state: ExternalState::InSync,
         });
         id
@@ -358,7 +509,7 @@ impl DocumentRegistry {
             source: DocumentSource::Virtual { key },
             title: title.into(),
             saved_edit_revision: initial_edit_revision,
-            storage_revision: None,
+            storage_snapshot: None,
             external_state: ExternalState::InSync,
         });
         Ok(id)
@@ -370,7 +521,7 @@ impl DocumentRegistry {
         identity: FileIdentity,
         title: impl Into<String>,
         initial_edit_revision: u64,
-        storage_revision: Option<StorageRevision>,
+        storage_snapshot: Option<StorageSnapshot>,
     ) -> OpenFileOutcome {
         if let Some(existing) = self.file_index.get(&identity) {
             return OpenFileOutcome::AlreadyOpen(*existing);
@@ -382,7 +533,7 @@ impl DocumentRegistry {
             source: DocumentSource::File(identity),
             title: title.into(),
             saved_edit_revision: initial_edit_revision,
-            storage_revision,
+            storage_snapshot,
             external_state: ExternalState::InSync,
         });
         OpenFileOutcome::Opened(id)
@@ -400,7 +551,7 @@ impl DocumentRegistry {
         identity: FileIdentity,
         title: impl Into<String>,
         current_edit_revision: u64,
-        storage_revision: Option<StorageRevision>,
+        storage_snapshot: Option<StorageSnapshot>,
     ) -> Result<(), DocumentError> {
         let index = self
             .record_index(id)
@@ -418,7 +569,7 @@ impl DocumentRegistry {
         let record = &mut self.records[index];
         record.source = DocumentSource::File(identity);
         record.title = title.into();
-        record.mark_saved(current_edit_revision, storage_revision);
+        record.mark_saved(current_edit_revision, storage_snapshot);
         Ok(())
     }
 
@@ -501,7 +652,8 @@ impl Error for DocumentError {}
 mod tests {
     use super::{
         CloseRequirement, DocumentError, DocumentRegistry, DocumentSource, ExternalState,
-        FileIdentity, OpenFileOutcome, SaveRequirement, StorageRevision,
+        FileIdentity, OpenFileOutcome, RecentFileList, SaveRequirement, StorageInstance,
+        StorageRevision, StorageSnapshot,
     };
     use std::error::Error;
     use std::path::PathBuf;
@@ -509,6 +661,13 @@ mod tests {
     fn canonical(name: &str) -> Result<FileIdentity, DocumentError> {
         let path = std::env::temp_dir().join("luna-document-tests").join(name);
         FileIdentity::from_canonical_path(path)
+    }
+
+    const fn snapshot(revision: u64, instance: u128) -> StorageSnapshot {
+        StorageSnapshot::new(
+            StorageRevision::new(revision),
+            StorageInstance::new(instance),
+        )
     }
 
     #[test]
@@ -604,12 +763,8 @@ mod tests {
     fn file_save_requirement_preserves_expected_revision() -> Result<(), Box<dyn Error>> {
         let mut registry = DocumentRegistry::new();
         let identity = canonical("save.txt")?;
-        let outcome = registry.register_file(
-            identity.clone(),
-            "save.txt",
-            2,
-            Some(StorageRevision::new(19)),
-        );
+        let outcome =
+            registry.register_file(identity.clone(), "save.txt", 2, Some(snapshot(19, 1)));
         let OpenFileOutcome::Opened(id) = outcome else {
             return Err(std::io::Error::other("file registration did not open").into());
         };
@@ -618,7 +773,7 @@ mod tests {
             registry.get(id).map(|record| record.save_requirement(3)),
             Some(SaveRequirement::WriteFile {
                 identity,
-                expected_storage_revision: Some(StorageRevision::new(19)),
+                expected_storage_snapshot: Some(snapshot(19, 1)),
                 external_state: ExternalState::InSync,
             })
         );
@@ -629,16 +784,15 @@ mod tests {
     fn successful_save_resets_dirty_and_external_state() -> Result<(), Box<dyn Error>> {
         let mut registry = DocumentRegistry::new();
         let identity = canonical("saved.txt")?;
-        let outcome =
-            registry.register_file(identity, "saved.txt", 1, Some(StorageRevision::new(2)));
+        let outcome = registry.register_file(identity, "saved.txt", 1, Some(snapshot(2, 1)));
         let OpenFileOutcome::Opened(id) = outcome else {
             return Err(std::io::Error::other("file registration did not open").into());
         };
         let record = registry
             .get_mut(id)
             .ok_or_else(|| std::io::Error::other("missing opened record"))?;
-        record.observe_storage_revision(StorageRevision::new(3));
-        record.mark_saved(4, Some(StorageRevision::new(4)));
+        record.observe_storage_snapshot(snapshot(3, 1));
+        record.mark_saved(4, Some(snapshot(4, 2)));
 
         assert!(!record.is_dirty(4));
         assert_eq!(record.external_state(), ExternalState::InSync);
@@ -650,11 +804,38 @@ mod tests {
     fn external_revision_change_is_exposed_as_save_conflict() -> Result<(), Box<dyn Error>> {
         let mut registry = DocumentRegistry::new();
         let identity = canonical("external.txt")?;
+        let outcome =
+            registry.register_file(identity.clone(), "external.txt", 1, Some(snapshot(10, 1)));
+        let OpenFileOutcome::Opened(id) = outcome else {
+            return Err(std::io::Error::other("file registration did not open").into());
+        };
+        let record = registry
+            .get_mut(id)
+            .ok_or_else(|| std::io::Error::other("missing opened record"))?;
+        record.observe_storage_snapshot(snapshot(11, 1));
+
+        assert_eq!(
+            record.save_requirement(2),
+            SaveRequirement::WriteFile {
+                identity,
+                expected_storage_snapshot: Some(snapshot(10, 1)),
+                external_state: ExternalState::Modified {
+                    observed: snapshot(11, 1),
+                },
+            }
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn clean_file_with_external_change_requires_conflict_policy() -> Result<(), Box<dyn Error>> {
+        let mut registry = DocumentRegistry::new();
+        let identity = canonical("clean-external.txt")?;
         let outcome = registry.register_file(
             identity.clone(),
-            "external.txt",
-            1,
-            Some(StorageRevision::new(10)),
+            "clean-external.txt",
+            4,
+            Some(snapshot(20, 1)),
         );
         let OpenFileOutcome::Opened(id) = outcome else {
             return Err(std::io::Error::other("file registration did not open").into());
@@ -662,15 +843,15 @@ mod tests {
         let record = registry
             .get_mut(id)
             .ok_or_else(|| std::io::Error::other("missing opened record"))?;
-        record.observe_storage_revision(StorageRevision::new(11));
+        record.observe_storage_snapshot(snapshot(21, 1));
 
         assert_eq!(
-            record.save_requirement(2),
+            record.save_requirement(4),
             SaveRequirement::WriteFile {
                 identity,
-                expected_storage_revision: Some(StorageRevision::new(10)),
+                expected_storage_snapshot: Some(snapshot(20, 1)),
                 external_state: ExternalState::Modified {
-                    observed_revision: StorageRevision::new(11),
+                    observed: snapshot(21, 1),
                 },
             }
         );
@@ -703,7 +884,7 @@ mod tests {
             identity.clone(),
             "assigned.txt",
             5,
-            Some(StorageRevision::new(6)),
+            Some(snapshot(6, 1)),
         )?;
 
         assert_eq!(registry.document_for_file(&identity), Some(id));
@@ -755,6 +936,64 @@ mod tests {
             registry.register_file(identity, "reopen.txt", 0, None),
             OpenFileOutcome::Opened(_)
         ));
+        Ok(())
+    }
+
+    #[test]
+    fn replacement_and_recreation_are_distinguished() -> Result<(), Box<dyn Error>> {
+        let mut registry = DocumentRegistry::new();
+        let outcome = registry.register_file(
+            canonical("observed.txt")?,
+            "observed.txt",
+            0,
+            Some(snapshot(1, 10)),
+        );
+        let OpenFileOutcome::Opened(id) = outcome else {
+            return Err(std::io::Error::other("file registration did not open").into());
+        };
+        let record = registry
+            .get_mut(id)
+            .ok_or_else(|| std::io::Error::other("missing opened record"))?;
+
+        record.observe_storage_snapshot(snapshot(2, 11));
+        assert_eq!(
+            record.external_state(),
+            ExternalState::Replaced {
+                observed: snapshot(2, 11),
+            }
+        );
+        record.observe_missing_file();
+        record.observe_storage_snapshot(snapshot(3, 12));
+        assert_eq!(
+            record.external_state(),
+            ExternalState::Recreated {
+                observed: snapshot(3, 12),
+            }
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn recent_files_are_mru_deduplicated_and_bounded() -> Result<(), Box<dyn Error>> {
+        let mut recent = RecentFileList::new(2);
+        let first = canonical("first.txt")?;
+        let second = canonical("second.txt")?;
+        let third = canonical("third.txt")?;
+
+        recent.record(first.clone(), "first.txt");
+        recent.record(second.clone(), "second.txt");
+        recent.record(first.clone(), "first.txt");
+        assert_eq!(recent.entries()[0].identity(), &first);
+        assert_eq!(recent.entries()[1].identity(), &second);
+
+        recent.record(third.clone(), "third.txt");
+        assert_eq!(recent.entries().len(), 2);
+        assert_eq!(recent.entries()[0].identity(), &third);
+        assert_eq!(recent.entries()[1].identity(), &first);
+        recent.remove(&first);
+        assert_eq!(recent.entries().len(), 1);
+        recent.clear();
+        assert!(recent.entries().is_empty());
         Ok(())
     }
 

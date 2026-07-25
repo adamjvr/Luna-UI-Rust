@@ -13,16 +13,16 @@
 //! to the Luna workspace. [`MemoryTextFileService`] and [`ScriptedDialogService`] provide fully
 //! deterministic adapters for unit tests.
 
-use luna_documents::{FileIdentity, StorageRevision};
-use std::cell::RefCell;
+use luna_documents::{FileIdentity, StorageInstance, StorageRevision, StorageSnapshot};
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, VecDeque};
 use std::error::Error;
 use std::ffi::OsString;
 use std::fmt::{Display, Formatter};
+use std::fs::{self, File, Metadata, OpenOptions};
+use std::io::{self, Read, Write};
 #[cfg(unix)]
-use std::fs::File;
-use std::fs::{self, OpenOptions};
-use std::io::{self, Write};
+use std::os::unix::fs::MetadataExt;
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, ExitStatus, Output};
 use std::rc::Rc;
@@ -35,7 +35,7 @@ static TEMP_FILE_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 pub struct LoadedTextFile {
     identity: FileIdentity,
     text: String,
-    revision: StorageRevision,
+    snapshot: StorageSnapshot,
 }
 
 impl LoadedTextFile {
@@ -60,7 +60,13 @@ impl LoadedTextFile {
     /// Returns the deterministic content revision observed during the read.
     #[must_use]
     pub const fn revision(&self) -> StorageRevision {
-        self.revision
+        self.snapshot.revision()
+    }
+
+    /// Returns the complete storage snapshot observed during the read.
+    #[must_use]
+    pub const fn snapshot(&self) -> StorageSnapshot {
+        self.snapshot
     }
 }
 
@@ -68,7 +74,7 @@ impl LoadedTextFile {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WrittenTextFile {
     identity: FileIdentity,
-    revision: StorageRevision,
+    snapshot: StorageSnapshot,
 }
 
 impl WrittenTextFile {
@@ -81,7 +87,13 @@ impl WrittenTextFile {
     /// Returns the deterministic content revision after the write.
     #[must_use]
     pub const fn revision(&self) -> StorageRevision {
-        self.revision
+        self.snapshot.revision()
+    }
+
+    /// Returns the complete storage snapshot after the write.
+    #[must_use]
+    pub const fn snapshot(&self) -> StorageSnapshot {
+        self.snapshot
     }
 }
 
@@ -92,8 +104,17 @@ pub enum WritePrecondition {
     Any,
     /// Write only when no destination currently exists.
     Missing,
-    /// Write only when the current destination content matches this revision.
-    Matches(StorageRevision),
+    /// Write only when the current destination revision and storage instance match this snapshot.
+    Matches(StorageSnapshot),
+}
+
+/// Current storage state observed for a canonical file path.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FileObservation {
+    /// The path currently refers to a readable storage object.
+    Present(StorageSnapshot),
+    /// The path does not currently exist.
+    Missing,
 }
 
 /// Product-neutral synchronous UTF-8 text-file operations.
@@ -103,6 +124,10 @@ pub trait TextFileService {
 
     /// Produces the canonical identity that a Save As destination would receive.
     fn identity_for_save(&self, path: &Path) -> Result<FileIdentity, FileServiceError>;
+
+    /// Observes whether a canonical path is present and, when present, returns its current
+    /// content revision and concrete storage-instance identity.
+    fn observe_file(&self, path: &Path) -> Result<FileObservation, FileServiceError>;
 
     /// Writes UTF-8 text through a same-directory temporary file and atomic replacement.
     fn write_utf8_atomic(
@@ -122,7 +147,7 @@ pub enum FileServiceErrorKind {
     PermissionDenied,
     /// File bytes are not valid UTF-8.
     InvalidUtf8,
-    /// A write precondition did not match current storage content.
+    /// A write precondition did not match the current storage snapshot.
     Conflict,
     /// A path cannot be represented as a Luna file identity.
     InvalidPath,
@@ -219,7 +244,7 @@ impl FileServiceError {
             operation: "check write precondition",
             path: path.to_path_buf(),
             kind: FileServiceErrorKind::Conflict,
-            message: "destination content changed since the editor baseline".to_owned(),
+            message: "destination storage changed since the editor baseline".to_owned(),
             expected_revision,
             observed_revision,
         }
@@ -275,19 +300,71 @@ impl StdTextFileService {
         Ok(canonical_parent.join(file_name))
     }
 
-    fn revision_for_existing(path: &Path) -> Result<Option<StorageRevision>, FileServiceError> {
-        match fs::read(path) {
-            Ok(bytes) => Ok(Some(content_revision(&bytes))),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
-            Err(error) => Err(FileServiceError::from_io("read revision", path, &error)),
+    fn read_existing_snapshot(
+        path: &Path,
+    ) -> Result<Option<(Vec<u8>, StorageSnapshot)>, FileServiceError> {
+        let mut file = match File::open(path) {
+            Ok(file) => file,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => {
+                return Err(FileServiceError::from_io(
+                    "open storage snapshot",
+                    path,
+                    &error,
+                ));
+            }
+        };
+        let metadata = file
+            .metadata()
+            .map_err(|error| FileServiceError::from_io("read metadata", path, &error))?;
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes)
+            .map_err(|error| FileServiceError::from_io("read storage snapshot", path, &error))?;
+        let snapshot = Self::snapshot_for_bytes_and_metadata(path, &bytes, &metadata);
+        Ok(Some((bytes, snapshot)))
+    }
+
+    #[cfg(unix)]
+    fn storage_instance(_path: &Path, metadata: &Metadata) -> StorageInstance {
+        let value = (u128::from(metadata.dev()) << 64) | u128::from(metadata.ino());
+        StorageInstance::new(value)
+    }
+
+    #[cfg(not(unix))]
+    fn storage_instance(path: &Path, metadata: &Metadata) -> StorageInstance {
+        let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+        for byte in path.as_os_str().to_string_lossy().as_bytes() {
+            hash ^= u64::from(*byte);
+            hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
         }
+        hash ^= metadata.len();
+        StorageInstance::new(u128::from(hash))
+    }
+
+    fn snapshot_for_bytes_and_metadata(
+        path: &Path,
+        bytes: &[u8],
+        metadata: &Metadata,
+    ) -> StorageSnapshot {
+        StorageSnapshot::new(
+            content_revision(bytes),
+            Self::storage_instance(path, metadata),
+        )
+    }
+
+    fn snapshot_for_bytes(path: &Path, bytes: &[u8]) -> Result<StorageSnapshot, FileServiceError> {
+        let metadata = fs::metadata(path)
+            .map_err(|error| FileServiceError::from_io("read metadata", path, &error))?;
+        Ok(Self::snapshot_for_bytes_and_metadata(
+            path, bytes, &metadata,
+        ))
     }
 
     fn check_precondition(
         path: &Path,
         precondition: WritePrecondition,
     ) -> Result<(), FileServiceError> {
-        let observed = Self::revision_for_existing(path)?;
+        let observed = Self::read_existing_snapshot(path)?.map(|(_, snapshot)| snapshot);
         let matches = match precondition {
             WritePrecondition::Any => true,
             WritePrecondition::Missing => observed.is_none(),
@@ -296,11 +373,16 @@ impl StdTextFileService {
         if matches {
             Ok(())
         } else {
-            let expected = match precondition {
-                WritePrecondition::Matches(revision) => Some(revision),
+            let expected_revision = match precondition {
+                WritePrecondition::Matches(snapshot) => Some(snapshot.revision()),
                 WritePrecondition::Any | WritePrecondition::Missing => None,
             };
-            Err(FileServiceError::conflict(path, expected, observed))
+            let observed_revision = observed.map(StorageSnapshot::revision);
+            Err(FileServiceError::conflict(
+                path,
+                expected_revision,
+                observed_revision,
+            ))
         }
     }
 
@@ -371,15 +453,19 @@ impl StdTextFileService {
 impl TextFileService for StdTextFileService {
     fn load_utf8(&self, path: &Path) -> Result<LoadedTextFile, FileServiceError> {
         let identity = Self::identity_for_existing(path)?;
-        let bytes = fs::read(identity.path())
-            .map_err(|error| FileServiceError::from_io("read", identity.path(), &error))?;
-        let revision = content_revision(&bytes);
+        let Some((bytes, snapshot)) = Self::read_existing_snapshot(identity.path())? else {
+            return Err(FileServiceError::from_io(
+                "read",
+                identity.path(),
+                &io::Error::from(io::ErrorKind::NotFound),
+            ));
+        };
         let text = String::from_utf8(bytes)
             .map_err(|error| FileServiceError::invalid_utf8(identity.path(), error))?;
         Ok(LoadedTextFile {
             identity,
             text,
-            revision,
+            snapshot,
         })
     }
 
@@ -387,6 +473,13 @@ impl TextFileService for StdTextFileService {
         let destination = Self::destination_path(path)?;
         FileIdentity::from_canonical_path(destination)
             .map_err(|error| FileServiceError::invalid_path(path, error))
+    }
+
+    fn observe_file(&self, path: &Path) -> Result<FileObservation, FileServiceError> {
+        match Self::read_existing_snapshot(path)? {
+            Some((_, snapshot)) => Ok(FileObservation::Present(snapshot)),
+            None => Ok(FileObservation::Missing),
+        }
     }
 
     fn write_utf8_atomic(
@@ -404,10 +497,9 @@ impl TextFileService for StdTextFileService {
             let _ = fs::remove_file(&temporary);
         }
         write_result?;
-        Ok(WrittenTextFile {
-            identity,
-            revision: content_revision(text.as_bytes()),
-        })
+        let bytes = text.as_bytes();
+        let snapshot = Self::snapshot_for_bytes(identity.path(), bytes)?;
+        Ok(WrittenTextFile { identity, snapshot })
     }
 }
 
@@ -768,7 +860,14 @@ fn dialog_output_error(output: Output) -> DialogError {
 #[derive(Clone, Debug)]
 pub struct MemoryTextFileService {
     root: PathBuf,
-    files: Rc<RefCell<BTreeMap<PathBuf, Vec<u8>>>>,
+    files: Rc<RefCell<BTreeMap<PathBuf, MemoryFile>>>,
+    next_instance: Rc<Cell<u128>>,
+}
+
+#[derive(Clone, Debug)]
+struct MemoryFile {
+    bytes: Vec<u8>,
+    instance: StorageInstance,
 }
 
 impl MemoryTextFileService {
@@ -790,7 +889,22 @@ impl MemoryTextFileService {
         Ok(Self {
             root,
             files: Rc::new(RefCell::new(BTreeMap::new())),
+            next_instance: Rc::new(Cell::new(1)),
         })
+    }
+
+    fn allocate_instance(&self) -> StorageInstance {
+        let value = self.next_instance.get();
+        self.next_instance.set(value.saturating_add(1));
+        StorageInstance::new(value)
+    }
+
+    fn replace_bytes(&self, path: PathBuf, bytes: Vec<u8>) {
+        let entry = MemoryFile {
+            bytes,
+            instance: self.allocate_instance(),
+        };
+        let _ = self.files.borrow_mut().insert(path, entry);
     }
 
     /// Inserts or replaces UTF-8 content without applying a write precondition.
@@ -800,10 +914,7 @@ impl MemoryTextFileService {
     /// Returns [`FileServiceError`] when the path cannot be normalized below the configured root.
     pub fn insert_utf8(&self, path: &Path, text: &str) -> Result<(), FileServiceError> {
         let path = self.resolve(path)?;
-        let _ = self
-            .files
-            .borrow_mut()
-            .insert(path, text.as_bytes().to_vec());
+        self.replace_bytes(path, text.as_bytes().to_vec());
         Ok(())
     }
 
@@ -814,8 +925,32 @@ impl MemoryTextFileService {
     /// Returns [`FileServiceError`] when the path cannot be normalized below the configured root.
     pub fn insert_bytes(&self, path: &Path, bytes: Vec<u8>) -> Result<(), FileServiceError> {
         let path = self.resolve(path)?;
-        let _ = self.files.borrow_mut().insert(path, bytes);
+        self.replace_bytes(path, bytes);
         Ok(())
+    }
+
+    /// Modifies UTF-8 bytes while preserving the current storage-instance identity.
+    ///
+    /// This models an in-place external write rather than atomic replacement.
+    pub fn modify_utf8_in_place(&self, path: &Path, text: &str) -> Result<(), FileServiceError> {
+        let path = self.resolve(path)?;
+        let mut files = self.files.borrow_mut();
+        let file = files.get_mut(&path).ok_or_else(|| FileServiceError {
+            operation: "modify memory file",
+            path: path.clone(),
+            kind: FileServiceErrorKind::NotFound,
+            message: "memory file does not exist".to_owned(),
+            expected_revision: None,
+            observed_revision: None,
+        })?;
+        file.bytes = text.as_bytes().to_vec();
+        Ok(())
+    }
+
+    /// Removes one file, returning whether it existed.
+    pub fn remove_file(&self, path: &Path) -> Result<bool, FileServiceError> {
+        let path = self.resolve(path)?;
+        Ok(self.files.borrow_mut().remove(&path).is_some())
     }
 
     /// Returns a copy of current bytes for assertions.
@@ -825,7 +960,11 @@ impl MemoryTextFileService {
     /// Returns [`FileServiceError`] when the path cannot be normalized below the configured root.
     pub fn bytes(&self, path: &Path) -> Result<Option<Vec<u8>>, FileServiceError> {
         let path = self.resolve(path)?;
-        Ok(self.files.borrow().get(&path).cloned())
+        Ok(self
+            .files
+            .borrow()
+            .get(&path)
+            .map(|file| file.bytes.clone()))
     }
 
     fn resolve(&self, path: &Path) -> Result<PathBuf, FileServiceError> {
@@ -859,7 +998,7 @@ impl MemoryTextFileService {
 impl TextFileService for MemoryTextFileService {
     fn load_utf8(&self, path: &Path) -> Result<LoadedTextFile, FileServiceError> {
         let path = self.resolve(path)?;
-        let bytes = self
+        let file = self
             .files
             .borrow()
             .get(&path)
@@ -872,15 +1011,15 @@ impl TextFileService for MemoryTextFileService {
                 expected_revision: None,
                 observed_revision: None,
             })?;
-        let revision = content_revision(&bytes);
-        let text = String::from_utf8(bytes)
+        let snapshot = StorageSnapshot::new(content_revision(&file.bytes), file.instance);
+        let text = String::from_utf8(file.bytes)
             .map_err(|error| FileServiceError::invalid_utf8(&path, error))?;
         let identity = FileIdentity::from_canonical_path(path.clone())
             .map_err(|error| FileServiceError::invalid_path(&path, error))?;
         Ok(LoadedTextFile {
             identity,
             text,
-            revision,
+            snapshot,
         })
     }
 
@@ -888,6 +1027,18 @@ impl TextFileService for MemoryTextFileService {
         let path = self.resolve(path)?;
         FileIdentity::from_canonical_path(path.clone())
             .map_err(|error| FileServiceError::invalid_path(&path, error))
+    }
+
+    fn observe_file(&self, path: &Path) -> Result<FileObservation, FileServiceError> {
+        let path = self.resolve(path)?;
+        let files = self.files.borrow();
+        Ok(match files.get(&path) {
+            Some(file) => FileObservation::Present(StorageSnapshot::new(
+                content_revision(&file.bytes),
+                file.instance,
+            )),
+            None => FileObservation::Missing,
+        })
     }
 
     fn write_utf8_atomic(
@@ -901,31 +1052,33 @@ impl TextFileService for MemoryTextFileService {
             .files
             .borrow()
             .get(identity.path())
-            .map(|bytes| content_revision(bytes));
+            .map(|file| StorageSnapshot::new(content_revision(&file.bytes), file.instance));
         let matches = match precondition {
             WritePrecondition::Any => true,
             WritePrecondition::Missing => observed.is_none(),
             WritePrecondition::Matches(expected) => observed == Some(expected),
         };
         if !matches {
-            let expected = match precondition {
-                WritePrecondition::Matches(revision) => Some(revision),
+            let expected_revision = match precondition {
+                WritePrecondition::Matches(snapshot) => Some(snapshot.revision()),
                 WritePrecondition::Any | WritePrecondition::Missing => None,
             };
             return Err(FileServiceError::conflict(
                 identity.path(),
-                expected,
-                observed,
+                expected_revision,
+                observed.map(StorageSnapshot::revision),
             ));
         }
-        let _ = self
-            .files
-            .borrow_mut()
-            .insert(identity.path().to_path_buf(), text.as_bytes().to_vec());
-        Ok(WrittenTextFile {
-            identity,
-            revision: content_revision(text.as_bytes()),
-        })
+        let instance = self.allocate_instance();
+        let snapshot = StorageSnapshot::new(content_revision(text.as_bytes()), instance);
+        let _ = self.files.borrow_mut().insert(
+            identity.path().to_path_buf(),
+            MemoryFile {
+                bytes: text.as_bytes().to_vec(),
+                instance,
+            },
+        );
+        Ok(WrittenTextFile { identity, snapshot })
     }
 }
 
@@ -1026,9 +1179,9 @@ fn content_revision(bytes: &[u8]) -> StorageRevision {
 #[cfg(test)]
 mod tests {
     use super::{
-        DirtyCloseChoice, DocumentDialogService, FileServiceErrorKind, MemoryTextFileService,
-        SaveConflictChoice, ScriptedDialogService, StdTextFileService, TEMP_FILE_SEQUENCE,
-        TextFileService, WritePrecondition, path_from_dialog_stdout,
+        DirtyCloseChoice, DocumentDialogService, FileObservation, FileServiceErrorKind,
+        MemoryTextFileService, SaveConflictChoice, ScriptedDialogService, StdTextFileService,
+        TEMP_FILE_SEQUENCE, TextFileService, WritePrecondition, path_from_dialog_stdout,
     };
     use std::error::Error;
     use std::fs;
@@ -1107,7 +1260,7 @@ mod tests {
         let written = service.write_utf8_atomic(
             &path,
             "after",
-            WritePrecondition::Matches(loaded.revision()),
+            WritePrecondition::Matches(loaded.snapshot()),
         )?;
 
         assert_eq!(fs::read_to_string(&path)?, "after");
@@ -1130,7 +1283,7 @@ mod tests {
         let _ = service.write_utf8_atomic(
             &path,
             "after",
-            WritePrecondition::Matches(loaded.revision()),
+            WritePrecondition::Matches(loaded.snapshot()),
         )?;
 
         let mode = fs::metadata(&path)?.permissions().mode() & 0o777;
@@ -1147,7 +1300,7 @@ mod tests {
         let written = service.write_utf8_atomic(
             Path::new("save.txt"),
             "after",
-            WritePrecondition::Matches(loaded.revision()),
+            WritePrecondition::Matches(loaded.snapshot()),
         )?;
 
         assert_eq!(
@@ -1167,7 +1320,26 @@ mod tests {
         let error = service.write_utf8_atomic(
             Path::new("conflict.txt"),
             "editor",
-            WritePrecondition::Matches(baseline.revision()),
+            WritePrecondition::Matches(baseline.snapshot()),
+        );
+
+        assert!(error.is_err_and(|value| value.kind() == FileServiceErrorKind::Conflict));
+        Ok(())
+    }
+
+    #[test]
+    fn same_content_replacement_is_rejected_by_snapshot_precondition() -> Result<(), Box<dyn Error>>
+    {
+        let service = memory()?;
+        let path = Path::new("same-content.txt");
+        service.insert_utf8(path, "same")?;
+        let baseline = service.load_utf8(path)?;
+        service.insert_utf8(path, "same")?;
+
+        let error = service.write_utf8_atomic(
+            path,
+            "editor",
+            WritePrecondition::Matches(baseline.snapshot()),
         );
 
         assert!(error.is_err_and(|value| value.kind() == FileServiceErrorKind::Conflict));
@@ -1185,6 +1357,34 @@ mod tests {
         );
 
         assert!(error.is_err_and(|value| value.kind() == FileServiceErrorKind::Conflict));
+        Ok(())
+    }
+
+    #[test]
+    fn observation_distinguishes_in_place_change_replacement_and_missing()
+    -> Result<(), Box<dyn Error>> {
+        let service = memory()?;
+        let path = Path::new("observe.txt");
+        service.insert_utf8(path, "baseline")?;
+        let FileObservation::Present(initial) = service.observe_file(path)? else {
+            return Err(std::io::Error::other("initial observation was missing").into());
+        };
+
+        service.modify_utf8_in_place(path, "modified")?;
+        let FileObservation::Present(modified) = service.observe_file(path)? else {
+            return Err(std::io::Error::other("modified observation was missing").into());
+        };
+        assert_eq!(initial.instance(), modified.instance());
+        assert_ne!(initial.revision(), modified.revision());
+
+        service.insert_utf8(path, "replacement")?;
+        let FileObservation::Present(replaced) = service.observe_file(path)? else {
+            return Err(std::io::Error::other("replacement observation was missing").into());
+        };
+        assert_ne!(modified.instance(), replaced.instance());
+
+        assert!(service.remove_file(path)?);
+        assert_eq!(service.observe_file(path)?, FileObservation::Missing);
         Ok(())
     }
 

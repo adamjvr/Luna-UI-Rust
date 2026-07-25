@@ -18,25 +18,29 @@ M3.1a through M3.1d are complete and locally validated. File/Edit/Find/View/Help
 dropdowns, while Control-P opens the independent searchable command palette.
 
 M3.2a established product-neutral document identity and lifecycle decisions through
-`luna-documents`. M3.2b adds the new `luna-document-services` crate and connects those decisions to
-real editor behavior:
+`luna-documents`. M3.2b connected those decisions to real UTF-8 files and native dialogs. M3.2c adds
+recent-file state and continuous external-change delivery:
 
 - synchronous, product-neutral `TextFileService` and `DocumentDialogService` boundaries;
 - strict UTF-8 loading with invalid-encoding errors rather than lossy replacement;
 - canonical file identities and duplicate-open activation;
-- deterministic content revisions used as optimistic save preconditions;
+- revision-plus-instance storage snapshots used as optimistic save preconditions;
 - same-directory temporary writes with existing-permission preservation and atomic replacement;
 - Open, Save, Save As, and dirty-close commands in menus, shortcuts, the command palette, pointer
   routing, and accessibility;
 - Save/Discard/Cancel close resolution;
 - Overwrite/Reload/Cancel save-conflict resolution;
 - Linux native dialogs through Zenity with KDialog fallback;
-- in-memory file services and scripted dialogs for deterministic lifecycle tests.
+- in-memory file services and scripted dialogs for deterministic lifecycle tests;
+- bounded MRU recent-file state projected into File and the command palette;
+- revision-plus-instance storage snapshots that distinguish modified, replaced, missing, and
+  recreated files;
+- 750 ms UI-thread observation with no redraw when storage is unchanged;
+- status/accessibility notices and explicit Reload from Disk behavior.
 
-M3.2c is next: recent files, external-change delivery, reload notifications, and further save
-hardening. Workspace trees and independent shared-buffer views follow in M3.2d and M3.2e. See
-`docs/M3_2A_DOCUMENT_LIFECYCLE.md`, `docs/M3_2B_FILE_DIALOG_SERVICES.md`, and
-`docs/SWIFT_PARITY.md`.
+Workspace trees and independent shared-buffer views follow in M3.2d and M3.2e. See
+`docs/M3_2A_DOCUMENT_LIFECYCLE.md`, `docs/M3_2B_FILE_DIALOG_SERVICES.md`,
+`docs/M3_2C_RECENT_EXTERNAL_CHANGES.md`, and `docs/SWIFT_PARITY.md`.
 
 ## Build and validate
 
@@ -45,6 +49,12 @@ Install the pinned Rust toolchain through rustup, then run the complete quality 
 ```bash
 cargo fmt --all
 ./scripts/validate.sh
+```
+
+M3.2c also includes a focused automated gate and runtime-fixture generator:
+
+```bash
+./scripts/test-m3-2c.sh
 ```
 
 Run the proof gallery in release mode:
@@ -88,16 +98,20 @@ Editor shortcuts:
 - **Control-A** — select all editor text;
 - **Escape** — close the active menu/overlay, or exit when none is open.
 
-M3.2b document behavior:
+M3.2c document behavior:
 
 - New File creates an empty, clean, monotonically named Untitled document;
 - Open loads strict UTF-8 text and activates an existing tab when the canonical file is already open;
-- Save writes through an optimistic content-revision check;
+- Save writes through an optimistic storage-snapshot check;
 - Save As assigns the selected canonical file identity and updates the tab title;
 - dirty close offers Save, Discard, and Cancel;
 - a storage race offers Overwrite, Reload, and Cancel;
 - canceled dialogs and failed writes preserve editor content and dirty state;
-- clean close releases both editor-view state and registry identity.
+- clean close releases both editor-view state and registry identity;
+- successful Open/Save/Save As updates an eight-entry in-memory recent-file list;
+- external in-place edits, replacements, deletion, and recreation are distinguished;
+- unchanged observations produce no redraw;
+- Reload from Disk explicitly adopts observed content and clears external state.
 
 The editor must preserve M3.1b performance behavior: no idle frames, no reshaping for caret,
 selection, focus, or menu changes, overscanned raster reuse during ordinary scrolling, and bounded
@@ -121,7 +135,8 @@ native event / AccessKit action / scheduled logical update
          -> command-palette projection
          -> keyboard/accessibility dispatch
     -> product-neutral document registry and lifecycle decision
-    -> UTF-8 file service + native dialog service boundary
+    -> UTF-8 file/dialog service + storage observation boundary
+    -> MRU recent-file projection + external-state transition
     -> platform-neutral Luna application state
     -> retained text/layout/chrome or retained static scene
     -> dynamic display list + shared validated semantic snapshot
@@ -133,8 +148,8 @@ Widgets do not call graphics APIs, create native windows, own operating-system e
 Moth-specific product policy. See `docs/ARCHITECTURE.md`, `docs/PORTING_MAP.md`,
 `docs/M3_1A_HOST_PIPELINE.md`, `docs/M3_1B_TEXT_CACHE.md`,
 `docs/M3_1C_GALLERY_ACCESSIBILITY.md`, `docs/M3_1D_DROPDOWN_MENUS.md`,
-`docs/M3_2A_DOCUMENT_LIFECYCLE.md`, `docs/M3_2B_FILE_DIALOG_SERVICES.md`, and
-`docs/SWIFT_PARITY.md`.
+`docs/M3_2A_DOCUMENT_LIFECYCLE.md`, `docs/M3_2B_FILE_DIALOG_SERVICES.md`,
+`docs/M3_2C_RECENT_EXTERNAL_CHANGES.md`, and `docs/SWIFT_PARITY.md`.
 
 ## License
 

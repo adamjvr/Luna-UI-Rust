@@ -4,7 +4,7 @@ This document records the functional relationship between Luna-UI-Rust and the o
 Luna UI implementation. It is a directional feature-inventory assessment, not a line-count or API
 percentage guarantee.
 
-## Current estimate after M3.2b
+## Current estimate after M3.2c
 
 ```text
 foundational architecture       72–82% parity
@@ -24,7 +24,7 @@ platform.
 
 ## Capability matrix
 
-| Area | Luna-UI-Rust after M3.2b | Swift Luna UI | Relative state |
+| Area | Luna-UI-Rust after M3.2c | Swift Luna UI | Relative state |
 |---|---|---|---|
 | Core architecture | IDs, geometry, input, commands, layout, themes, rendering, accessibility, and host boundaries | Same broad spine with more downstream use | Near parity |
 | CPU rendering | Display lists, images, alpha composition, retained host/static layers, dirty-region restore | CPU framebuffer and proof-frame caching | Near parity |
@@ -37,7 +37,7 @@ platform.
 | Menus | Functional first-level dropdowns, checked/disabled rows, shortcuts, pointer/keyboard navigation, and accessibility | First-level menus plus submenus and deeper command-state integration | Swift moderately ahead |
 | Context menus | Not yet implemented | Product-neutral context definitions and routing | Missing in Rust |
 | Completion popup | Not yet implemented | Anchored popup, details, keyboard/pointer activation, and result payloads | Missing in Rust |
-| Documents | Stable IDs, canonical file identity, duplicate prevention, untitled lifecycle, dirty/save/close decisions, external state, and retained text caches | Shared buffers, independent views, complete adapters, and product integration | Swift ahead |
+| Documents | Stable IDs, canonical identity, recent files, dirty/save/close decisions, storage snapshots, modified/replaced/missing/recreated delivery, and retained text caches | Shared buffers, independent views, complete adapters, and product integration | Swift ahead |
 | File lifecycle | Strict UTF-8 Open, Save, Save As, atomic replacement, duplicate activation, dirty-close resolution, and optimistic conflict handling | Real UTF-8 lifecycle with broader host/product integration | Swift moderately ahead |
 | Native dialogs | Product-neutral contract plus Zenity/KDialog Linux adapter and deterministic scripted adapter | Host-owned cross-platform Open, Save As, dirty-close, and product integration | Swift ahead in breadth/platform coverage |
 | Projects/workspaces | Demonstration sidebar rows | Workspace/project adapters and tree snapshots | Missing in Rust |
@@ -97,9 +97,9 @@ and skip unchanged accessibility translation.
 
 ## Where Swift remains ahead
 
-M3.2b closes much of the basic file/dialog lifecycle gap, but Swift still implements nested
+M3.2c closes much of the recent-file and external-change lifecycle gap, but Swift still implements nested
 submenus, context menus, completion popups, richer command availability, richer find/replace
-behavior, continuous external-change delivery, recent files, workspace/project adapters, recursive
+behavior, persistent recent files, native event watchers, workspace/project adapters, recursive
 split panes, independent pane presentation state, pinned/overflow tabs, and direct paired Moth
 integration. It also has
 substantially broader phase-specific regression coverage.
@@ -115,13 +115,14 @@ M3.1c -> complete incremental engine-performance groundwork
 M3.1d -> first-level desktop dropdown menus and command-surface separation
 M3.2a -> stable document identity, lifecycle decisions, and duplicate prevention
 M3.2b -> UTF-8 file services, atomic saves, native dialogs, and close/conflict resolution
-M3.2c+ -> recent files, external-change delivery, workspace adapters, and independent views
+M3.2c -> recent files, storage snapshots, external-change delivery, and reload notices
+M3.2d+ -> workspace adapters, persistence, native watchers, and independent views
 M3.3  -> split panes, advanced tabs, nested menus, context menus, and completion
 M4    -> wgpu renderer
 M5    -> syntax spans, Sublime themes, undo/redo, multiple cursors, and IME
 M6    -> direct Moth integration and platform hardening
 ```
 
-The largest visible parity gain will still occur in later M3.2 and M3.3 work. M3.2b now provides
-real file persistence and dialog behavior; workspace trees, watcher delivery, shared buffers, and
+The largest visible parity gain will still occur in later M3.2 and M3.3 work. M3.2c now provides
+real file persistence and dialog behavior; workspace trees, native watcher backends, shared buffers, and
 panes remain the major application-integration gaps.

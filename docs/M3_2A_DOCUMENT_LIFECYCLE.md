@@ -20,14 +20,15 @@ The crate has no platform or UI dependencies. It provides:
 
 - `DocumentId`, a monotonic application-local identity suitable for tabs, caches, and semantics;
 - `FileIdentity`, an absolute adapter-canonicalized path used for duplicate-open prevention;
-- `StorageRevision`, an opaque adapter-provided token for optimistic conflict checks;
+- `StorageRevision`, an opaque adapter-provided content token;
+- `StorageInstance` and `StorageSnapshot`, which pair content with a concrete storage object;
 - `DocumentSource` for untitled, file-backed, and virtual/generated documents;
-- `DocumentRecord`, which retains saved edit revision, storage revision, and external state;
+- `DocumentRecord`, which retains saved edit revision, storage snapshot, and external state;
 - `DocumentRegistry`, which owns identity allocation, monotonic untitled numbering, and file/virtual
   indexes;
 - `SaveRequirement`, which distinguishes no-op, Save As, direct write, and unsupported sources;
 - `CloseRequirement`, which distinguishes safe close from Save/Discard/Cancel policy;
-- `ExternalState`, which records in-sync, externally modified, and missing-file states.
+- `ExternalState`, which records in-sync, externally modified, replaced, missing, and recreated states.
 
 ## File identity boundary
 
@@ -47,11 +48,11 @@ Save is represented as a decision, not an implicit side effect:
 untitled document        -> SaveAs
 virtual/generated source -> Unsupported
 clean file document      -> None
-dirty file document      -> WriteFile(identity, expected storage revision, external state)
+dirty file document      -> WriteFile(identity, expected storage snapshot, external state)
 ```
 
 A successful adapter write calls `mark_saved`, which advances the saved edit revision, installs the
-new storage revision, and clears external conflict state.
+new storage snapshot, and clears external conflict state.
 
 ## Close lifecycle
 
@@ -68,10 +69,10 @@ model.
 
 ## External changes
 
-Storage watchers will eventually call either:
+M3.2c observation adapters call either:
 
-- `observe_storage_revision`, which returns to `InSync` when the revision matches the known
-  baseline and otherwise records `Modified`;
+- `observe_storage_snapshot`, which returns to `InSync` for an exact baseline match and otherwise
+  distinguishes `Modified`, `Replaced`, or `Recreated`;
 - `observe_missing_file`, which records `Missing`.
 
 The next Save decision carries this external state so Moth or another application can choose reload,
@@ -90,7 +91,7 @@ DemoDocument
 DocumentRegistry
   -> title/source
   -> saved edit revision
-  -> storage revision
+  -> storage snapshot
   -> external state
 ```
 
@@ -106,13 +107,16 @@ Visible effects:
 
 ## Follow-up status
 
-M3.2b implements strict UTF-8 reading, deterministic storage revisions, atomic writes, native Open
+M3.2b implements strict UTF-8 reading, deterministic storage snapshots, atomic writes, native Open
 and Save As dialogs, dirty-close choices, and save-conflict resolution through the separate
 `luna-document-services` crate.
 
+M3.2c now adds bounded in-memory recent files, UI-thread observation delivery, missing/recreated
+notices, and explicit Reload from Disk behavior.
+
 Still deferred:
 
-- recent files;
-- continuous watcher delivery and missing-file notices;
+- persistent recent-file/session storage;
+- native event-based watcher backends;
 - workspace/folder tree adapters;
 - shared buffers with independent editor views.

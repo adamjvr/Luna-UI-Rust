@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MPL-2.0
 
-//! Native M3.2b editor integration harness for Luna UI Rust.
+//! Native M3.2c editor integration harness for Luna UI Rust.
 //!
 //! This application mirrors the purpose of Swift LunaUITestApp's default editor mode: reusable
 //! shell anatomy and editor text are exercised together without embedding Moth Text product
 //! policy in Luna. It provides menus, tabs, a project sidebar, status chrome, editable text,
 //! real dropdown menus, a separate command palette, find panel, document lifecycle tracking,
 //! UTF-8 open/save services, native dialog boundaries, accessibility,
-//! retained document layouts, overscanned glyph rasters, and stable-slot chrome-label caching.
+//! retained document layouts, recent-file projection, UI-thread external observation,
+//! overscanned glyph rasters, and stable-slot chrome-label caching.
 //!
 //! Shortcuts: Control-P command palette, Control-O open, Control-F find, Control-H replace,
 //! Control-S save, Control-Shift-S Save As, Control-N new document, Control-B sidebar, Control-W
@@ -17,13 +18,13 @@
 use luna_accessibility::{AccessibilityNode, AccessibilityRole};
 use luna_core::{InsetsI, NodeId, PointI, RectI, SizeI};
 use luna_document_services::{
-    DirtyCloseChoice, DocumentDialogService, FileServiceError, FileServiceErrorKind,
-    SaveConflictChoice, StdTextFileService, SystemDialogService, TextFileService,
-    WritePrecondition,
+    DirtyCloseChoice, DocumentDialogService, FileObservation, FileServiceError,
+    FileServiceErrorKind, SaveConflictChoice, StdTextFileService, SystemDialogService,
+    TextFileService, WritePrecondition,
 };
 use luna_documents::{
     CloseRequirement, DocumentId, DocumentRecord, DocumentRegistry, DocumentSource, ExternalState,
-    FileIdentity, OpenFileOutcome, SaveRequirement,
+    FileIdentity, OpenFileOutcome, RecentFileList, SaveRequirement,
 };
 use luna_host_winit::{
     AccessibilityActionKind, AccessibilityActionRequest, ApplicationError, HostControl,
@@ -48,6 +49,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::ops::Range;
 use std::path::Path;
+use std::time::Duration;
 
 const ROOT_ID: &str = "m3-editor-window";
 const SHELL_ID: &str = "m3-editor-shell";
@@ -55,10 +57,12 @@ const TEXT_ID: &str = "m3-editor-text";
 const PALETTE_ID: &str = "m3-editor-palette";
 const FIND_ID: &str = "m3-editor-find";
 const MENU_ID: &str = "m3-editor-dropdown-menu";
+const EXTERNAL_POLL_INTERVAL: Duration = Duration::from_millis(750);
+const RECENT_FILE_LIMIT: usize = 8;
 
 const README_TEXT: &str = concat!(
     "# Luna UI Rust\n\n",
-    "M3.2b adds real UTF-8 file and native dialog services.\n\n",
+    "M3.2c adds recent files and external-change observation.\n\n",
     "- Deterministic shell geometry\n",
     "- Revision-keyed document shaping\n",
     "- Viewport-band glyph rasterization\n",
@@ -137,6 +141,7 @@ struct EditorDemoApplication {
     document_registry: DocumentRegistry,
     file_service: Box<dyn TextFileService>,
     dialog_service: Box<dyn DocumentDialogService>,
+    recent_files: RecentFileList,
     documents: Vec<DemoDocument>,
     active_index: usize,
     engine: TextEngine,
@@ -155,6 +160,7 @@ struct EditorDemoApplication {
     text_is_focused: bool,
     reveal_caret_on_next_frame: bool,
     lifecycle_notice: Option<String>,
+    observation_elapsed: Duration,
     frame_build_count: u64,
 }
 
@@ -184,6 +190,7 @@ impl EditorDemoApplication {
             document_registry,
             file_service,
             dialog_service,
+            recent_files: RecentFileList::new(RECENT_FILE_LIMIT),
             documents: vec![
                 DemoDocument::new(readme_id, README_TEXT),
                 DemoDocument::new(editor_id, EDITOR_TEXT),
@@ -206,6 +213,7 @@ impl EditorDemoApplication {
             text_is_focused: true,
             reveal_caret_on_next_frame: true,
             lifecycle_notice: None,
+            observation_elapsed: Duration::ZERO,
             frame_build_count: 0,
         })
     }
@@ -225,33 +233,61 @@ impl EditorDemoApplication {
 
     fn menu_definitions(&self) -> Vec<MenuDefinition> {
         let active = self.active_document();
-        let save_is_enabled = self
-            .document_registry
-            .get(active.id)
+        let active_record = self.document_registry.get(active.id);
+        let save_is_enabled = active_record
             .map(|record| record.save_requirement(active.editor.edit_revision()))
             .is_some_and(|requirement| requirement != SaveRequirement::None);
+        let reload_is_enabled = active_record.is_some_and(|record| {
+            matches!(
+                record.external_state(),
+                ExternalState::Modified { .. }
+                    | ExternalState::Replaced { .. }
+                    | ExternalState::Recreated { .. }
+            )
+        });
         let find_navigation_is_enabled = self.find.is_some() && !self.find_matches.is_empty();
-        vec![
-            MenuDefinition::new(
-                "file",
-                "File",
-                vec![
-                    MenuItem::command(MenuCommand::new("new-file", "New File", "Ctrl+N")),
-                    MenuItem::command(MenuCommand::new("open", "Open…", "Ctrl+O")),
-                    MenuItem::Separator,
-                    MenuItem::command(
-                        MenuCommand::new("save", "Save", "Ctrl+S").with_enabled(save_is_enabled),
-                    ),
-                    MenuItem::command(MenuCommand::new("save-as", "Save As…", "Ctrl+Shift+S")),
-                    MenuItem::Separator,
-                    MenuItem::command(
-                        MenuCommand::new("close-tab", "Close Tab", "Ctrl+W")
-                            .with_enabled(self.documents.len() > 1),
-                    ),
-                    MenuItem::Separator,
-                    MenuItem::command(MenuCommand::new("exit", "Exit", "")),
-                ],
+        let mut file_items = vec![
+            MenuItem::command(MenuCommand::new("new-file", "New File", "Ctrl+N")),
+            MenuItem::command(MenuCommand::new("open", "Open…", "Ctrl+O")),
+        ];
+        if !self.recent_files.entries().is_empty() {
+            file_items.push(MenuItem::Separator);
+            file_items.extend(self.recent_files.entries().iter().enumerate().map(
+                |(index, entry)| {
+                    MenuItem::command(MenuCommand::new(
+                        format!("open-recent-{index}"),
+                        format!("Open Recent: {}", entry.title()),
+                        "",
+                    ))
+                },
+            ));
+            file_items.push(MenuItem::command(MenuCommand::new(
+                "clear-recent-files",
+                "Clear Recent Files",
+                "",
+            )));
+        }
+        file_items.extend([
+            MenuItem::Separator,
+            MenuItem::command(
+                MenuCommand::new("save", "Save", "Ctrl+S").with_enabled(save_is_enabled),
             ),
+            MenuItem::command(MenuCommand::new("save-as", "Save As…", "Ctrl+Shift+S")),
+            MenuItem::command(
+                MenuCommand::new("reload-from-disk", "Reload from Disk", "")
+                    .with_enabled(reload_is_enabled),
+            ),
+            MenuItem::Separator,
+            MenuItem::command(
+                MenuCommand::new("close-tab", "Close Tab", "Ctrl+W")
+                    .with_enabled(self.documents.len() > 1),
+            ),
+            MenuItem::Separator,
+            MenuItem::command(MenuCommand::new("exit", "Exit", "")),
+        ]);
+
+        vec![
+            MenuDefinition::new("file", "File", file_items),
             MenuDefinition::new(
                 "edit",
                 "Edit",
@@ -351,16 +387,21 @@ impl EditorDemoApplication {
                 1,
             )
         }));
-        let status_left = self.lifecycle_notice.as_ref().map_or_else(
+        let status_left = self.active_external_notice().map_or_else(
             || {
-                format!(
-                    "{}{}",
-                    active_title,
-                    if active.is_dirty(&self.document_registry) {
-                        " — Modified"
-                    } else {
-                        ""
-                    }
+                self.lifecycle_notice.as_ref().map_or_else(
+                    || {
+                        format!(
+                            "{}{}",
+                            active_title,
+                            if active.is_dirty(&self.document_registry) {
+                                " — Modified"
+                            } else {
+                                ""
+                            }
+                        )
+                    },
+                    |notice| format!("{active_title} — {notice}"),
                 )
             },
             |notice| format!("{active_title} — {notice}"),
@@ -741,6 +782,13 @@ impl EditorDemoApplication {
     fn execute_command(&mut self, command: &str) -> HostControl {
         self.palette = None;
         self.menu.close();
+        if let Some(index) = command
+            .strip_prefix("open-recent-")
+            .and_then(|value| value.parse::<usize>().ok())
+        {
+            self.open_recent_file(index);
+            return HostControl::Invalidate(InvalidationClass::WidgetLayout);
+        }
         let invalidation = match command {
             "new-file" => {
                 self.new_document();
@@ -756,6 +804,15 @@ impl EditorDemoApplication {
             }
             "save-as" => {
                 let _ = self.save_active_as();
+                InvalidationClass::WidgetLayout
+            }
+            "reload-from-disk" => {
+                let _ = self.reload_active_file();
+                InvalidationClass::TextLayout
+            }
+            "clear-recent-files" => {
+                self.recent_files.clear();
+                self.lifecycle_notice = Some("Recent files cleared".to_owned());
                 InvalidationClass::WidgetLayout
             }
             "close-tab" if self.documents.len() > 1 => {
@@ -836,22 +893,45 @@ impl EditorDemoApplication {
                 return;
             }
         };
-        let loaded = match self.file_service.load_utf8(&selected) {
+        self.open_path(&selected);
+    }
+
+    fn open_recent_file(&mut self, index: usize) {
+        let Some(identity) = self
+            .recent_files
+            .entries()
+            .get(index)
+            .map(|entry| entry.identity().clone())
+        else {
+            self.lifecycle_notice = Some("Recent file entry is no longer available".to_owned());
+            return;
+        };
+        self.open_path(identity.path());
+    }
+
+    fn open_path(&mut self, path: &Path) {
+        let loaded = match self.file_service.load_utf8(path) {
             Ok(loaded) => loaded,
             Err(error) => {
+                if error.kind() == FileServiceErrorKind::NotFound
+                    && let Ok(identity) = self.file_service.identity_for_save(path)
+                {
+                    self.recent_files.remove(&identity);
+                }
                 self.lifecycle_notice = Some(format!("Open failed: {error}"));
                 return;
             }
         };
         let identity = loaded.identity().clone();
         let title = file_title(&identity);
-        let storage_revision = loaded.revision();
+        let storage_snapshot = loaded.snapshot();
         let editor = EditableText::new(loaded.into_text());
+        self.recent_files.record(identity.clone(), title.clone());
         match self.document_registry.register_file(
             identity,
             title.clone(),
             editor.edit_revision(),
-            Some(storage_revision),
+            Some(storage_snapshot),
         ) {
             OpenFileOutcome::Opened(id) => {
                 self.documents.push(DemoDocument {
@@ -888,13 +968,13 @@ impl EditorDemoApplication {
             Some(SaveRequirement::SaveAs | SaveRequirement::Unsupported) => self.save_active_as(),
             Some(SaveRequirement::WriteFile {
                 identity,
-                expected_storage_revision,
+                expected_storage_snapshot,
                 external_state,
             }) => {
                 if external_state != ExternalState::InSync {
                     return self.resolve_save_conflict(identity);
                 }
-                let precondition = expected_storage_revision
+                let precondition = expected_storage_snapshot
                     .map_or(WritePrecondition::Missing, WritePrecondition::Matches);
                 match self.write_active_to_path(identity.path(), precondition) {
                     Ok(()) => true,
@@ -978,11 +1058,13 @@ impl EditorDemoApplication {
             written.identity().clone(),
             title.clone(),
             edit_revision,
-            Some(written.revision()),
+            Some(written.snapshot()),
         ) {
             self.lifecycle_notice = Some(format!("Save As registration failed: {error}"));
             return false;
         }
+        self.recent_files
+            .record(written.identity().clone(), title.clone());
         self.lifecycle_notice = Some(format!("Saved {title}"));
         true
     }
@@ -1004,9 +1086,12 @@ impl EditorDemoApplication {
             .file_service
             .write_utf8_atomic(path, &text, precondition)?;
         if let Some(record) = self.document_registry.get_mut(document_id) {
-            record.mark_saved(edit_revision, Some(written.revision()));
+            record.mark_saved(edit_revision, Some(written.snapshot()));
         }
-        self.lifecycle_notice = Some(format!("Saved {}", file_title(written.identity())));
+        let title = file_title(written.identity());
+        self.recent_files
+            .record(written.identity().clone(), title.clone());
+        self.lifecycle_notice = Some(format!("Saved {title}"));
         Ok(())
     }
 
@@ -1043,6 +1128,95 @@ impl EditorDemoApplication {
         }
     }
 
+    fn reload_active_file(&mut self) -> bool {
+        let path = self
+            .document_registry
+            .get(self.active_document().id)
+            .and_then(|record| match record.source() {
+                DocumentSource::File(identity) => Some(identity.path().to_path_buf()),
+                DocumentSource::Untitled { .. } | DocumentSource::Virtual { .. } => None,
+            });
+        path.is_some_and(|path| self.reload_active_from_path(&path))
+    }
+
+    fn active_external_notice(&self) -> Option<String> {
+        let record = self.document_registry.get(self.active_document().id)?;
+        let action = "Use File → Reload from Disk or save to resolve";
+        match record.external_state() {
+            ExternalState::InSync => None,
+            ExternalState::Modified { .. } => Some(format!("Changed on disk. {action}")),
+            ExternalState::Replaced { .. } => Some(format!("Replaced on disk. {action}")),
+            ExternalState::Missing => Some(
+                "Deleted on disk. Save can recreate it or Save As can choose another path"
+                    .to_owned(),
+            ),
+            ExternalState::Recreated { .. } => Some(format!("Recreated on disk. {action}")),
+        }
+    }
+
+    fn poll_external_changes(&mut self) -> bool {
+        let active_id = self.active_document().id;
+        let watched = self
+            .document_registry
+            .records()
+            .iter()
+            .filter_map(|record| match record.source() {
+                DocumentSource::File(identity) => Some((record.id(), identity.clone())),
+                DocumentSource::Untitled { .. } | DocumentSource::Virtual { .. } => None,
+            })
+            .collect::<Vec<_>>();
+        let mut state_changed = false;
+        let mut active_observation_error = None;
+        for (document_id, identity) in watched {
+            let previous = self
+                .document_registry
+                .get(document_id)
+                .map_or(ExternalState::InSync, DocumentRecord::external_state);
+            let observation = match self.file_service.observe_file(identity.path()) {
+                Ok(observation) => observation,
+                Err(error) => {
+                    if document_id == active_id {
+                        active_observation_error =
+                            Some(format!("File observation failed: {error}"));
+                    }
+                    continue;
+                }
+            };
+            if let Some(record) = self.document_registry.get_mut(document_id) {
+                match observation {
+                    FileObservation::Present(snapshot) => {
+                        record.observe_storage_snapshot(snapshot);
+                    }
+                    FileObservation::Missing => record.observe_missing_file(),
+                }
+                state_changed |= record.external_state() != previous;
+            }
+        }
+
+        let notice_changed = match active_observation_error {
+            Some(notice) if self.lifecycle_notice.as_deref() != Some(notice.as_str()) => {
+                self.lifecycle_notice = Some(notice);
+                true
+            }
+            Some(_) => false,
+            None if self
+                .lifecycle_notice
+                .as_deref()
+                .is_some_and(|notice| notice.starts_with("File observation failed:")) =>
+            {
+                self.lifecycle_notice = None;
+                true
+            }
+            None => {
+                if state_changed {
+                    self.lifecycle_notice = None;
+                }
+                false
+            }
+        };
+        state_changed || notice_changed
+    }
+
     fn reload_active_from_path(&mut self, path: &Path) -> bool {
         let loaded = match self.file_service.load_utf8(path) {
             Ok(loaded) => loaded,
@@ -1053,7 +1227,7 @@ impl EditorDemoApplication {
         };
         let document_id = self.active_document().id;
         let stable_key = document_id.stable_key();
-        let storage_revision = loaded.revision();
+        let storage_snapshot = loaded.snapshot();
         let editor = EditableText::new(loaded.into_text());
         let edit_revision = editor.edit_revision();
         {
@@ -1062,7 +1236,7 @@ impl EditorDemoApplication {
             document.scroll = TextScroll::default();
         }
         if let Some(record) = self.document_registry.get_mut(document_id) {
-            record.mark_saved(edit_revision, Some(storage_revision));
+            record.mark_saved(edit_revision, Some(storage_snapshot));
         }
         let _ = self.text_layouts.remove(&stable_key);
         self.refresh_find_matches();
@@ -1877,6 +2051,23 @@ impl NativeApplication for EditorDemoApplication {
         )?)
     }
 
+    fn frame_interval(&self) -> Option<Duration> {
+        Some(EXTERNAL_POLL_INTERVAL)
+    }
+
+    fn update(&mut self, elapsed: Duration) -> HostControl {
+        self.observation_elapsed = self.observation_elapsed.saturating_add(elapsed);
+        if self.observation_elapsed < EXTERNAL_POLL_INTERVAL {
+            return HostControl::Continue;
+        }
+        self.observation_elapsed = Duration::ZERO;
+        if self.poll_external_changes() {
+            HostControl::Invalidate(InvalidationClass::TextOverlay)
+        } else {
+            HostControl::Continue
+        }
+    }
+
     fn handle_input(&mut self, event: InputEvent) -> HostControl {
         match event {
             InputEvent::Keyboard(keyboard) if keyboard.is_pressed => {
@@ -2280,7 +2471,7 @@ mod tests {
         DirtyCloseChoice, MemoryTextFileService, SaveConflictChoice, ScriptedDialogService,
         TextFileService,
     };
-    use luna_documents::DocumentSource;
+    use luna_documents::{DocumentRecord, DocumentSource, ExternalState};
     use luna_host_winit::NativeApplication;
     use luna_input::{InputEvent, Modifiers, PointerButton, PointerEvent, PointerEventKind};
     use std::error::Error;
@@ -2624,6 +2815,154 @@ mod tests {
             application
                 .active_document()
                 .is_dirty(&application.document_registry)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn recent_files_are_projected_and_reopen_existing_document() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let path = PathBuf::from("/luna-editor-tests/recent.txt");
+        files.insert_utf8(&path, "recent")?;
+        dialogs.push_open_file(Some(path));
+        let mut application = test_application(&files, &dialogs)?;
+        application.open_file();
+        let count = application.documents.len();
+
+        assert!(application.menu_definitions().iter().any(|menu| {
+            menu.items.iter().any(|item| {
+                item.as_command()
+                    .is_some_and(|command| command.id == "open-recent-0")
+            })
+        }));
+        application.open_recent_file(0);
+        assert_eq!(application.documents.len(), count);
+        assert!(
+            application
+                .lifecycle_notice
+                .as_deref()
+                .is_some_and(|notice| notice.contains("already open"))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn unchanged_polling_requests_no_state_change() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let path = PathBuf::from("/luna-editor-tests/unchanged.txt");
+        files.insert_utf8(&path, "baseline")?;
+        dialogs.push_open_file(Some(path));
+        let mut application = test_application(&files, &dialogs)?;
+        application.open_file();
+
+        assert!(!application.poll_external_changes());
+        assert_eq!(
+            application
+                .document_registry
+                .get(application.active_document().id)
+                .map(DocumentRecord::external_state),
+            Some(ExternalState::InSync)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn polling_reports_modified_replaced_missing_and_recreated_files() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let path = PathBuf::from("/luna-editor-tests/observed.txt");
+        files.insert_utf8(&path, "baseline")?;
+        dialogs.push_open_file(Some(path.clone()));
+        let mut application = test_application(&files, &dialogs)?;
+        application.open_file();
+
+        files.modify_utf8_in_place(&path, "modified")?;
+        assert!(application.poll_external_changes());
+        assert!(matches!(
+            application
+                .document_registry
+                .get(application.active_document().id)
+                .map(DocumentRecord::external_state),
+            Some(ExternalState::Modified { .. })
+        ));
+        assert!(
+            application
+                .shell_state()
+                .status_left
+                .contains("Changed on disk")
+        );
+
+        files.insert_utf8(&path, "replacement")?;
+        assert!(application.poll_external_changes());
+        assert!(matches!(
+            application
+                .document_registry
+                .get(application.active_document().id)
+                .map(DocumentRecord::external_state),
+            Some(ExternalState::Replaced { .. })
+        ));
+        assert!(
+            application
+                .shell_state()
+                .status_left
+                .contains("Replaced on disk")
+        );
+
+        assert!(files.remove_file(&path)?);
+        assert!(application.poll_external_changes());
+        assert_eq!(
+            application
+                .document_registry
+                .get(application.active_document().id)
+                .map(DocumentRecord::external_state),
+            Some(ExternalState::Missing)
+        );
+        assert!(
+            application
+                .shell_state()
+                .status_left
+                .contains("Deleted on disk")
+        );
+
+        files.insert_utf8(&path, "recreated")?;
+        assert!(application.poll_external_changes());
+        assert!(matches!(
+            application
+                .document_registry
+                .get(application.active_document().id)
+                .map(DocumentRecord::external_state),
+            Some(ExternalState::Recreated { .. })
+        ));
+        assert!(
+            application
+                .shell_state()
+                .status_left
+                .contains("Recreated on disk")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn reload_command_refreshes_observed_storage_and_clears_notice() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let path = PathBuf::from("/luna-editor-tests/reload-observed.txt");
+        files.insert_utf8(&path, "baseline")?;
+        dialogs.push_open_file(Some(path.clone()));
+        let mut application = test_application(&files, &dialogs)?;
+        application.open_file();
+        files.modify_utf8_in_place(&path, "external")?;
+        assert!(application.poll_external_changes());
+
+        assert!(application.reload_active_file());
+        assert_eq!(
+            application.active_document().editor.document().text(),
+            "external"
+        );
+        assert_eq!(
+            application
+                .document_registry
+                .get(application.active_document().id)
+                .map(DocumentRecord::external_state),
+            Some(ExternalState::InSync)
         );
         Ok(())
     }

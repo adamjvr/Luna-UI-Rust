@@ -16,7 +16,7 @@ Before submitting changes:
 6. Document every public item and explain architectural decisions, not obvious syntax.
 7. Add regression tests for Unicode, clipping, tiny viewports, long lines, and invalid coordinates
    when changing text or layout behavior.
-8. Keep filesystem and native-dialog implementations behind `luna-document-services`; do not put
+8. Keep filesystem, storage-observation, and native-dialog implementations behind `luna-document-services`; do not put
    byte I/O or modal product policy in `luna-documents` or `luna-ui`.
 9. Run `./scripts/validate.sh`.
 

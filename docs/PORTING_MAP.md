@@ -11,7 +11,7 @@
 | `LunaHostCore` | `luna-host-core` | Frame invalidation/runtime implemented |
 | `LunaLayout` | `luna-layout` | Row/column/stack/split snapshots implemented |
 | `LunaCommands` | `luna-commands` | Typed registry and key bindings implemented |
-| Swift document/session identity and lifecycle | `luna-documents` | Stable IDs, file identity, duplicate prevention, dirty/save/close decisions, and external state implemented |
+| Swift document/session identity and lifecycle | `luna-documents` | Stable IDs, file identity, duplicate prevention, dirty/save/close decisions, storage snapshots, and modified/replaced/missing/recreated state implemented |
 | Swift static/editable text foundation | `luna-text` | UTF-8/grapheme-safe model implemented |
 | Swift shaping/glyph path | `luna-text-cosmic` | Retained logical layout plus overscanned visible-run raster implemented |
 | `LunaStaticTextView` / editable editor surface | `luna-ui::TextView` | Full logical geometry plus partial-raster placement implemented |
@@ -21,7 +21,7 @@
 | find/replace panel foundation | `luna-ui::FindPanel` | M3 reusable geometry/state/accessibility implemented |
 | general proof controls | `Button`, `Toggle`, `ProgressBar`, `TextLabel` | Reusable primitives plus stable-slot label cache implemented |
 | `LunaUITestApp --proof-gallery` | `luna-ui-rust-proof-gallery` | Retained layout/static paint/semantics with isolated animation-lane rendering implemented |
-| Swift file/dialog service boundary | `luna-document-services` | M3.2b UTF-8 reads, atomic writes, optimistic conflicts, native Linux dialogs, and deterministic mocks implemented |
+| Swift file/dialog service boundary | `luna-document-services` | M3.2c UTF-8 reads, atomic writes, native dialogs, storage observation, and deterministic mocks implemented |
 | default `LunaUITestApp` editor mode | `luna-ui-rust-editor-demo` | Real Open, Save, Save As, duplicate activation, dirty-close resolution, and conflict reload/overwrite integrated |
 | `LunaHostSDL` / `LunaHostMetal` | `luna-host-winit` plus render adapters | Retained working/static CPU buffers, timed update lane, and conditional AccessKit submission implemented |
 | incremental gallery/accessibility pipeline | existing host/gallery/accessibility crates | M3.1c retained static layer, dirty-region restore, input coalescing, and semantic fingerprints implemented |
@@ -39,6 +39,6 @@ semantics.
 
 See [`SWIFT_PARITY.md`](SWIFT_PARITY.md) for the broader feature inventory. Foundational module
 coverage is near parity. First-level dropdown menus, document lifecycle state, UTF-8 file I/O,
-atomic Save, Save As, and native dialog boundaries now exist. Workspaces, continuous external-change delivery, panes, nested menus,
+atomic Save, Save As, native dialogs, recent files, and continuous external-change delivery now exist. Workspaces, panes, nested menus,
 context menus, completion, and direct Moth integration remain concentrated in later M3.2, M3.3,
 and M6 work.

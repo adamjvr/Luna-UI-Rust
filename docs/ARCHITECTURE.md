@@ -118,7 +118,7 @@ the application layer.
 
 ## File and dialog service boundary
 
-`luna-document-services` translates lifecycle decisions into bytes and user choices without moving
+`luna-document-services` translates lifecycle decisions into bytes, storage observations, and user choices without moving
 storage policy into `luna-documents` or widget policy into `luna-ui`.
 
 ```text
@@ -141,7 +141,7 @@ DocumentRegistry SaveRequirement / CloseRequirement
 The standard adapter hashes file bytes into an opaque revision and compares that revision immediately
 before replacement. A mismatch is a typed conflict, not an implicit overwrite. Save As uses a native
 dialog that confirms replacement before the file service receives `WritePrecondition::Any`.
-Ordinary Save uses `WritePrecondition::Matches` whenever the registry has a baseline revision.
+Ordinary Save uses `WritePrecondition::Matches` whenever the registry has a baseline storage snapshot.
 
 Native dialogs are a leaf concern. `SystemDialogService` shells out directly to Zenity or KDialog on
 Linux and passes arguments without a command shell. Tests use `MemoryTextFileService` and

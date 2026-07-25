@@ -12,11 +12,12 @@ The phase adds `luna-document-services` and integrates it into the native editor
 
 ### TextFileService
 
-`TextFileService` exposes three synchronous operations:
+`TextFileService` exposes four synchronous operations:
 
 ```text
 load_utf8(path)
 identity_for_save(path)
+observe_file(path)
 write_utf8_atomic(path, text, precondition)
 ```
 
@@ -24,7 +25,7 @@ A successful load returns:
 
 - strict decoded UTF-8 text;
 - an adapter-canonicalized `FileIdentity`;
-- a deterministic opaque `StorageRevision` derived from file bytes.
+- a `StorageSnapshot` containing a deterministic content revision and concrete storage instance.
 
 Invalid UTF-8 is an explicit `InvalidUtf8` error. The adapter never substitutes replacement
 characters because silent conversion would make later saves destructive.
@@ -36,12 +37,12 @@ Every write selects one explicit policy:
 ```text
 Any                 replace/create after product confirmation
 Missing             write only when no destination exists
-Matches(revision)   write only when storage still matches the loaded/saved baseline
+Matches(snapshot)   write only when content and storage instance still match the baseline
 ```
 
-Ordinary Save uses `Matches` whenever a baseline revision exists and `Missing` when no baseline is
+Ordinary Save uses `Matches` whenever a baseline snapshot exists and `Missing` when no baseline is
 available. Save As uses `Any` only after the native chooser has confirmed replacement. A mismatch
-returns a typed `Conflict` containing expected and observed revisions.
+returns a typed `Conflict` containing expected and observed content revisions.
 
 ### Atomic replacement
 
@@ -98,7 +99,7 @@ SaveRequirement::SaveAs / Unsupported
     -> Save As flow
 
 SaveRequirement::WriteFile
-    -> optimistic Matches(revision) write
+    -> optimistic Matches(snapshot) write
          -> success: mark_saved
          -> conflict: Overwrite / Reload / Cancel
 ```
@@ -121,13 +122,13 @@ CloseRequirement::SaveOrDiscard
 ### Conflict reload
 
 Reload performs a strict fresh load, replaces the active `EditableText`, resets scroll and retained
-text-layout state, updates the registry baseline revision, refreshes find matches, and leaves the
+text-layout state, updates the registry baseline snapshot, refreshes find matches, and leaves the
 document clean.
 
 ## Deterministic adapters
 
 `MemoryTextFileService` stores bytes in a shared in-memory map. It supports UTF-8 and arbitrary-byte
-insertion, canonical test identities, revision checks, and all write preconditions.
+insertion, canonical test identities, snapshot checks, observation, and all write preconditions.
 
 `ScriptedDialogService` queues open paths, save paths, dirty-close choices, and conflict choices.
 Clones share the same queues, allowing the editor to own a trait object while tests retain a handle
@@ -138,7 +139,7 @@ for assertions and later scripted responses.
 - Open loads UTF-8 text and refuses invalid bytes.
 - Opening the same canonical file twice activates the existing tab.
 - Save As writes content, assigns file identity, updates the title, and clears dirty state.
-- Save uses the last storage revision as its optimistic precondition.
+- Save uses the last storage snapshot as its optimistic precondition.
 - An external change cannot be silently overwritten.
 - Overwrite replaces storage only after an explicit conflict choice.
 - Reload replaces editor content and clears dirty state.
@@ -150,11 +151,14 @@ for assertions and later scripted responses.
   accessibility.
 - M3.1 retained text/menu/gallery behavior remains unchanged.
 
-## Deferred to M3.2c and later
+## Delivered by M3.2c and deferred later
 
-- recent-file persistence and menu projection;
-- continuous external-change observation and delivery;
-- missing-file and recreated-file notifications;
+M3.2c adds in-memory recent-file projection, storage observation, modified/replaced/missing/recreated
+state, UI-thread polling delivery, status/accessibility notices, and Reload from Disk.
+
+Still deferred:
+
+- persistent recent-file storage and native event watcher backends;
 - workspace/folder adapters and real sidebar tree snapshots;
 - shared buffers with independent pane views;
 - cross-platform native dialog adapters beyond the current Linux helper implementation.
