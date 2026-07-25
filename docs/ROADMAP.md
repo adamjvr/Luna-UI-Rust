@@ -91,7 +91,7 @@
 
 ## M3.2 — real document and workspace runtime — active
 
-### M3.2a — document identity and lifecycle model — implemented
+### M3.2a — document identity and lifecycle model — complete
 
 - Product-neutral `luna-documents` crate.
 - Stable document IDs and monotonic untitled naming.
@@ -101,19 +101,32 @@
 - Save As identity reassignment and index release on close.
 - Editor-demo integration with dirty-close protection and honest non-I/O Save status.
 
-### M3.2b — file and dialog service boundaries — next
+### M3.2b — file and dialog service boundaries — implemented
 
 - Product-neutral UTF-8 file read/write service contracts.
+- Strict invalid-encoding errors without lossy replacement.
+- Deterministic content revisions and optimistic write preconditions.
+- Same-directory temporary writes and atomic replacement.
 - Open, Save As, overwrite/conflict, and dirty-close dialog contracts.
-- Mock adapters and deterministic lifecycle tests.
-- Native host adapters after headless contracts pass.
+- In-memory file and scripted dialog adapters with deterministic lifecycle tests.
+- Linux native dialogs through Zenity with KDialog fallback.
+- Editor integration for Open, Save, Save As, duplicate activation, close resolution, and conflict
+  reload/overwrite/cancel.
 
-### M3.2c–M3.2e — remaining runtime
+### M3.2c — recent files and external-change delivery — next
 
-- atomic writes, invalid-encoding handling, recent files, and external-change delivery;
+- recent-file model and application projection;
+- external storage revision polling/delivery without UI-thread mutation;
+- modified/missing-file notices and explicit reload decisions;
+- save-conflict state projected into status and accessibility;
+- hardening for files removed, replaced, or recreated between observations.
+
+### M3.2d–M3.2e — remaining runtime
+
 - workspace/folder adapters and project-tree snapshots;
+- filesystem create, rename, and delete operations;
 - shared document buffers with independent editor views;
-- watcher integration and save-conflict hardening.
+- watcher integration and workspace/session restoration.
 
 ## M3.3 — expanded editor shell
 

@@ -62,9 +62,9 @@ clean document -> Safe
 dirty document -> SaveOrDiscard
 ```
 
-M3.2a does not invent product policy for the second case. The editor demo blocks the close and
-surfaces a status message. M3.2b will add the dialog/service boundary that resolves Save, Discard,
-or Cancel.
+M3.2a does not invent product policy for the second case. M3.2b now resolves the requirement
+through the separate `DocumentDialogService`, preserving the registry as a policy-neutral decision
+model.
 
 ## External changes
 
@@ -104,13 +104,15 @@ Visible effects:
 - virtual proof documents never pretend that a real write succeeded;
 - the status bar identifies Untitled, File, or Virtual source state.
 
-## Deferred to M3.2b and later
+## Follow-up status
 
-- UTF-8 file reading and atomic writing;
-- native Open, Save As, and dirty-close dialogs;
-- actual storage revision generation;
-- invalid-encoding presentation;
+M3.2b implements strict UTF-8 reading, deterministic storage revisions, atomic writes, native Open
+and Save As dialogs, dirty-close choices, and save-conflict resolution through the separate
+`luna-document-services` crate.
+
+Still deferred:
+
 - recent files;
-- watcher delivery and save-conflict UI;
+- continuous watcher delivery and missing-file notices;
 - workspace/folder tree adapters;
 - shared buffers with independent editor views.

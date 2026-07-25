@@ -1,44 +1,48 @@
 # Current Status
 
-**Milestone:** M3.2a document identity and lifecycle model
+**Milestone:** M3.2b file and dialog service boundaries
 
 ## Verified baseline
 
-The project owner locally validated and ran the synchronized M3.1d.4 tree. File/Edit/Find/View/Help
-now open real anchored dropdown menus, Control-P opens the independent command palette, and the full
-menu correction is ready to remain the M3.1 baseline.
+The project owner locally validated and committed M3.2a. Stable document IDs, monotonic untitled
+naming, duplicate file identity, dirty-state evaluation, and protected close decisions are the
+accepted baseline for this phase.
 
-## Implemented in M3.2a
+## Implemented in M3.2b
 
-- new product-neutral `luna-documents` workspace crate;
-- monotonic `DocumentId` allocation and stable UI/cache keys;
-- monotonic Untitled-1, Untitled-2, ... naming that is not reused after close;
-- adapter-canonicalized absolute `FileIdentity` values;
-- duplicate-open prevention for canonical file identities;
-- duplicate prevention for application-owned virtual document keys;
-- saved edit revisions and dirty-state evaluation against current editor revisions;
-- opaque storage revisions for future optimistic write-conflict checks;
-- external InSync, Modified, and Missing states;
-- explicit Save requirements: None, SaveAs, WriteFile, or Unsupported;
-- explicit close requirements: Safe or SaveOrDiscard;
-- Save As identity reassignment with duplicate-file protection;
-- removal that releases file and virtual indexes;
-- editor-demo migration from ad hoc string IDs/titles/saved revisions to `DocumentRegistry`;
-- stable registry IDs projected into tabs, sidebar rows, text-layout caches, pointer routing, and
-  accessibility;
-- dirty-close blocking instead of silent text loss;
-- status feedback for Save As, unsupported virtual writes, and pending close decisions;
-- unit coverage for identity, dirty/save/close decisions, external changes, reassignment, duplicate
-  prevention, and editor integration.
+- new `luna-document-services` workspace crate;
+- product-neutral synchronous `TextFileService` contract;
+- strict UTF-8 loading with typed invalid-encoding failures;
+- deterministic content revisions for optimistic write checks;
+- canonical identities for existing and not-yet-created Save As destinations;
+- same-directory temporary writes, existing-permission preservation, and atomic replacement;
+- `WritePrecondition::Any`, `Missing`, and `Matches` policies;
+- typed conflict details with expected and observed revisions;
+- product-neutral `DocumentDialogService` contract;
+- Open, Save As, dirty-close, and save-conflict dialog decisions;
+- Linux native dialog adapter using Zenity with KDialog fallback;
+- deterministic `MemoryTextFileService` and `ScriptedDialogService` adapters;
+- editor-demo Open, Save, Save As, duplicate-open activation, and file-title reassignment;
+- Save/Discard/Cancel dirty-close resolution;
+- Overwrite/Reload/Cancel optimistic-conflict resolution;
+- canceled or failed operations that preserve editor content and dirty state;
+- real Control-O and Control-Shift-S shortcuts;
+- enabled File-menu and command-palette projections for Open and Save As;
+- unit coverage for UTF-8 loading, invalid bytes, atomic-write preconditions, dialog scripting,
+  duplicate open, Save As, normal save, close decisions, and conflict reload.
 
 ## Runtime scope
 
-M3.2a establishes lifecycle decisions but performs no filesystem write and shows no native dialog.
-Open and Save As remain disabled in the visible menus until M3.2b supplies testable adapter
-interfaces and host implementations.
+The editor now performs real UTF-8 file I/O and native desktop dialogs. The current Linux dialog
+adapter intentionally uses installed desktop helpers rather than linking a GUI toolkit into Luna.
+Zenity is preferred and KDialog is the fallback. When neither helper is present, the application
+reports an explicit dialog-unavailable status and does not alter document state.
+
+M3.2b does not yet persist recent files, watch storage continuously, populate a folder workspace, or
+share one buffer across independent pane views.
 
 ## Next milestone
 
-M3.2b adds real UTF-8 open/save/save-as and close-resolution services behind product-neutral
-filesystem and dialog contracts. The implementation should support mock adapters in tests before a
-native winit/platform adapter is connected.
+M3.2c adds recent-file state, external-change observation and delivery, reload notifications,
+missing-file handling, and further save-conflict hardening. M3.2d then introduces workspace/folder
+adapters and real project-tree snapshots.

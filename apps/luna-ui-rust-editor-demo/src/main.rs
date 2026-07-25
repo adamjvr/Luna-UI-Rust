@@ -1,22 +1,29 @@
 // SPDX-License-Identifier: MPL-2.0
 
-//! Native M3.2a editor integration harness for Luna UI Rust.
+//! Native M3.2b editor integration harness for Luna UI Rust.
 //!
 //! This application mirrors the purpose of Swift LunaUITestApp's default editor mode: reusable
 //! shell anatomy and editor text are exercised together without embedding Moth Text product
 //! policy in Luna. It provides menus, tabs, a project sidebar, status chrome, editable text,
 //! real dropdown menus, a separate command palette, find panel, document lifecycle tracking,
-//! accessibility,
+//! UTF-8 open/save services, native dialog boundaries, accessibility,
 //! retained document layouts, overscanned glyph rasters, and stable-slot chrome-label caching.
 //!
-//! Shortcuts: Control-P command palette, Control-F find, Control-H replace, Control-S save,
-//! Control-N new document, Control-B sidebar, Control-W close tab, Control-A select all, and Escape
+//! Shortcuts: Control-P command palette, Control-O open, Control-F find, Control-H replace,
+//! Control-S save, Control-Shift-S Save As, Control-N new document, Control-B sidebar, Control-W
+//! close tab, Control-A select all, and Escape
 //! closes the active menu/overlay or exits when no transient surface is open.
 
 use luna_accessibility::{AccessibilityNode, AccessibilityRole};
 use luna_core::{InsetsI, NodeId, PointI, RectI, SizeI};
+use luna_document_services::{
+    DirtyCloseChoice, DocumentDialogService, FileServiceError, FileServiceErrorKind,
+    SaveConflictChoice, StdTextFileService, SystemDialogService, TextFileService,
+    WritePrecondition,
+};
 use luna_documents::{
-    CloseRequirement, DocumentId, DocumentRecord, DocumentRegistry, DocumentSource, SaveRequirement,
+    CloseRequirement, DocumentId, DocumentRecord, DocumentRegistry, DocumentSource, ExternalState,
+    FileIdentity, OpenFileOutcome, SaveRequirement,
 };
 use luna_host_winit::{
     AccessibilityActionKind, AccessibilityActionRequest, ApplicationError, HostControl,
@@ -40,6 +47,7 @@ use luna_ui::{
 use std::collections::HashMap;
 use std::error::Error;
 use std::ops::Range;
+use std::path::Path;
 
 const ROOT_ID: &str = "m3-editor-window";
 const SHELL_ID: &str = "m3-editor-shell";
@@ -50,7 +58,7 @@ const MENU_ID: &str = "m3-editor-dropdown-menu";
 
 const README_TEXT: &str = concat!(
     "# Luna UI Rust\n\n",
-    "M3.2a adds product-neutral document identity and lifecycle state.\n\n",
+    "M3.2b adds real UTF-8 file and native dialog services.\n\n",
     "- Deterministic shell geometry\n",
     "- Revision-keyed document shaping\n",
     "- Viewport-band glyph rasterization\n",
@@ -58,6 +66,8 @@ const README_TEXT: &str = concat!(
     "- Shared menu and palette command IDs\n",
     "- Stable document IDs and monotonic untitled names\n",
     "- Explicit save and close requirements\n",
+    "- Real Open, Save, Save As, and dirty-close resolution\n",
+    "- Atomic writes with optimistic conflict checks\n",
     "- Shared accessibility geometry\n\n",
     "Click File/Edit/Find/View/Help, or press Control-P for the palette.\n",
 );
@@ -82,6 +92,13 @@ struct DemoDocument {
     id: DocumentId,
     editor: EditableText,
     scroll: TextScroll,
+}
+
+fn file_title(identity: &FileIdentity) -> String {
+    identity.path().file_name().map_or_else(
+        || identity.path().display().to_string(),
+        |name| name.to_string_lossy().into_owned(),
+    )
 }
 
 impl DemoDocument {
@@ -118,6 +135,8 @@ struct EditorDemoApplication {
     find_id: NodeId,
     menu_id: NodeId,
     document_registry: DocumentRegistry,
+    file_service: Box<dyn TextFileService>,
+    dialog_service: Box<dyn DocumentDialogService>,
     documents: Vec<DemoDocument>,
     active_index: usize,
     engine: TextEngine,
@@ -141,6 +160,16 @@ struct EditorDemoApplication {
 
 impl EditorDemoApplication {
     fn new() -> Result<Self, ApplicationError> {
+        Self::with_services(
+            Box::new(StdTextFileService),
+            Box::new(SystemDialogService::detect()),
+        )
+    }
+
+    fn with_services(
+        file_service: Box<dyn TextFileService>,
+        dialog_service: Box<dyn DocumentDialogService>,
+    ) -> Result<Self, ApplicationError> {
         let mut document_registry = DocumentRegistry::new();
         let readme_id = document_registry.register_virtual("readme", "README.md", 0)?;
         let editor_id = document_registry.register_virtual("editor", "EditorSurface.rs", 0)?;
@@ -153,6 +182,8 @@ impl EditorDemoApplication {
             find_id: NodeId::new(FIND_ID)?,
             menu_id: NodeId::new(MENU_ID)?,
             document_registry,
+            file_service,
+            dialog_service,
             documents: vec![
                 DemoDocument::new(readme_id, README_TEXT),
                 DemoDocument::new(editor_id, EDITOR_TEXT),
@@ -198,12 +229,7 @@ impl EditorDemoApplication {
             .document_registry
             .get(active.id)
             .map(|record| record.save_requirement(active.editor.edit_revision()))
-            .is_some_and(|requirement| {
-                matches!(
-                    requirement,
-                    SaveRequirement::SaveAs | SaveRequirement::WriteFile { .. }
-                )
-            });
+            .is_some_and(|requirement| requirement != SaveRequirement::None);
         let find_navigation_is_enabled = self.find.is_some() && !self.find_matches.is_empty();
         vec![
             MenuDefinition::new(
@@ -211,16 +237,12 @@ impl EditorDemoApplication {
                 "File",
                 vec![
                     MenuItem::command(MenuCommand::new("new-file", "New File", "Ctrl+N")),
-                    MenuItem::command(
-                        MenuCommand::new("open", "Open…", "Ctrl+O").with_enabled(false),
-                    ),
+                    MenuItem::command(MenuCommand::new("open", "Open…", "Ctrl+O")),
                     MenuItem::Separator,
                     MenuItem::command(
                         MenuCommand::new("save", "Save", "Ctrl+S").with_enabled(save_is_enabled),
                     ),
-                    MenuItem::command(
-                        MenuCommand::new("save-as", "Save As…", "Ctrl+Shift+S").with_enabled(false),
-                    ),
+                    MenuItem::command(MenuCommand::new("save-as", "Save As…", "Ctrl+Shift+S")),
                     MenuItem::Separator,
                     MenuItem::command(
                         MenuCommand::new("close-tab", "Close Tab", "Ctrl+W")
@@ -724,9 +746,17 @@ impl EditorDemoApplication {
                 self.new_document();
                 InvalidationClass::WidgetLayout
             }
+            "open" => {
+                self.open_file();
+                InvalidationClass::WidgetLayout
+            }
             "save" => {
-                self.save_active();
-                InvalidationClass::TextOverlay
+                let _ = self.save_active();
+                InvalidationClass::WidgetLayout
+            }
+            "save-as" => {
+                let _ = self.save_active_as();
+                InvalidationClass::WidgetLayout
             }
             "close-tab" if self.documents.len() > 1 => {
                 self.close_active();
@@ -788,31 +818,260 @@ impl EditorDemoApplication {
         self.active_index = self.documents.len().saturating_sub(1);
         self.selected_sidebar_id = Some(id.stable_key());
         self.lifecycle_notice = Some(format!(
-            "Created {}; Save requires a destination",
+            "Created {}; Save will open a destination dialog",
             self.active_document().title(&self.document_registry)
         ));
         self.reveal_caret_on_next_frame = true;
     }
 
-    fn save_active(&mut self) {
-        let document = self.active_document();
+    fn open_file(&mut self) {
+        let selected = match self.dialog_service.choose_open_file() {
+            Ok(Some(path)) => path,
+            Ok(None) => {
+                self.lifecycle_notice = Some("Open canceled".to_owned());
+                return;
+            }
+            Err(error) => {
+                self.lifecycle_notice = Some(format!("Open dialog unavailable: {error}"));
+                return;
+            }
+        };
+        let loaded = match self.file_service.load_utf8(&selected) {
+            Ok(loaded) => loaded,
+            Err(error) => {
+                self.lifecycle_notice = Some(format!("Open failed: {error}"));
+                return;
+            }
+        };
+        let identity = loaded.identity().clone();
+        let title = file_title(&identity);
+        let storage_revision = loaded.revision();
+        let editor = EditableText::new(loaded.into_text());
+        match self.document_registry.register_file(
+            identity,
+            title.clone(),
+            editor.edit_revision(),
+            Some(storage_revision),
+        ) {
+            OpenFileOutcome::Opened(id) => {
+                self.documents.push(DemoDocument {
+                    id,
+                    editor,
+                    scroll: TextScroll::default(),
+                });
+                self.active_index = self.documents.len().saturating_sub(1);
+                self.selected_sidebar_id = Some(id.stable_key());
+                self.lifecycle_notice = Some(format!("Opened {title}"));
+                self.reveal_caret_on_next_frame = true;
+            }
+            OpenFileOutcome::AlreadyOpen(id) => {
+                self.activate_document_id(id);
+                self.lifecycle_notice = Some(format!("{title} is already open"));
+            }
+        }
+    }
+
+    fn save_active(&mut self) -> bool {
+        let (document_id, edit_revision) = {
+            let document = self.active_document();
+            (document.id, document.editor.edit_revision())
+        };
         let requirement = self
             .document_registry
-            .get(document.id)
-            .map(|record| record.save_requirement(document.editor.edit_revision()));
-        self.lifecycle_notice = match requirement {
-            Some(SaveRequirement::None) => Some("Document is already saved".to_owned()),
-            Some(SaveRequirement::SaveAs) => {
-                Some("Save As is required; filesystem adapters arrive in M3.2b".to_owned())
+            .get(document_id)
+            .map(|record| record.save_requirement(edit_revision));
+        match requirement {
+            Some(SaveRequirement::None) => {
+                self.lifecycle_notice = Some("Document is already saved".to_owned());
+                true
             }
-            Some(SaveRequirement::WriteFile { .. }) => {
-                Some("File write adapter arrives in M3.2b".to_owned())
+            Some(SaveRequirement::SaveAs | SaveRequirement::Unsupported) => self.save_active_as(),
+            Some(SaveRequirement::WriteFile {
+                identity,
+                expected_storage_revision,
+                external_state,
+            }) => {
+                if external_state != ExternalState::InSync {
+                    return self.resolve_save_conflict(identity);
+                }
+                let precondition = expected_storage_revision
+                    .map_or(WritePrecondition::Missing, WritePrecondition::Matches);
+                match self.write_active_to_path(identity.path(), precondition) {
+                    Ok(()) => true,
+                    Err(error) if error.kind() == FileServiceErrorKind::Conflict => {
+                        self.resolve_save_conflict(identity)
+                    }
+                    Err(error) => {
+                        self.lifecycle_notice = Some(format!("Save failed: {error}"));
+                        false
+                    }
+                }
             }
-            Some(SaveRequirement::Unsupported) => {
-                Some("Generated demo documents do not have a writable file target".to_owned())
+            None => {
+                self.lifecycle_notice = Some("Document lifecycle record is unavailable".to_owned());
+                false
             }
-            None => Some("Document lifecycle record is unavailable".to_owned()),
+        }
+    }
+
+    fn save_active_as(&mut self) -> bool {
+        let (document_id, suggested_name, current_path, text, edit_revision) = {
+            let document = self.active_document();
+            let record = self.document_registry.get(document.id);
+            let current_path = record.and_then(|record| match record.source() {
+                DocumentSource::File(identity) => Some(identity.path().to_path_buf()),
+                DocumentSource::Untitled { .. } | DocumentSource::Virtual { .. } => None,
+            });
+            (
+                document.id,
+                document.title(&self.document_registry).to_owned(),
+                current_path,
+                document.editor.document().text().to_owned(),
+                document.editor.edit_revision(),
+            )
         };
+        let selected = match self
+            .dialog_service
+            .choose_save_file(&suggested_name, current_path.as_deref())
+        {
+            Ok(Some(path)) => path,
+            Ok(None) => {
+                self.lifecycle_notice = Some("Save As canceled".to_owned());
+                return false;
+            }
+            Err(error) => {
+                self.lifecycle_notice = Some(format!("Save As dialog unavailable: {error}"));
+                return false;
+            }
+        };
+        let identity = match self.file_service.identity_for_save(&selected) {
+            Ok(identity) => identity,
+            Err(error) => {
+                self.lifecycle_notice = Some(format!("Save As failed: {error}"));
+                return false;
+            }
+        };
+        if let Some(existing) = self.document_registry.document_for_file(&identity)
+            && existing != document_id
+        {
+            self.activate_document_id(existing);
+            self.lifecycle_notice = Some(format!(
+                "{} is already open; no file was overwritten",
+                file_title(&identity)
+            ));
+            return false;
+        }
+        let written =
+            match self
+                .file_service
+                .write_utf8_atomic(&selected, &text, WritePrecondition::Any)
+            {
+                Ok(written) => written,
+                Err(error) => {
+                    self.lifecycle_notice = Some(format!("Save As failed: {error}"));
+                    return false;
+                }
+            };
+        let title = file_title(written.identity());
+        if let Err(error) = self.document_registry.assign_file(
+            document_id,
+            written.identity().clone(),
+            title.clone(),
+            edit_revision,
+            Some(written.revision()),
+        ) {
+            self.lifecycle_notice = Some(format!("Save As registration failed: {error}"));
+            return false;
+        }
+        self.lifecycle_notice = Some(format!("Saved {title}"));
+        true
+    }
+
+    fn write_active_to_path(
+        &mut self,
+        path: &Path,
+        precondition: WritePrecondition,
+    ) -> Result<(), FileServiceError> {
+        let (document_id, text, edit_revision) = {
+            let document = self.active_document();
+            (
+                document.id,
+                document.editor.document().text().to_owned(),
+                document.editor.edit_revision(),
+            )
+        };
+        let written = self
+            .file_service
+            .write_utf8_atomic(path, &text, precondition)?;
+        if let Some(record) = self.document_registry.get_mut(document_id) {
+            record.mark_saved(edit_revision, Some(written.revision()));
+        }
+        self.lifecycle_notice = Some(format!("Saved {}", file_title(written.identity())));
+        Ok(())
+    }
+
+    fn resolve_save_conflict(&mut self, identity: FileIdentity) -> bool {
+        let title = self
+            .active_document()
+            .title(&self.document_registry)
+            .to_owned();
+        let choice = match self
+            .dialog_service
+            .resolve_save_conflict(&title, identity.path())
+        {
+            Ok(choice) => choice,
+            Err(error) => {
+                self.lifecycle_notice = Some(format!("Conflict dialog unavailable: {error}"));
+                return false;
+            }
+        };
+        match choice {
+            SaveConflictChoice::Overwrite => {
+                match self.write_active_to_path(identity.path(), WritePrecondition::Any) {
+                    Ok(()) => true,
+                    Err(error) => {
+                        self.lifecycle_notice = Some(format!("Overwrite failed: {error}"));
+                        false
+                    }
+                }
+            }
+            SaveConflictChoice::Reload => self.reload_active_from_path(identity.path()),
+            SaveConflictChoice::Cancel => {
+                self.lifecycle_notice = Some("Save canceled after conflict".to_owned());
+                false
+            }
+        }
+    }
+
+    fn reload_active_from_path(&mut self, path: &Path) -> bool {
+        let loaded = match self.file_service.load_utf8(path) {
+            Ok(loaded) => loaded,
+            Err(error) => {
+                self.lifecycle_notice = Some(format!("Reload failed: {error}"));
+                return false;
+            }
+        };
+        let document_id = self.active_document().id;
+        let stable_key = document_id.stable_key();
+        let storage_revision = loaded.revision();
+        let editor = EditableText::new(loaded.into_text());
+        let edit_revision = editor.edit_revision();
+        {
+            let document = self.active_document_mut();
+            document.editor = editor;
+            document.scroll = TextScroll::default();
+        }
+        if let Some(record) = self.document_registry.get_mut(document_id) {
+            record.mark_saved(edit_revision, Some(storage_revision));
+        }
+        let _ = self.text_layouts.remove(&stable_key);
+        self.refresh_find_matches();
+        self.reveal_caret_on_next_frame = true;
+        self.lifecycle_notice = Some(format!(
+            "Reloaded {} and discarded editor changes",
+            self.active_document().title(&self.document_registry)
+        ));
+        true
     }
 
     fn close_active(&mut self) {
@@ -827,22 +1086,46 @@ impl EditorDemoApplication {
             .get(active_id)
             .map(|record| record.close_requirement(revision));
         if close_requirement == Some(CloseRequirement::SaveOrDiscard) {
-            self.lifecycle_notice = Some(format!(
-                "{} has unsaved changes; Save, Discard, or Cancel is required",
-                self.active_document().title(&self.document_registry)
-            ));
-            return;
+            let title = self
+                .active_document()
+                .title(&self.document_registry)
+                .to_owned();
+            let choice = match self.dialog_service.confirm_dirty_close(&title) {
+                Ok(choice) => choice,
+                Err(error) => {
+                    self.lifecycle_notice = Some(format!("Close dialog unavailable: {error}"));
+                    return;
+                }
+            };
+            match choice {
+                DirtyCloseChoice::Save if !self.save_active() => return,
+                DirtyCloseChoice::Save | DirtyCloseChoice::Discard => {}
+                DirtyCloseChoice::Cancel => {
+                    self.lifecycle_notice = Some("Close canceled".to_owned());
+                    return;
+                }
+            }
         }
+        self.remove_active_document();
+    }
+
+    fn remove_active_document(&mut self) {
+        let active_id = self.active_document().id;
         let removed_key = active_id.stable_key();
         self.documents.remove(self.active_index);
         let _ = self.document_registry.remove(active_id);
-        self.text_layouts.remove(&removed_key);
+        let _ = self.text_layouts.remove(&removed_key);
         self.active_index = self
             .active_index
             .min(self.documents.len().saturating_sub(1));
         self.selected_sidebar_id = Some(self.active_document().stable_key());
         self.lifecycle_notice = None;
         self.reveal_caret_on_next_frame = true;
+    }
+
+    fn activate_document_id(&mut self, id: DocumentId) {
+        let stable_key = id.stable_key();
+        self.activate_document(&stable_key);
     }
 
     fn activate_document(&mut self, id: &str) {
@@ -1654,10 +1937,12 @@ impl NativeApplication for EditorDemoApplication {
                         Key::Character(value) if value.eq_ignore_ascii_case("h") => Some("replace"),
                         Key::Character(value)
                             if value.eq_ignore_ascii_case("s")
-                                && !keyboard.modifiers.contains(Modifiers::SHIFT) =>
+                                && keyboard.modifiers.contains(Modifiers::SHIFT) =>
                         {
-                            Some("save")
+                            Some("save-as")
                         }
+                        Key::Character(value) if value.eq_ignore_ascii_case("s") => Some("save"),
+                        Key::Character(value) if value.eq_ignore_ascii_case("o") => Some("open"),
                         Key::Character(value) if value.eq_ignore_ascii_case("n") => {
                             Some("new-file")
                         }
@@ -1991,14 +2276,37 @@ impl NativeApplication for EditorDemoApplication {
 mod tests {
     use super::EditorDemoApplication;
     use luna_core::PointI;
+    use luna_document_services::{
+        DirtyCloseChoice, MemoryTextFileService, SaveConflictChoice, ScriptedDialogService,
+        TextFileService,
+    };
+    use luna_documents::DocumentSource;
     use luna_host_winit::NativeApplication;
     use luna_input::{InputEvent, Modifiers, PointerButton, PointerEvent, PointerEventKind};
     use std::error::Error;
+    use std::path::{Path, PathBuf};
+
+    type TestError = Box<dyn Error + Send + Sync + 'static>;
+    type TestResult<T = ()> = Result<T, TestError>;
+
+    fn test_services() -> TestResult<(MemoryTextFileService, ScriptedDialogService)> {
+        Ok((
+            MemoryTextFileService::new(PathBuf::from("/luna-editor-tests"))?,
+            ScriptedDialogService::default(),
+        ))
+    }
+
+    fn test_application(
+        files: &MemoryTextFileService,
+        dialogs: &ScriptedDialogService,
+    ) -> TestResult<EditorDemoApplication> {
+        EditorDemoApplication::with_services(Box::new(files.clone()), Box::new(dialogs.clone()))
+    }
 
     #[test]
-    fn dropdown_and_palette_states_remain_independent() -> Result<(), Box<dyn Error + Send + Sync>>
-    {
-        let mut application = EditorDemoApplication::new()?;
+    fn dropdown_and_palette_states_remain_independent() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let mut application = test_application(&files, &dialogs)?;
 
         let _ = application.open_menu("file");
         assert_eq!(application.menu.active_menu_id.as_deref(), Some("file"));
@@ -2011,9 +2319,9 @@ mod tests {
     }
 
     #[test]
-    fn menu_heading_pointer_replaces_palette_with_dropdown()
-    -> Result<(), Box<dyn Error + Send + Sync>> {
-        let mut application = EditorDemoApplication::new()?;
+    fn menu_heading_pointer_replaces_palette_with_dropdown() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let mut application = test_application(&files, &dialogs)?;
         let _ = application.open_palette();
         let shell = application.create_shell()?;
         let file = shell
@@ -2049,9 +2357,9 @@ mod tests {
     }
 
     #[test]
-    fn command_palette_is_not_projected_into_any_dropdown()
-    -> Result<(), Box<dyn Error + Send + Sync>> {
-        let application = EditorDemoApplication::new()?;
+    fn command_palette_is_not_projected_into_any_dropdown() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let application = test_application(&files, &dialogs)?;
         assert!(application.menu_definitions().iter().all(|menu| {
             menu.items.iter().all(|item| {
                 item.as_command()
@@ -2062,21 +2370,21 @@ mod tests {
     }
 
     #[test]
-    fn palette_projection_excludes_disabled_menu_commands()
-    -> Result<(), Box<dyn Error + Send + Sync>> {
-        let application = EditorDemoApplication::new()?;
+    fn palette_projection_includes_real_file_commands() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let application = test_application(&files, &dialogs)?;
         let items = application.palette_items();
 
         assert!(items.iter().any(|item| item.id == "new-file"));
-        assert!(!items.iter().any(|item| item.id == "open"));
-        assert!(!items.iter().any(|item| item.id == "save-as"));
+        assert!(items.iter().any(|item| item.id == "open"));
+        assert!(items.iter().any(|item| item.id == "save-as"));
         Ok(())
     }
 
     #[test]
-    fn untitled_documents_use_monotonic_registry_titles() -> Result<(), Box<dyn Error + Send + Sync>>
-    {
-        let mut application = EditorDemoApplication::new()?;
+    fn untitled_documents_use_monotonic_registry_titles() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let mut application = test_application(&files, &dialogs)?;
         application.new_document();
         assert_eq!(
             application
@@ -2099,9 +2407,66 @@ mod tests {
     }
 
     #[test]
-    fn dirty_document_close_is_blocked_pending_user_decision()
-    -> Result<(), Box<dyn Error + Send + Sync>> {
-        let mut application = EditorDemoApplication::new()?;
+    fn open_loads_utf8_and_duplicate_open_activates_existing() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let path = PathBuf::from("/luna-editor-tests/open.txt");
+        files.insert_utf8(&path, "opened text")?;
+        dialogs.push_open_file(Some(path.clone()));
+        dialogs.push_open_file(Some(path));
+        let mut application = test_application(&files, &dialogs)?;
+
+        application.open_file();
+        let count = application.documents.len();
+        assert_eq!(
+            application.active_document().editor.document().text(),
+            "opened text"
+        );
+        application.open_file();
+
+        assert_eq!(application.documents.len(), count);
+        assert!(
+            application
+                .lifecycle_notice
+                .as_deref()
+                .is_some_and(|notice| { notice.contains("already open") })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn save_as_writes_and_assigns_file_identity() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let destination = PathBuf::from("/luna-editor-tests/saved.txt");
+        dialogs.push_save_file(Some(destination.clone()));
+        let mut application = test_application(&files, &dialogs)?;
+        application.new_document();
+        let result = application
+            .active_document_mut()
+            .editor
+            .insert_text("saved text");
+        assert!(result.did_change);
+
+        assert!(application.save_active());
+
+        assert_eq!(files.bytes(&destination)?, Some(b"saved text".to_vec()));
+        let record = application
+            .document_registry
+            .get(application.active_document().id)
+            .ok_or_else(|| std::io::Error::other("missing saved document record"))?;
+        assert!(matches!(record.source(), DocumentSource::File(_)));
+        assert!(
+            !application
+                .active_document()
+                .is_dirty(&application.document_registry)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn dirty_close_cancel_keeps_document_open() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        dialogs.push_dirty_close(DirtyCloseChoice::Cancel);
+        let mut application = test_application(&files, &dialogs)?;
         application.new_document();
         let count = application.documents.len();
         let result = application
@@ -2113,19 +2478,181 @@ mod tests {
         application.close_active();
 
         assert_eq!(application.documents.len(), count);
-        assert!(
-            application
-                .lifecycle_notice
-                .as_deref()
-                .is_some_and(|notice| { notice.contains("Save, Discard, or Cancel") })
+        assert_eq!(
+            application.lifecycle_notice.as_deref(),
+            Some("Close canceled")
         );
         Ok(())
     }
 
     #[test]
-    fn clean_close_removes_document_and_registry_record() -> Result<(), Box<dyn Error + Send + Sync>>
-    {
-        let mut application = EditorDemoApplication::new()?;
+    fn dirty_close_discard_removes_document() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        dialogs.push_dirty_close(DirtyCloseChoice::Discard);
+        let mut application = test_application(&files, &dialogs)?;
+        application.new_document();
+        let id = application.active_document().id;
+        let result = application
+            .active_document_mut()
+            .editor
+            .insert_text("changed");
+        assert!(result.did_change);
+
+        application.close_active();
+
+        assert!(
+            application
+                .documents
+                .iter()
+                .all(|document| document.id != id)
+        );
+        assert!(application.document_registry.get(id).is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn dirty_close_save_writes_then_closes() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let destination = PathBuf::from("/luna-editor-tests/close-save.txt");
+        dialogs.push_dirty_close(DirtyCloseChoice::Save);
+        dialogs.push_save_file(Some(destination.clone()));
+        let mut application = test_application(&files, &dialogs)?;
+        application.new_document();
+        let id = application.active_document().id;
+        let result = application
+            .active_document_mut()
+            .editor
+            .insert_text("save before close");
+        assert!(result.did_change);
+
+        application.close_active();
+
+        assert_eq!(
+            files.bytes(&destination)?,
+            Some(b"save before close".to_vec())
+        );
+        assert!(
+            application
+                .documents
+                .iter()
+                .all(|document| document.id != id)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn external_save_conflict_can_reload_storage_content() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let path = PathBuf::from("/luna-editor-tests/conflict.txt");
+        files.insert_utf8(&path, "baseline")?;
+        dialogs.push_open_file(Some(path.clone()));
+        dialogs.push_save_conflict(SaveConflictChoice::Reload);
+        let mut application = test_application(&files, &dialogs)?;
+        application.open_file();
+        let result = application
+            .active_document_mut()
+            .editor
+            .insert_text(" editor change");
+        assert!(result.did_change);
+        files.insert_utf8(&path, "external change")?;
+
+        assert!(application.save_active());
+
+        assert_eq!(
+            application.active_document().editor.document().text(),
+            "external change"
+        );
+        assert!(
+            !application
+                .active_document()
+                .is_dirty(&application.document_registry)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn external_save_conflict_can_overwrite_after_confirmation() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let path = PathBuf::from("/luna-editor-tests/conflict-overwrite.txt");
+        files.insert_utf8(&path, "baseline")?;
+        dialogs.push_open_file(Some(path.clone()));
+        dialogs.push_save_conflict(SaveConflictChoice::Overwrite);
+        let mut application = test_application(&files, &dialogs)?;
+        application.open_file();
+        let result = application
+            .active_document_mut()
+            .editor
+            .insert_text("editor ");
+        assert!(result.did_change);
+        files.insert_utf8(&path, "external change")?;
+
+        assert!(application.save_active());
+
+        assert_eq!(files.bytes(&path)?, Some(b"editor baseline".to_vec()));
+        assert!(
+            !application
+                .active_document()
+                .is_dirty(&application.document_registry)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn external_save_conflict_cancel_preserves_both_versions() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let path = PathBuf::from("/luna-editor-tests/conflict-cancel.txt");
+        files.insert_utf8(&path, "baseline")?;
+        dialogs.push_open_file(Some(path.clone()));
+        dialogs.push_save_conflict(SaveConflictChoice::Cancel);
+        let mut application = test_application(&files, &dialogs)?;
+        application.open_file();
+        let result = application
+            .active_document_mut()
+            .editor
+            .insert_text("editor ");
+        assert!(result.did_change);
+        files.insert_utf8(&path, "external change")?;
+
+        assert!(!application.save_active());
+
+        assert_eq!(files.bytes(&path)?, Some(b"external change".to_vec()));
+        assert_eq!(
+            application.active_document().editor.document().text(),
+            "editor baseline"
+        );
+        assert!(
+            application
+                .active_document()
+                .is_dirty(&application.document_registry)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn invalid_utf8_open_reports_failure_without_new_document() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let path = PathBuf::from("/luna-editor-tests/invalid.txt");
+        files.insert_bytes(&path, vec![0xff, 0xfe])?;
+        dialogs.push_open_file(Some(path));
+        let mut application = test_application(&files, &dialogs)?;
+        let count = application.documents.len();
+
+        application.open_file();
+
+        assert_eq!(application.documents.len(), count);
+        assert!(
+            application
+                .lifecycle_notice
+                .as_deref()
+                .is_some_and(|notice| { notice.contains("UTF-8") })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn clean_close_removes_document_and_registry_record() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let mut application = test_application(&files, &dialogs)?;
         application.new_document();
         let id = application.active_document().id;
 
@@ -2142,49 +2669,129 @@ mod tests {
     }
 
     #[test]
-    fn virtual_document_save_does_not_fake_a_successful_write()
-    -> Result<(), Box<dyn Error + Send + Sync>> {
-        let mut application = EditorDemoApplication::new()?;
+    fn save_as_cancellation_preserves_dirty_state() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        dialogs.push_save_file(None);
+        let mut application = test_application(&files, &dialogs)?;
+        application.new_document();
         let result = application
             .active_document_mut()
             .editor
             .insert_text("changed");
         assert!(result.did_change);
-        assert!(
-            application
-                .active_document()
-                .is_dirty(&application.document_registry)
-        );
 
-        application.save_active();
+        assert!(!application.save_active());
 
         assert!(
             application
                 .active_document()
                 .is_dirty(&application.document_registry)
         );
-        assert!(
-            application
-                .lifecycle_notice
-                .as_deref()
-                .is_some_and(|notice| { notice.contains("do not have a writable file target") })
+        assert_eq!(
+            application.lifecycle_notice.as_deref(),
+            Some("Save As canceled")
         );
         Ok(())
     }
 
     #[test]
-    fn clean_untitled_save_reports_save_as_requirement() -> Result<(), Box<dyn Error + Send + Sync>>
-    {
-        let mut application = EditorDemoApplication::new()?;
+    fn save_as_duplicate_identity_does_not_overwrite_open_file() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let path = PathBuf::from("/luna-editor-tests/owned.txt");
+        files.insert_utf8(&path, "owned")?;
+        dialogs.push_open_file(Some(path.clone()));
+        dialogs.push_save_file(Some(path.clone()));
+        let mut application = test_application(&files, &dialogs)?;
+        application.open_file();
+        let owner_id = application.active_document().id;
         application.new_document();
+        let result = application
+            .active_document_mut()
+            .editor
+            .insert_text("replacement");
+        assert!(result.did_change);
 
-        let _ = application.execute_command("save");
+        assert!(!application.save_active_as());
 
+        assert_eq!(application.active_document().id, owner_id);
+        assert_eq!(files.bytes(&path)?, Some(b"owned".to_vec()));
+        Ok(())
+    }
+
+    #[test]
+    fn save_existing_file_updates_storage_revision() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let path = PathBuf::from("/luna-editor-tests/existing.txt");
+        files.insert_utf8(&path, "before")?;
+        dialogs.push_open_file(Some(path.clone()));
+        let mut application = test_application(&files, &dialogs)?;
+        application.open_file();
+        let result = application
+            .active_document_mut()
+            .editor
+            .insert_text(" after");
+        assert!(result.did_change);
+
+        assert!(application.save_active());
+
+        assert_eq!(files.bytes(&path)?, Some(b" afterbefore".to_vec()));
         assert!(
-            application
-                .lifecycle_notice
-                .as_deref()
-                .is_some_and(|notice| { notice.contains("Save As is required") })
+            !application
+                .active_document()
+                .is_dirty(&application.document_registry)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn file_menu_commands_are_enabled() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let application = test_application(&files, &dialogs)?;
+        let file_menu = application
+            .menu_definitions()
+            .into_iter()
+            .find(|menu| menu.id == "file")
+            .ok_or_else(|| std::io::Error::other("missing File menu"))?;
+        let enabled_ids = file_menu
+            .items
+            .iter()
+            .filter_map(|item| item.as_command())
+            .filter(|command| command.is_enabled)
+            .map(|command| command.id.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(enabled_ids.contains(&"open"));
+        assert!(enabled_ids.contains(&"save"));
+        assert!(enabled_ids.contains(&"save-as"));
+        Ok(())
+    }
+
+    #[test]
+    fn open_cancel_does_not_change_document_count() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        dialogs.push_open_file(None);
+        let mut application = test_application(&files, &dialogs)?;
+        let count = application.documents.len();
+
+        application.open_file();
+
+        assert_eq!(application.documents.len(), count);
+        assert_eq!(
+            application.lifecycle_notice.as_deref(),
+            Some("Open canceled")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn scripted_services_use_canonical_test_paths() -> TestResult {
+        let (files, _dialogs) = test_services()?;
+        files.insert_utf8(Path::new("relative.txt"), "text")?;
+        let loaded = files.load_utf8(Path::new("relative.txt"))?;
+
+        assert_eq!(
+            loaded.identity().path(),
+            Path::new("/luna-editor-tests/relative.txt")
         );
         Ok(())
     }

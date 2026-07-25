@@ -17,21 +17,25 @@ adding real first-level desktop dropdown menus.
 M3.1a through M3.1d are complete and locally validated. File/Edit/Find/View/Help open anchored
 dropdowns, while Control-P opens the independent searchable command palette.
 
-M3.2a begins the real document/workspace phase with a new product-neutral `luna-documents` crate:
+M3.2a established product-neutral document identity and lifecycle decisions through
+`luna-documents`. M3.2b adds the new `luna-document-services` crate and connects those decisions to
+real editor behavior:
 
-- monotonic stable `DocumentId` values for tabs, caches, hit routing, and accessibility;
-- monotonic untitled naming that is not reused after close;
-- adapter-canonicalized `FileIdentity` values and duplicate-open prevention;
-- saved edit revisions and explicit dirty-state evaluation;
-- opaque storage revisions plus in-sync, externally modified, and missing-file state;
-- explicit Save decisions: no-op, Save As, direct file write, or unsupported source;
-- explicit close decisions: safe close or Save/Discard/Cancel required;
-- Save As reassignment with duplicate-file protection;
-- editor-demo integration that blocks dirty close and never simulates a successful file write.
+- synchronous, product-neutral `TextFileService` and `DocumentDialogService` boundaries;
+- strict UTF-8 loading with invalid-encoding errors rather than lossy replacement;
+- canonical file identities and duplicate-open activation;
+- deterministic content revisions used as optimistic save preconditions;
+- same-directory temporary writes with existing-permission preservation and atomic replacement;
+- Open, Save, Save As, and dirty-close commands in menus, shortcuts, the command palette, pointer
+  routing, and accessibility;
+- Save/Discard/Cancel close resolution;
+- Overwrite/Reload/Cancel save-conflict resolution;
+- Linux native dialogs through Zenity with KDialog fallback;
+- in-memory file services and scripted dialogs for deterministic lifecycle tests.
 
-M3.2b is next: real UTF-8 open/save/save-as and dirty-close services behind mockable filesystem and
-dialog boundaries. Workspace trees, watchers, recent files, and independent shared-buffer views
-follow in later M3.2 subphases. See `docs/M3_2A_DOCUMENT_LIFECYCLE.md` and
+M3.2c is next: recent files, external-change delivery, reload notifications, and further save
+hardening. Workspace trees and independent shared-buffer views follow in M3.2d and M3.2e. See
+`docs/M3_2A_DOCUMENT_LIFECYCLE.md`, `docs/M3_2B_FILE_DIALOG_SERVICES.md`, and
 `docs/SWIFT_PARITY.md`.
 
 ## Build and validate
@@ -75,20 +79,25 @@ Editor shortcuts:
 - **Control-P** — command palette;
 - **Control-F** — find panel;
 - **Control-H** — find/replace panel;
-- **Control-S** — evaluate Save; untitled documents report that Save As is required;
+- **Control-O** — open a UTF-8 text file through a native file chooser;
+- **Control-S** — save to the current file or open Save As for untitled/virtual content;
+- **Control-Shift-S** — Save As to a new destination;
 - **Control-N** — create a new document;
 - **Control-B** — toggle the sidebar;
-- **Control-W** — close a clean tab; dirty tabs require a future Save/Discard/Cancel dialog;
+- **Control-W** — close a tab; dirty tabs receive Save/Discard/Cancel resolution;
 - **Control-A** — select all editor text;
 - **Escape** — close the active menu/overlay, or exit when none is open.
 
-M3.2a document behavior:
+M3.2b document behavior:
 
 - New File creates an empty, clean, monotonically named Untitled document;
-- Save on an untitled document reports that Save As is required rather than faking persistence;
-- dirty tab close is blocked until a future Save/Discard/Cancel service resolves it;
-- clean close releases both editor-view state and registry identity;
-- the sidebar projects the same stable document IDs used by tabs and caches.
+- Open loads strict UTF-8 text and activates an existing tab when the canonical file is already open;
+- Save writes through an optimistic content-revision check;
+- Save As assigns the selected canonical file identity and updates the tab title;
+- dirty close offers Save, Discard, and Cancel;
+- a storage race offers Overwrite, Reload, and Cancel;
+- canceled dialogs and failed writes preserve editor content and dirty state;
+- clean close releases both editor-view state and registry identity.
 
 The editor must preserve M3.1b performance behavior: no idle frames, no reshaping for caret,
 selection, focus, or menu changes, overscanned raster reuse during ordinary scrolling, and bounded
@@ -112,6 +121,7 @@ native event / AccessKit action / scheduled logical update
          -> command-palette projection
          -> keyboard/accessibility dispatch
     -> product-neutral document registry and lifecycle decision
+    -> UTF-8 file service + native dialog service boundary
     -> platform-neutral Luna application state
     -> retained text/layout/chrome or retained static scene
     -> dynamic display list + shared validated semantic snapshot
@@ -123,7 +133,8 @@ Widgets do not call graphics APIs, create native windows, own operating-system e
 Moth-specific product policy. See `docs/ARCHITECTURE.md`, `docs/PORTING_MAP.md`,
 `docs/M3_1A_HOST_PIPELINE.md`, `docs/M3_1B_TEXT_CACHE.md`,
 `docs/M3_1C_GALLERY_ACCESSIBILITY.md`, `docs/M3_1D_DROPDOWN_MENUS.md`,
-`docs/M3_2A_DOCUMENT_LIFECYCLE.md`, and `docs/SWIFT_PARITY.md`.
+`docs/M3_2A_DOCUMENT_LIFECYCLE.md`, `docs/M3_2B_FILE_DIALOG_SERVICES.md`, and
+`docs/SWIFT_PARITY.md`.
 
 ## License
 

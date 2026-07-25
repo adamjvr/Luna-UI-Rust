@@ -19,6 +19,9 @@ luna-core
 luna-documents
   └── std path and collection contracts only
 
+luna-document-services
+  └── luna-documents
+
 luna-text
   └── unicode-segmentation
 
@@ -52,7 +55,8 @@ native leaf adapters
 applications
   ├── luna-ui-rust-proof-gallery
   └── luna-ui-rust-editor-demo
-        └── luna-documents
+        ├── luna-documents
+        └── luna-document-services
 ```
 
 Dependencies point toward small product-neutral contracts. Platform integrations and stateful
@@ -108,8 +112,41 @@ filesystem/dialog/watcher adapter
 
 `DocumentRegistry` prevents duplicate file opens and reserves monotonic untitled names. A dirty
 close produces `SaveOrDiscard`; it never silently chooses a product policy. Save produces a decision
-(`None`, `SaveAs`, `WriteFile`, or `Unsupported`) that later adapters execute. Caret, selection,
-scroll, split-pane state, and command policy remain in the application layer.
+(`None`, `SaveAs`, `WriteFile`, or `Unsupported`) that the application resolves through
+`luna-document-services`. Caret, selection, scroll, split-pane state, and command policy remain in
+the application layer.
+
+## File and dialog service boundary
+
+`luna-document-services` translates lifecycle decisions into bytes and user choices without moving
+storage policy into `luna-documents` or widget policy into `luna-ui`.
+
+```text
+DocumentRegistry SaveRequirement / CloseRequirement
+    -> application orchestration
+         -> DocumentDialogService
+              -> open path / save path
+              -> Save / Discard / Cancel
+              -> Overwrite / Reload / Cancel
+         -> TextFileService
+              -> strict UTF-8 read
+              -> canonical FileIdentity
+              -> deterministic StorageRevision
+              -> optimistic WritePrecondition
+              -> same-directory atomic replacement
+    -> registry mark_saved / assign_file / remove
+    -> editor view and cache invalidation
+```
+
+The standard adapter hashes file bytes into an opaque revision and compares that revision immediately
+before replacement. A mismatch is a typed conflict, not an implicit overwrite. Save As uses a native
+dialog that confirms replacement before the file service receives `WritePrecondition::Any`.
+Ordinary Save uses `WritePrecondition::Matches` whenever the registry has a baseline revision.
+
+Native dialogs are a leaf concern. `SystemDialogService` shells out directly to Zenity or KDialog on
+Linux and passes arguments without a command shell. Tests use `MemoryTextFileService` and
+`ScriptedDialogService`, so open/save/close/conflict behavior remains deterministic and does not
+create windows or touch the host filesystem.
 
 ## Text model boundary
 

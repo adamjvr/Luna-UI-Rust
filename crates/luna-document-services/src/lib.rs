@@ -1,0 +1,1218 @@
+// SPDX-License-Identifier: MPL-2.0
+
+//! Testable text-file and document-dialog service boundaries.
+//!
+//! The traits in this crate are synchronous by design because the current native editor demo owns
+//! a single winit event loop and invokes platform dialogs as modal operations. Products may adapt
+//! the same contracts to asynchronous task systems later without moving filesystem or dialog policy
+//! into Luna's document identity model.
+//!
+//! [`StdTextFileService`] provides UTF-8 reads, deterministic content revisions, optimistic write
+//! preconditions, and same-directory atomic replacement. [`SystemDialogService`] uses an installed
+//! Linux desktop dialog helper (`zenity` first, then `kdialog`) without adding toolkit dependencies
+//! to the Luna workspace. [`MemoryTextFileService`] and [`ScriptedDialogService`] provide fully
+//! deterministic adapters for unit tests.
+
+use luna_documents::{FileIdentity, StorageRevision};
+use std::cell::RefCell;
+use std::collections::{BTreeMap, VecDeque};
+use std::error::Error;
+use std::ffi::OsString;
+use std::fmt::{Display, Formatter};
+#[cfg(unix)]
+use std::fs::File;
+use std::fs::{self, OpenOptions};
+use std::io::{self, Write};
+use std::path::{Component, Path, PathBuf};
+use std::process::{Command, ExitStatus, Output};
+use std::rc::Rc;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static TEMP_FILE_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+
+/// Successfully loaded UTF-8 text and its canonical storage identity.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LoadedTextFile {
+    identity: FileIdentity,
+    text: String,
+    revision: StorageRevision,
+}
+
+impl LoadedTextFile {
+    /// Returns the canonical identity used for duplicate-open prevention.
+    #[must_use]
+    pub const fn identity(&self) -> &FileIdentity {
+        &self.identity
+    }
+
+    /// Returns decoded UTF-8 text.
+    #[must_use]
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+
+    /// Consumes the load result and returns its decoded text.
+    #[must_use]
+    pub fn into_text(self) -> String {
+        self.text
+    }
+
+    /// Returns the deterministic content revision observed during the read.
+    #[must_use]
+    pub const fn revision(&self) -> StorageRevision {
+        self.revision
+    }
+}
+
+/// Successfully written text and the resulting storage revision.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WrittenTextFile {
+    identity: FileIdentity,
+    revision: StorageRevision,
+}
+
+impl WrittenTextFile {
+    /// Returns the canonical destination identity.
+    #[must_use]
+    pub const fn identity(&self) -> &FileIdentity {
+        &self.identity
+    }
+
+    /// Returns the deterministic content revision after the write.
+    #[must_use]
+    pub const fn revision(&self) -> StorageRevision {
+        self.revision
+    }
+}
+
+/// Optimistic condition that must hold before a file is replaced.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WritePrecondition {
+    /// Replace or create the destination regardless of its current revision.
+    Any,
+    /// Write only when no destination currently exists.
+    Missing,
+    /// Write only when the current destination content matches this revision.
+    Matches(StorageRevision),
+}
+
+/// Product-neutral synchronous UTF-8 text-file operations.
+pub trait TextFileService {
+    /// Loads one file as UTF-8, returning canonical identity and content revision.
+    fn load_utf8(&self, path: &Path) -> Result<LoadedTextFile, FileServiceError>;
+
+    /// Produces the canonical identity that a Save As destination would receive.
+    fn identity_for_save(&self, path: &Path) -> Result<FileIdentity, FileServiceError>;
+
+    /// Writes UTF-8 text through a same-directory temporary file and atomic replacement.
+    fn write_utf8_atomic(
+        &self,
+        path: &Path,
+        text: &str,
+        precondition: WritePrecondition,
+    ) -> Result<WrittenTextFile, FileServiceError>;
+}
+
+/// Broad file-service failure classification suitable for product policy and tests.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FileServiceErrorKind {
+    /// A requested file or parent directory does not exist.
+    NotFound,
+    /// The operating system denied the requested operation.
+    PermissionDenied,
+    /// File bytes are not valid UTF-8.
+    InvalidUtf8,
+    /// A write precondition did not match current storage content.
+    Conflict,
+    /// A path cannot be represented as a Luna file identity.
+    InvalidPath,
+    /// Another input/output failure occurred.
+    Io,
+}
+
+/// Error returned by a [`TextFileService`].
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FileServiceError {
+    operation: &'static str,
+    path: PathBuf,
+    kind: FileServiceErrorKind,
+    message: String,
+    expected_revision: Option<StorageRevision>,
+    observed_revision: Option<StorageRevision>,
+}
+
+impl FileServiceError {
+    /// Returns the operation that failed.
+    #[must_use]
+    pub const fn operation(&self) -> &'static str {
+        self.operation
+    }
+
+    /// Returns the affected path.
+    #[must_use]
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    /// Returns the broad failure classification.
+    #[must_use]
+    pub const fn kind(&self) -> FileServiceErrorKind {
+        self.kind
+    }
+
+    /// Returns the expected revision for a conflict, when available.
+    #[must_use]
+    pub const fn expected_revision(&self) -> Option<StorageRevision> {
+        self.expected_revision
+    }
+
+    /// Returns the observed revision for a conflict, when available.
+    #[must_use]
+    pub const fn observed_revision(&self) -> Option<StorageRevision> {
+        self.observed_revision
+    }
+
+    fn from_io(operation: &'static str, path: &Path, error: &io::Error) -> Self {
+        let kind = match error.kind() {
+            io::ErrorKind::NotFound => FileServiceErrorKind::NotFound,
+            io::ErrorKind::PermissionDenied => FileServiceErrorKind::PermissionDenied,
+            _ => FileServiceErrorKind::Io,
+        };
+        Self {
+            operation,
+            path: path.to_path_buf(),
+            kind,
+            message: error.to_string(),
+            expected_revision: None,
+            observed_revision: None,
+        }
+    }
+
+    fn invalid_utf8(path: &Path, error: impl Display) -> Self {
+        Self {
+            operation: "decode UTF-8",
+            path: path.to_path_buf(),
+            kind: FileServiceErrorKind::InvalidUtf8,
+            message: error.to_string(),
+            expected_revision: None,
+            observed_revision: None,
+        }
+    }
+
+    fn invalid_path(path: &Path, error: impl Display) -> Self {
+        Self {
+            operation: "canonicalize path",
+            path: path.to_path_buf(),
+            kind: FileServiceErrorKind::InvalidPath,
+            message: error.to_string(),
+            expected_revision: None,
+            observed_revision: None,
+        }
+    }
+
+    fn conflict(
+        path: &Path,
+        expected_revision: Option<StorageRevision>,
+        observed_revision: Option<StorageRevision>,
+    ) -> Self {
+        Self {
+            operation: "check write precondition",
+            path: path.to_path_buf(),
+            kind: FileServiceErrorKind::Conflict,
+            message: "destination content changed since the editor baseline".to_owned(),
+            expected_revision,
+            observed_revision,
+        }
+    }
+}
+
+impl Display for FileServiceError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "failed to {} {}: {}",
+            self.operation,
+            self.path.display(),
+            self.message
+        )
+    }
+}
+
+impl Error for FileServiceError {}
+
+/// Standard-library UTF-8 file adapter.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct StdTextFileService;
+
+impl StdTextFileService {
+    fn identity_for_existing(path: &Path) -> Result<FileIdentity, FileServiceError> {
+        let canonical = fs::canonicalize(path)
+            .map_err(|error| FileServiceError::from_io("canonicalize", path, &error))?;
+        FileIdentity::from_canonical_path(canonical)
+            .map_err(|error| FileServiceError::invalid_path(path, error))
+    }
+
+    fn destination_path(path: &Path) -> Result<PathBuf, FileServiceError> {
+        let absolute = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            std::env::current_dir()
+                .map_err(|error| FileServiceError::from_io("read current directory", path, &error))?
+                .join(path)
+        };
+        if absolute.exists() {
+            return fs::canonicalize(&absolute)
+                .map_err(|error| FileServiceError::from_io("canonicalize", &absolute, &error));
+        }
+        let file_name = absolute.file_name().ok_or_else(|| {
+            FileServiceError::invalid_path(path, "save destination has no file name")
+        })?;
+        let parent = absolute.parent().ok_or_else(|| {
+            FileServiceError::invalid_path(path, "save destination has no parent directory")
+        })?;
+        let canonical_parent = fs::canonicalize(parent)
+            .map_err(|error| FileServiceError::from_io("canonicalize parent", parent, &error))?;
+        Ok(canonical_parent.join(file_name))
+    }
+
+    fn revision_for_existing(path: &Path) -> Result<Option<StorageRevision>, FileServiceError> {
+        match fs::read(path) {
+            Ok(bytes) => Ok(Some(content_revision(&bytes))),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(FileServiceError::from_io("read revision", path, &error)),
+        }
+    }
+
+    fn check_precondition(
+        path: &Path,
+        precondition: WritePrecondition,
+    ) -> Result<(), FileServiceError> {
+        let observed = Self::revision_for_existing(path)?;
+        let matches = match precondition {
+            WritePrecondition::Any => true,
+            WritePrecondition::Missing => observed.is_none(),
+            WritePrecondition::Matches(expected) => observed == Some(expected),
+        };
+        if matches {
+            Ok(())
+        } else {
+            let expected = match precondition {
+                WritePrecondition::Matches(revision) => Some(revision),
+                WritePrecondition::Any | WritePrecondition::Missing => None,
+            };
+            Err(FileServiceError::conflict(path, expected, observed))
+        }
+    }
+
+    fn temporary_path(destination: &Path) -> Result<PathBuf, FileServiceError> {
+        let parent = destination.parent().ok_or_else(|| {
+            FileServiceError::invalid_path(destination, "destination has no parent directory")
+        })?;
+        let file_name = destination.file_name().ok_or_else(|| {
+            FileServiceError::invalid_path(destination, "destination has no file name")
+        })?;
+        let sequence = TEMP_FILE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+        let mut temporary_name = OsString::from(".");
+        temporary_name.push(file_name);
+        temporary_name.push(format!(".luna-{}-{sequence}.tmp", std::process::id()));
+        Ok(parent.join(temporary_name))
+    }
+
+    fn replace_destination(temporary: &Path, destination: &Path) -> io::Result<()> {
+        #[cfg(windows)]
+        if destination.exists() {
+            fs::remove_file(destination)?;
+        }
+        fs::rename(temporary, destination)
+    }
+
+    fn write_replacement(
+        temporary: &Path,
+        destination: &Path,
+        text: &str,
+        precondition: WritePrecondition,
+    ) -> Result<(), FileServiceError> {
+        let existing_permissions = fs::metadata(destination)
+            .ok()
+            .map(|metadata| metadata.permissions());
+        let mut file = OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(temporary)
+            .map_err(|error| {
+                FileServiceError::from_io("create temporary file", temporary, &error)
+            })?;
+        if let Some(permissions) = existing_permissions {
+            file.set_permissions(permissions).map_err(|error| {
+                FileServiceError::from_io("copy destination permissions", temporary, &error)
+            })?;
+        }
+        file.write_all(text.as_bytes()).map_err(|error| {
+            FileServiceError::from_io("write temporary file", temporary, &error)
+        })?;
+        file.sync_all()
+            .map_err(|error| FileServiceError::from_io("sync temporary file", temporary, &error))?;
+        Self::check_precondition(destination, precondition)?;
+        Self::replace_destination(temporary, destination).map_err(|error| {
+            FileServiceError::from_io("replace destination", destination, &error)
+        })?;
+        #[cfg(unix)]
+        if let Some(parent) = destination.parent() {
+            File::open(parent)
+                .and_then(|directory| directory.sync_all())
+                .map_err(|error| {
+                    FileServiceError::from_io("sync parent directory", parent, &error)
+                })?;
+        }
+        Ok(())
+    }
+}
+
+impl TextFileService for StdTextFileService {
+    fn load_utf8(&self, path: &Path) -> Result<LoadedTextFile, FileServiceError> {
+        let identity = Self::identity_for_existing(path)?;
+        let bytes = fs::read(identity.path())
+            .map_err(|error| FileServiceError::from_io("read", identity.path(), &error))?;
+        let revision = content_revision(&bytes);
+        let text = String::from_utf8(bytes)
+            .map_err(|error| FileServiceError::invalid_utf8(identity.path(), error))?;
+        Ok(LoadedTextFile {
+            identity,
+            text,
+            revision,
+        })
+    }
+
+    fn identity_for_save(&self, path: &Path) -> Result<FileIdentity, FileServiceError> {
+        let destination = Self::destination_path(path)?;
+        FileIdentity::from_canonical_path(destination)
+            .map_err(|error| FileServiceError::invalid_path(path, error))
+    }
+
+    fn write_utf8_atomic(
+        &self,
+        path: &Path,
+        text: &str,
+        precondition: WritePrecondition,
+    ) -> Result<WrittenTextFile, FileServiceError> {
+        let identity = self.identity_for_save(path)?;
+        let destination = identity.path();
+        Self::check_precondition(destination, precondition)?;
+        let temporary = Self::temporary_path(destination)?;
+        let write_result = Self::write_replacement(&temporary, destination, text, precondition);
+        if write_result.is_err() {
+            let _ = fs::remove_file(&temporary);
+        }
+        write_result?;
+        Ok(WrittenTextFile {
+            identity,
+            revision: content_revision(text.as_bytes()),
+        })
+    }
+}
+
+/// User decision when closing a dirty document.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DirtyCloseChoice {
+    /// Save the document, then close only after a successful write.
+    Save,
+    /// Discard current edits and close immediately.
+    Discard,
+    /// Leave the document open and unchanged.
+    Cancel,
+}
+
+/// User decision after optimistic save conflict detection.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SaveConflictChoice {
+    /// Replace the destination regardless of its observed revision.
+    Overwrite,
+    /// Reload current storage content and discard editor changes.
+    Reload,
+    /// Leave storage and editor content unchanged.
+    Cancel,
+}
+
+/// Product-neutral synchronous dialog operations used by the document lifecycle.
+pub trait DocumentDialogService {
+    /// Chooses one file to open, or returns `None` when canceled.
+    fn choose_open_file(&mut self) -> Result<Option<PathBuf>, DialogError>;
+
+    /// Chooses one Save As destination, or returns `None` when canceled.
+    fn choose_save_file(
+        &mut self,
+        suggested_name: &str,
+        current_path: Option<&Path>,
+    ) -> Result<Option<PathBuf>, DialogError>;
+
+    /// Resolves a dirty-document close request.
+    fn confirm_dirty_close(&mut self, title: &str) -> Result<DirtyCloseChoice, DialogError>;
+
+    /// Resolves a storage conflict detected before writing.
+    fn resolve_save_conflict(
+        &mut self,
+        title: &str,
+        path: &Path,
+    ) -> Result<SaveConflictChoice, DialogError>;
+}
+
+/// Broad native-dialog failure classification.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DialogErrorKind {
+    /// No supported native dialog helper is installed.
+    Unavailable,
+    /// Launching or communicating with the helper failed.
+    Io,
+    /// The helper returned an unsupported result.
+    InvalidResponse,
+}
+
+/// Error returned by a [`DocumentDialogService`].
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DialogError {
+    kind: DialogErrorKind,
+    message: String,
+}
+
+impl DialogError {
+    /// Returns the broad failure classification.
+    #[must_use]
+    pub const fn kind(&self) -> DialogErrorKind {
+        self.kind
+    }
+
+    fn unavailable() -> Self {
+        Self {
+            kind: DialogErrorKind::Unavailable,
+            message: "install zenity or kdialog to enable native document dialogs".to_owned(),
+        }
+    }
+
+    fn io(context: &str, error: impl Display) -> Self {
+        Self {
+            kind: DialogErrorKind::Io,
+            message: format!("{context}: {error}"),
+        }
+    }
+
+    fn invalid_response(message: impl Into<String>) -> Self {
+        Self {
+            kind: DialogErrorKind::InvalidResponse,
+            message: message.into(),
+        }
+    }
+}
+
+impl Display for DialogError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
+
+impl Error for DialogError {}
+
+/// Native helper selected by [`SystemDialogService`].
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SystemDialogBackend {
+    /// GNOME-compatible Zenity helper.
+    Zenity,
+    /// KDE KDialog helper.
+    KDialog,
+    /// No supported helper was detected.
+    Unavailable,
+}
+
+/// Linux desktop dialog adapter backed by Zenity or KDialog.
+#[derive(Clone, Copy, Debug)]
+pub struct SystemDialogService {
+    backend: SystemDialogBackend,
+}
+
+impl Default for SystemDialogService {
+    fn default() -> Self {
+        Self::detect()
+    }
+}
+
+impl SystemDialogService {
+    /// Detects an installed dialog helper, preferring Zenity.
+    #[must_use]
+    pub fn detect() -> Self {
+        let backend = if command_exists("zenity") {
+            SystemDialogBackend::Zenity
+        } else if command_exists("kdialog") {
+            SystemDialogBackend::KDialog
+        } else {
+            SystemDialogBackend::Unavailable
+        };
+        Self { backend }
+    }
+
+    /// Returns the detected helper backend.
+    #[must_use]
+    pub const fn backend(self) -> SystemDialogBackend {
+        self.backend
+    }
+
+    fn run(&self, program: &str, args: &[OsString]) -> Result<Output, DialogError> {
+        Command::new(program)
+            .args(args)
+            .output()
+            .map_err(|error| DialogError::io("failed to launch native dialog", error))
+    }
+
+    fn selected_path(output: Output) -> Result<Option<PathBuf>, DialogError> {
+        if output.status.success() {
+            return path_from_dialog_stdout(output.stdout);
+        }
+        if is_cancel_status(output.status) {
+            return Ok(None);
+        }
+        Err(dialog_output_error(output))
+    }
+
+    fn zenity_question(
+        &self,
+        title: &str,
+        text: &str,
+        ok_label: &str,
+        extra_label: &str,
+    ) -> Result<QuestionResult, DialogError> {
+        let output = self.run(
+            "zenity",
+            &[
+                OsString::from("--question"),
+                OsString::from(format!("--title={title}")),
+                OsString::from(format!("--text={text}")),
+                OsString::from(format!("--ok-label={ok_label}")),
+                OsString::from("--cancel-label=Cancel"),
+                OsString::from(format!("--extra-button={extra_label}")),
+            ],
+        )?;
+        if output.status.success() {
+            let stdout = String::from_utf8(output.stdout)
+                .map_err(|error| DialogError::invalid_response(error.to_string()))?;
+            return if stdout.trim() == extra_label {
+                Ok(QuestionResult::Secondary)
+            } else {
+                Ok(QuestionResult::Primary)
+            };
+        }
+        if is_cancel_status(output.status) {
+            Ok(QuestionResult::Cancel)
+        } else {
+            Err(dialog_output_error(output))
+        }
+    }
+
+    fn kdialog_question(&self, title: &str, text: &str) -> Result<QuestionResult, DialogError> {
+        let output = self.run(
+            "kdialog",
+            &[
+                OsString::from("--title"),
+                OsString::from(title),
+                OsString::from("--warningyesnocancel"),
+                OsString::from(text),
+            ],
+        )?;
+        match output.status.code() {
+            Some(0) => Ok(QuestionResult::Primary),
+            Some(1) => Ok(QuestionResult::Secondary),
+            Some(2) => Ok(QuestionResult::Cancel),
+            _ => Err(dialog_output_error(output)),
+        }
+    }
+}
+
+impl DocumentDialogService for SystemDialogService {
+    fn choose_open_file(&mut self) -> Result<Option<PathBuf>, DialogError> {
+        match self.backend {
+            SystemDialogBackend::Zenity => Self::selected_path(self.run(
+                "zenity",
+                &[
+                    OsString::from("--file-selection"),
+                    OsString::from("--title=Open Text File"),
+                ],
+            )?),
+            SystemDialogBackend::KDialog => Self::selected_path(self.run(
+                "kdialog",
+                &[
+                    OsString::from("--title"),
+                    OsString::from("Open Text File"),
+                    OsString::from("--getopenfilename"),
+                    OsString::from("."),
+                    OsString::from("Text files (*.txt *.md *.rs *.toml *.json);;All files (*)"),
+                ],
+            )?),
+            SystemDialogBackend::Unavailable => Err(DialogError::unavailable()),
+        }
+    }
+
+    fn choose_save_file(
+        &mut self,
+        suggested_name: &str,
+        current_path: Option<&Path>,
+    ) -> Result<Option<PathBuf>, DialogError> {
+        let suggested =
+            current_path.map_or_else(|| PathBuf::from(suggested_name), Path::to_path_buf);
+        match self.backend {
+            SystemDialogBackend::Zenity => Self::selected_path(self.run(
+                "zenity",
+                &[
+                    OsString::from("--file-selection"),
+                    OsString::from("--save"),
+                    OsString::from("--confirm-overwrite"),
+                    OsString::from("--title=Save Text File"),
+                    OsString::from(format!("--filename={}", suggested.display())),
+                ],
+            )?),
+            SystemDialogBackend::KDialog => Self::selected_path(self.run(
+                "kdialog",
+                &[
+                    OsString::from("--title"),
+                    OsString::from("Save Text File"),
+                    OsString::from("--getsavefilename"),
+                    suggested.into_os_string(),
+                    OsString::from("Text files (*.txt *.md *.rs *.toml *.json);;All files (*)"),
+                ],
+            )?),
+            SystemDialogBackend::Unavailable => Err(DialogError::unavailable()),
+        }
+    }
+
+    fn confirm_dirty_close(&mut self, title: &str) -> Result<DirtyCloseChoice, DialogError> {
+        let text = format!("Save changes to {title} before closing?");
+        let result = match self.backend {
+            SystemDialogBackend::Zenity => {
+                self.zenity_question("Unsaved Changes", &text, "Save", "Discard")?
+            }
+            SystemDialogBackend::KDialog => self.kdialog_question("Unsaved Changes", &text)?,
+            SystemDialogBackend::Unavailable => return Err(DialogError::unavailable()),
+        };
+        Ok(match result {
+            QuestionResult::Primary => DirtyCloseChoice::Save,
+            QuestionResult::Secondary => DirtyCloseChoice::Discard,
+            QuestionResult::Cancel => DirtyCloseChoice::Cancel,
+        })
+    }
+
+    fn resolve_save_conflict(
+        &mut self,
+        title: &str,
+        path: &Path,
+    ) -> Result<SaveConflictChoice, DialogError> {
+        let text = format!(
+            "{} changed outside Luna. Overwrite it, reload storage content, or cancel?",
+            path.display()
+        );
+        let result = match self.backend {
+            SystemDialogBackend::Zenity => {
+                self.zenity_question(title, &text, "Overwrite", "Reload")?
+            }
+            SystemDialogBackend::KDialog => self.kdialog_question(title, &text)?,
+            SystemDialogBackend::Unavailable => return Err(DialogError::unavailable()),
+        };
+        Ok(match result {
+            QuestionResult::Primary => SaveConflictChoice::Overwrite,
+            QuestionResult::Secondary => SaveConflictChoice::Reload,
+            QuestionResult::Cancel => SaveConflictChoice::Cancel,
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum QuestionResult {
+    Primary,
+    Secondary,
+    Cancel,
+}
+
+fn path_from_dialog_stdout(stdout: Vec<u8>) -> Result<Option<PathBuf>, DialogError> {
+    let value = String::from_utf8(stdout)
+        .map_err(|error| DialogError::invalid_response(error.to_string()))?;
+    let selected = value
+        .strip_suffix("\r\n")
+        .or_else(|| value.strip_suffix('\n'))
+        .unwrap_or(&value);
+    if selected.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(PathBuf::from(selected)))
+    }
+}
+
+fn command_exists(program: &str) -> bool {
+    Command::new(program)
+        .arg("--version")
+        .output()
+        .is_ok_and(|output| output.status.success())
+}
+
+fn is_cancel_status(status: ExitStatus) -> bool {
+    matches!(status.code(), Some(1))
+}
+
+fn dialog_output_error(output: Output) -> DialogError {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    DialogError::io(
+        "native dialog returned an error",
+        if stderr.trim().is_empty() {
+            format!("exit status {}", output.status)
+        } else {
+            stderr.trim().to_owned()
+        },
+    )
+}
+
+/// In-memory text-file adapter for deterministic tests and product harnesses.
+#[derive(Clone, Debug)]
+pub struct MemoryTextFileService {
+    root: PathBuf,
+    files: Rc<RefCell<BTreeMap<PathBuf, Vec<u8>>>>,
+}
+
+impl MemoryTextFileService {
+    /// Creates an empty adapter rooted at an absolute canonical path.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FileServiceError`] when `root` is relative or contains `.` or `..` components.
+    pub fn new(root: impl Into<PathBuf>) -> Result<Self, FileServiceError> {
+        let root = root.into();
+        validate_memory_path(&root).map_err(|message| FileServiceError {
+            operation: "create memory filesystem",
+            path: root.clone(),
+            kind: FileServiceErrorKind::InvalidPath,
+            message,
+            expected_revision: None,
+            observed_revision: None,
+        })?;
+        Ok(Self {
+            root,
+            files: Rc::new(RefCell::new(BTreeMap::new())),
+        })
+    }
+
+    /// Inserts or replaces UTF-8 content without applying a write precondition.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FileServiceError`] when the path cannot be normalized below the configured root.
+    pub fn insert_utf8(&self, path: &Path, text: &str) -> Result<(), FileServiceError> {
+        let path = self.resolve(path)?;
+        let _ = self
+            .files
+            .borrow_mut()
+            .insert(path, text.as_bytes().to_vec());
+        Ok(())
+    }
+
+    /// Inserts arbitrary bytes, allowing invalid-UTF-8 tests.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FileServiceError`] when the path cannot be normalized below the configured root.
+    pub fn insert_bytes(&self, path: &Path, bytes: Vec<u8>) -> Result<(), FileServiceError> {
+        let path = self.resolve(path)?;
+        let _ = self.files.borrow_mut().insert(path, bytes);
+        Ok(())
+    }
+
+    /// Returns a copy of current bytes for assertions.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FileServiceError`] when the path cannot be normalized below the configured root.
+    pub fn bytes(&self, path: &Path) -> Result<Option<Vec<u8>>, FileServiceError> {
+        let path = self.resolve(path)?;
+        Ok(self.files.borrow().get(&path).cloned())
+    }
+
+    fn resolve(&self, path: &Path) -> Result<PathBuf, FileServiceError> {
+        let candidate = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            self.root.join(path)
+        };
+        validate_memory_path(&candidate).map_err(|message| FileServiceError {
+            operation: "normalize memory path",
+            path: candidate.clone(),
+            kind: FileServiceErrorKind::InvalidPath,
+            message,
+            expected_revision: None,
+            observed_revision: None,
+        })?;
+        if !candidate.starts_with(&self.root) {
+            return Err(FileServiceError {
+                operation: "normalize memory path",
+                path: candidate,
+                kind: FileServiceErrorKind::InvalidPath,
+                message: "memory filesystem paths must stay below the configured root".to_owned(),
+                expected_revision: None,
+                observed_revision: None,
+            });
+        }
+        Ok(candidate)
+    }
+}
+
+impl TextFileService for MemoryTextFileService {
+    fn load_utf8(&self, path: &Path) -> Result<LoadedTextFile, FileServiceError> {
+        let path = self.resolve(path)?;
+        let bytes = self
+            .files
+            .borrow()
+            .get(&path)
+            .cloned()
+            .ok_or_else(|| FileServiceError {
+                operation: "read memory file",
+                path: path.clone(),
+                kind: FileServiceErrorKind::NotFound,
+                message: "memory file does not exist".to_owned(),
+                expected_revision: None,
+                observed_revision: None,
+            })?;
+        let revision = content_revision(&bytes);
+        let text = String::from_utf8(bytes)
+            .map_err(|error| FileServiceError::invalid_utf8(&path, error))?;
+        let identity = FileIdentity::from_canonical_path(path.clone())
+            .map_err(|error| FileServiceError::invalid_path(&path, error))?;
+        Ok(LoadedTextFile {
+            identity,
+            text,
+            revision,
+        })
+    }
+
+    fn identity_for_save(&self, path: &Path) -> Result<FileIdentity, FileServiceError> {
+        let path = self.resolve(path)?;
+        FileIdentity::from_canonical_path(path.clone())
+            .map_err(|error| FileServiceError::invalid_path(&path, error))
+    }
+
+    fn write_utf8_atomic(
+        &self,
+        path: &Path,
+        text: &str,
+        precondition: WritePrecondition,
+    ) -> Result<WrittenTextFile, FileServiceError> {
+        let identity = self.identity_for_save(path)?;
+        let observed = self
+            .files
+            .borrow()
+            .get(identity.path())
+            .map(|bytes| content_revision(bytes));
+        let matches = match precondition {
+            WritePrecondition::Any => true,
+            WritePrecondition::Missing => observed.is_none(),
+            WritePrecondition::Matches(expected) => observed == Some(expected),
+        };
+        if !matches {
+            let expected = match precondition {
+                WritePrecondition::Matches(revision) => Some(revision),
+                WritePrecondition::Any | WritePrecondition::Missing => None,
+            };
+            return Err(FileServiceError::conflict(
+                identity.path(),
+                expected,
+                observed,
+            ));
+        }
+        let _ = self
+            .files
+            .borrow_mut()
+            .insert(identity.path().to_path_buf(), text.as_bytes().to_vec());
+        Ok(WrittenTextFile {
+            identity,
+            revision: content_revision(text.as_bytes()),
+        })
+    }
+}
+
+fn validate_memory_path(path: &Path) -> Result<(), String> {
+    if !path.is_absolute() {
+        return Err("memory filesystem paths must be absolute".to_owned());
+    }
+    if path
+        .components()
+        .any(|component| matches!(component, Component::CurDir | Component::ParentDir))
+    {
+        return Err("memory filesystem paths cannot contain . or .. components".to_owned());
+    }
+    Ok(())
+}
+
+/// Deterministic queued dialog adapter for tests.
+#[derive(Clone, Debug, Default)]
+pub struct ScriptedDialogService {
+    state: Rc<RefCell<ScriptedDialogState>>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct ScriptedDialogState {
+    open_files: VecDeque<Option<PathBuf>>,
+    save_files: VecDeque<Option<PathBuf>>,
+    close_choices: VecDeque<DirtyCloseChoice>,
+    conflict_choices: VecDeque<SaveConflictChoice>,
+}
+
+impl ScriptedDialogService {
+    /// Appends one open-dialog result.
+    pub fn push_open_file(&self, path: Option<PathBuf>) {
+        self.state.borrow_mut().open_files.push_back(path);
+    }
+
+    /// Appends one Save As dialog result.
+    pub fn push_save_file(&self, path: Option<PathBuf>) {
+        self.state.borrow_mut().save_files.push_back(path);
+    }
+
+    /// Appends one dirty-close decision.
+    pub fn push_dirty_close(&self, choice: DirtyCloseChoice) {
+        self.state.borrow_mut().close_choices.push_back(choice);
+    }
+
+    /// Appends one save-conflict decision.
+    pub fn push_save_conflict(&self, choice: SaveConflictChoice) {
+        self.state.borrow_mut().conflict_choices.push_back(choice);
+    }
+}
+
+impl DocumentDialogService for ScriptedDialogService {
+    fn choose_open_file(&mut self) -> Result<Option<PathBuf>, DialogError> {
+        Ok(self.state.borrow_mut().open_files.pop_front().flatten())
+    }
+
+    fn choose_save_file(
+        &mut self,
+        _suggested_name: &str,
+        _current_path: Option<&Path>,
+    ) -> Result<Option<PathBuf>, DialogError> {
+        Ok(self.state.borrow_mut().save_files.pop_front().flatten())
+    }
+
+    fn confirm_dirty_close(&mut self, _title: &str) -> Result<DirtyCloseChoice, DialogError> {
+        Ok(self
+            .state
+            .borrow_mut()
+            .close_choices
+            .pop_front()
+            .unwrap_or(DirtyCloseChoice::Cancel))
+    }
+
+    fn resolve_save_conflict(
+        &mut self,
+        _title: &str,
+        _path: &Path,
+    ) -> Result<SaveConflictChoice, DialogError> {
+        Ok(self
+            .state
+            .borrow_mut()
+            .conflict_choices
+            .pop_front()
+            .unwrap_or(SaveConflictChoice::Cancel))
+    }
+}
+
+fn content_revision(bytes: &[u8]) -> StorageRevision {
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    for byte in bytes {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    StorageRevision::new(hash)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        DirtyCloseChoice, DocumentDialogService, FileServiceErrorKind, MemoryTextFileService,
+        SaveConflictChoice, ScriptedDialogService, StdTextFileService, TEMP_FILE_SEQUENCE,
+        TextFileService, WritePrecondition, path_from_dialog_stdout,
+    };
+    use std::error::Error;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::sync::atomic::Ordering;
+
+    fn memory() -> Result<MemoryTextFileService, Box<dyn Error>> {
+        Ok(MemoryTextFileService::new(PathBuf::from(
+            "/luna-memory-tests",
+        ))?)
+    }
+
+    fn temporary_directory(label: &str) -> Result<PathBuf, Box<dyn Error>> {
+        loop {
+            let sequence = TEMP_FILE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+            let directory = std::env::temp_dir().join(format!(
+                "luna-document-services-{}-{sequence}-{label}",
+                std::process::id()
+            ));
+            match fs::create_dir(&directory) {
+                Ok(()) => return Ok(directory),
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(error) => return Err(Box::new(error)),
+            }
+        }
+    }
+
+    #[test]
+    fn dialog_path_parsing_preserves_filename_spaces() -> Result<(), Box<dyn Error>> {
+        let selected = path_from_dialog_stdout(b"/tmp/ spaced name \n".to_vec())?;
+
+        assert_eq!(selected, Some(PathBuf::from("/tmp/ spaced name ")));
+        Ok(())
+    }
+
+    #[test]
+    fn memory_service_loads_utf8_with_stable_identity() -> Result<(), Box<dyn Error>> {
+        let service = memory()?;
+        service.insert_utf8(Path::new("notes.txt"), "hello")?;
+        let loaded = service.load_utf8(Path::new("notes.txt"))?;
+
+        assert_eq!(loaded.text(), "hello");
+        assert_eq!(
+            loaded.identity().path(),
+            Path::new("/luna-memory-tests/notes.txt")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn memory_service_rejects_absolute_paths_outside_its_root() -> Result<(), Box<dyn Error>> {
+        let service = memory()?;
+        let result = service.insert_utf8(Path::new("/another-root/notes.txt"), "hello");
+
+        assert!(result.is_err_and(|error| error.kind() == FileServiceErrorKind::InvalidPath));
+        Ok(())
+    }
+
+    #[test]
+    fn invalid_utf8_is_reported_without_lossy_decoding() -> Result<(), Box<dyn Error>> {
+        let service = memory()?;
+        service.insert_bytes(Path::new("invalid.txt"), vec![0xff, 0xfe])?;
+        let error = service.load_utf8(Path::new("invalid.txt"));
+
+        assert!(error.is_err_and(|value| value.kind() == FileServiceErrorKind::InvalidUtf8));
+        Ok(())
+    }
+
+    #[test]
+    fn standard_service_round_trips_utf8_with_revision_checks() -> Result<(), Box<dyn Error>> {
+        let directory = temporary_directory("round-trip")?;
+        let path = directory.join("notes.txt");
+        fs::write(&path, "before")?;
+        let service = StdTextFileService;
+        let loaded = service.load_utf8(&path)?;
+        let written = service.write_utf8_atomic(
+            &path,
+            "after",
+            WritePrecondition::Matches(loaded.revision()),
+        )?;
+
+        assert_eq!(fs::read_to_string(&path)?, "after");
+        assert_ne!(written.revision(), loaded.revision());
+        fs::remove_dir_all(directory)?;
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn standard_service_preserves_existing_unix_permissions() -> Result<(), Box<dyn Error>> {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = temporary_directory("permissions")?;
+        let path = directory.join("script.txt");
+        fs::write(&path, "before")?;
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o744))?;
+        let service = StdTextFileService;
+        let loaded = service.load_utf8(&path)?;
+        let _ = service.write_utf8_atomic(
+            &path,
+            "after",
+            WritePrecondition::Matches(loaded.revision()),
+        )?;
+
+        let mode = fs::metadata(&path)?.permissions().mode() & 0o777;
+        assert_eq!(mode, 0o744);
+        fs::remove_dir_all(directory)?;
+        Ok(())
+    }
+
+    #[test]
+    fn matching_revision_allows_atomic_write() -> Result<(), Box<dyn Error>> {
+        let service = memory()?;
+        service.insert_utf8(Path::new("save.txt"), "before")?;
+        let loaded = service.load_utf8(Path::new("save.txt"))?;
+        let written = service.write_utf8_atomic(
+            Path::new("save.txt"),
+            "after",
+            WritePrecondition::Matches(loaded.revision()),
+        )?;
+
+        assert_eq!(
+            service.bytes(Path::new("save.txt"))?,
+            Some(b"after".to_vec())
+        );
+        assert_ne!(written.revision(), loaded.revision());
+        Ok(())
+    }
+
+    #[test]
+    fn stale_revision_is_rejected_as_conflict() -> Result<(), Box<dyn Error>> {
+        let service = memory()?;
+        service.insert_utf8(Path::new("conflict.txt"), "baseline")?;
+        let baseline = service.load_utf8(Path::new("conflict.txt"))?;
+        service.insert_utf8(Path::new("conflict.txt"), "external")?;
+        let error = service.write_utf8_atomic(
+            Path::new("conflict.txt"),
+            "editor",
+            WritePrecondition::Matches(baseline.revision()),
+        );
+
+        assert!(error.is_err_and(|value| value.kind() == FileServiceErrorKind::Conflict));
+        Ok(())
+    }
+
+    #[test]
+    fn missing_precondition_prevents_accidental_overwrite() -> Result<(), Box<dyn Error>> {
+        let service = memory()?;
+        service.insert_utf8(Path::new("existing.txt"), "existing")?;
+        let error = service.write_utf8_atomic(
+            Path::new("existing.txt"),
+            "replacement",
+            WritePrecondition::Missing,
+        );
+
+        assert!(error.is_err_and(|value| value.kind() == FileServiceErrorKind::Conflict));
+        Ok(())
+    }
+
+    #[test]
+    fn scripted_dialogs_return_queued_choices() -> Result<(), Box<dyn Error>> {
+        let scripted = ScriptedDialogService::default();
+        scripted.push_open_file(Some(PathBuf::from("/tmp/open.txt")));
+        scripted.push_save_file(Some(PathBuf::from("/tmp/save.txt")));
+        scripted.push_dirty_close(DirtyCloseChoice::Discard);
+        scripted.push_save_conflict(SaveConflictChoice::Reload);
+        let mut dialogs = scripted;
+
+        assert_eq!(
+            dialogs.choose_open_file()?,
+            Some(PathBuf::from("/tmp/open.txt"))
+        );
+        assert_eq!(
+            dialogs.choose_save_file("save.txt", None)?,
+            Some(PathBuf::from("/tmp/save.txt"))
+        );
+        assert_eq!(
+            dialogs.confirm_dirty_close("save.txt")?,
+            DirtyCloseChoice::Discard
+        );
+        assert_eq!(
+            dialogs.resolve_save_conflict("save.txt", Path::new("/tmp/save.txt"))?,
+            SaveConflictChoice::Reload
+        );
+        Ok(())
+    }
+}
