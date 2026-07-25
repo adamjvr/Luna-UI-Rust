@@ -364,6 +364,25 @@ impl EditableText {
         self.edit_revision
     }
 
+    /// Replaces the shared document snapshot while preserving this view's caret and selection.
+    ///
+    /// Split-pane applications use this after another view edits the same logical buffer. The
+    /// supplied revision must be the shared buffer revision, not a pane-local presentation token.
+    pub fn synchronize_document(&mut self, text: impl Into<String>, edit_revision: u64) {
+        let caret = self.caret;
+        let selection = self.selection;
+        self.document = TextDocument::new(text);
+        self.caret = self.document.clamp_location(caret, SnapBias::Backward);
+        self.selection = selection
+            .map(|range| self.document.clamp_range(range))
+            .filter(|range| !range.is_collapsed());
+        if let Some(selection) = self.selection {
+            self.caret = selection.focus;
+        }
+        self.edit_revision = edit_revision;
+        self.preferred_utf8_column = None;
+    }
+
     /// Sets a collapsed caret and clears selection.
     pub fn set_caret(&mut self, location: TextLocation) {
         self.caret = self.document.clamp_location(location, SnapBias::Backward);
@@ -728,6 +747,22 @@ mod tests {
         assert_eq!(state.caret(), TextLocation::new(1, 1));
         state.move_down(false);
         assert_eq!(state.caret(), TextLocation::new(2, 5));
+    }
+
+    #[test]
+    fn synchronizing_shared_text_preserves_and_clamps_view_state() {
+        let mut state = EditableText::new("alpha beta");
+        state.set_selection(TextRange::new(
+            TextLocation::new(0, 6),
+            TextLocation::new(0, 10),
+        ));
+
+        state.synchronize_document("short", 41);
+
+        assert_eq!(state.document().text(), "short");
+        assert_eq!(state.edit_revision(), 41);
+        assert_eq!(state.caret(), TextLocation::new(0, 5));
+        assert_eq!(state.selection(), None);
     }
 
     #[test]

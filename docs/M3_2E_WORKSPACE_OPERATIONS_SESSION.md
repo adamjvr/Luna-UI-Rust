@@ -110,8 +110,9 @@ Closing the workspace persists an empty workspace field, so it does not reopen o
 Caret, selection, scroll, folding, and pane placement remain independent application-owned view
 state.
 
-The current editor demo still creates one view per document. M3.3 split panes can add another view
-without duplicating file identity, dirty state, or storage observation.
+M3.3a now consumes this seam with recursive split panes. Each pane view keeps independent caret,
+selection, scroll, focus, and cache state while sharing one document lifecycle and synchronized text
+revision.
 
 ## Watcher and incremental refresh boundaries
 
@@ -183,5 +184,5 @@ M3.2e adds coverage for:
 - incremental immutable-subtree reconciliation;
 - cross-process session locking and merge policy;
 - reopening the previous document-tab set;
-- split panes that instantiate multiple live views of one shared document buffer;
+- pane topology persistence and advanced tab movement/reordering;
 - undoable filesystem operations and trash/recycle-bin integration.

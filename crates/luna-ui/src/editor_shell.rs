@@ -114,6 +114,10 @@ pub struct EditorShellState {
     pub menus: Vec<ShellMenu>,
     /// Open document tabs.
     pub tabs: Vec<ShellTab>,
+    /// Whether the legacy window-wide tab strip is visible.
+    ///
+    /// Multi-pane applications disable this and project tabs inside each pane instead.
+    pub tab_strip_is_visible: bool,
     /// Active top-level dropdown menu ID, or `None` when menus are closed.
     pub active_menu_id: Option<String>,
     /// Active tab ID.
@@ -145,6 +149,7 @@ impl Default for EditorShellState {
                 ShellMenu::new("help", "Help"),
             ],
             tabs: Vec::new(),
+            tab_strip_is_visible: true,
             active_menu_id: None,
             active_tab_id: None,
             sidebar_items: Vec::new(),
@@ -418,7 +423,9 @@ impl Widget for EditorShell {
                 );
             }
         }
-        display_list.fill_rect(self.layout.tab_strip, self.theme.panel);
+        if self.state.tab_strip_is_visible {
+            display_list.fill_rect(self.layout.tab_strip, self.theme.panel);
+        }
         for frame in &self.layout.tabs {
             let color = if frame.is_selected {
                 self.theme.background
@@ -462,13 +469,13 @@ impl Widget for EditorShell {
 
     fn accessibility_nodes(&self) -> Vec<AccessibilityNode> {
         let mut nodes = Vec::new();
-        let root_children = vec![
-            self.menu_bar_id.clone(),
-            self.tab_list_id.clone(),
-            self.sidebar_id.clone(),
-            self.editor_id.clone(),
-            self.status_id.clone(),
-        ];
+        let mut root_children = vec![self.menu_bar_id.clone()];
+        if self.state.tab_strip_is_visible {
+            root_children.push(self.tab_list_id.clone());
+        }
+        root_children.push(self.sidebar_id.clone());
+        root_children.push(self.editor_id.clone());
+        root_children.push(self.status_id.clone());
         nodes.push(
             AccessibilityNode::new(self.id.clone(), AccessibilityRole::Group, self.bounds)
                 .with_label("Luna UI Rust editor demonstration")
@@ -504,34 +511,40 @@ impl Widget for EditorShell {
                 }),
             );
         }
-        nodes.push(
-            AccessibilityNode::new(
-                self.tab_list_id.clone(),
-                AccessibilityRole::TabList,
-                self.layout.tab_strip,
-            )
-            .with_label("Open documents")
-            .with_children(
-                self.layout
+        if self.state.tab_strip_is_visible {
+            nodes.push(
+                AccessibilityNode::new(
+                    self.tab_list_id.clone(),
+                    AccessibilityRole::TabList,
+                    self.layout.tab_strip,
+                )
+                .with_label("Open documents")
+                .with_children(
+                    self.layout
+                        .tabs
+                        .iter()
+                        .map(|frame| frame.node_id.clone())
+                        .collect(),
+                ),
+            );
+            for frame in &self.layout.tabs {
+                let dirty = self
+                    .state
                     .tabs
                     .iter()
-                    .map(|frame| frame.node_id.clone())
-                    .collect(),
-            ),
-        );
-        for frame in &self.layout.tabs {
-            let dirty = self
-                .state
-                .tabs
-                .iter()
-                .find(|tab| tab.id == frame.id)
-                .is_some_and(|tab| tab.is_dirty);
-            nodes.push(
-                AccessibilityNode::new(frame.node_id.clone(), AccessibilityRole::Tab, frame.bounds)
+                    .find(|tab| tab.id == frame.id)
+                    .is_some_and(|tab| tab.is_dirty);
+                nodes.push(
+                    AccessibilityNode::new(
+                        frame.node_id.clone(),
+                        AccessibilityRole::Tab,
+                        frame.bounds,
+                    )
                     .with_label(frame.title.clone())
                     .with_value(if dirty { "Modified" } else { "Saved" })
                     .with_focused(frame.is_selected),
-            );
+                );
+            }
         }
         nodes.push(
             AccessibilityNode::new(
@@ -635,7 +648,11 @@ fn calculate_layout(
         .y
         .saturating_add(i32::try_from(menu_height).unwrap_or(i32::MAX));
     let remaining_after_menu = bounds.height.saturating_sub(menu_height);
-    let tab_height = metrics.tab_strip_height.min(remaining_after_menu);
+    let tab_height = if state.tab_strip_is_visible {
+        metrics.tab_strip_height.min(remaining_after_menu)
+    } else {
+        0
+    };
     let tab_strip = RectI::new(bounds.x, tab_y, bounds.width, tab_height);
     let status_height = metrics
         .status_bar_height

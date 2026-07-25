@@ -8,29 +8,28 @@ This is not a mechanical Swift-to-Rust translation. The rewrite preserves Luna's
 contracts while expressing them through Rust ownership, explicit errors, immutable frame snapshots,
 small workspace crates, strict compiler tooling, and platform-specific leaf adapters.
 
-## M3.2 status
+## M3.3a status
 
 M0 established the deterministic core, M1 added the native host, M2 added editor-grade text, M3
-added the twin proof-gallery/editor applications, and M3.1 made the CPU path incremental while
-adding real first-level desktop dropdown menus.
+added the twin proof-gallery/editor applications, M3.1 made the CPU path incremental and added real
+first-level dropdown menus, and M3.2 completed real file, workspace, mutation, and session behavior.
 
-M3.2a through M3.2d are locally validated and committed. M3.2e adds controlled workspace mutation
-and persistent editor-session state:
+M3.2e.2 is locally validated and committed. M3.3a adds the first real multi-pane editor runtime:
 
-- product-neutral document identity, dirty/save/close decisions, and shared document/view identity;
-- strict UTF-8 Open, Save, Save As, atomic writes, and optimistic storage conflicts;
-- bounded recent files and modified/replaced/missing/recreated storage observation;
-- recursive workspace snapshots with stable rows, expansion, selection, and refresh preservation;
-- create file, create folder, rename, and recursive delete service contracts;
-- explicit regular-file replacement and deletion confirmation;
-- dirty affected-document Keep Open, Discard & Close, or Cancel policy;
-- file and ancestor-directory rename propagation into open document identities;
-- persistent recent files, workspace root, expansion, and selection through `luna-session`;
-- watcher-event and incremental-refresh boundaries that preserve UI-thread ownership;
-- deterministic standard-library, in-memory, scripted-dialog, session, and editor integration tests.
+- product-neutral recursive pane trees in the new `luna-panes` crate;
+- horizontal and vertical splits with stable pane/split identities;
+- pane-local tabs and active-view ownership;
+- multiple `DocumentViewId` values sharing one `DocumentId` lifecycle buffer;
+- synchronized shared text revisions with independent caret, selection, scroll, and cache state;
+- draggable splitters with clamped ratios and minimum pane dimensions;
+- depth-first keyboard focus traversal with wrapping;
+- pane-local close, safe pane collapse, final-pane protection, and unique-document rehoming;
+- one geometry snapshot shared by paint, pointer hit testing, labels, and accessibility;
+- pane groups, tab lists, close buttons, editor groups, and splitter accessibility nodes;
+- deterministic pane-model, widget, text synchronization, and editor-integration tests.
 
 File/Edit/Find/View/Help remain anchored dropdowns, while Control-P opens the independent searchable
-command palette. See `docs/M3_2E_WORKSPACE_OPERATIONS_SESSION.md` and `docs/SWIFT_PARITY.md`.
+command palette. See `docs/M3_3A_SPLIT_PANES.md` and `docs/SWIFT_PARITY.md`.
 
 ## Build and validate
 
@@ -41,10 +40,10 @@ cargo fmt --all
 ./scripts/validate.sh
 ```
 
-M3.2e includes the current focused automated gate and runtime-fixture generator:
+M3.3a includes the current focused automated gate and runtime-fixture generator:
 
 ```bash
-./scripts/test-m3-2e.sh
+./scripts/test-m3-3a.sh
 ```
 
 Run the proof gallery in release mode:
@@ -84,11 +83,15 @@ Editor shortcuts:
 - **Control-Shift-S** — Save As to a new destination;
 - **Control-N** — create a new document;
 - **Control-B** — toggle the sidebar;
-- **Control-W** — close a tab; dirty tabs receive Save/Discard/Cancel resolution;
+- **Control-W** — close the active pane-local tab; the final document view retains dirty-close policy;
+- **Control-\** — split the focused pane to the right;
+- **Control-Shift-\** — split the focused pane downward;
+- **Control-Alt-Left/Right** — focus the previous/next pane;
+- **Control-Shift-W** — close the focused pane;
 - **Control-A** — select all editor text;
 - **Escape** — close the active menu/overlay, or exit when none is open.
 
-M3.2e document and workspace behavior:
+M3.3a document, workspace, and pane behavior:
 
 - New File creates an empty, clean, monotonically named Untitled document;
 - Open loads strict UTF-8 text and activates an existing tab when the canonical file is already open;
@@ -105,7 +108,11 @@ M3.2e document and workspace behavior:
 - Open Folder restores a real workspace tree with stable expansion and selection;
 - workspace create, folder create, rename, and delete use explicit product-neutral mutation policy;
 - dirty files affected by deletion may remain open as Untitled, close after discard, or cancel;
-- recent files and workspace tree state persist across launches in the XDG state directory.
+- recent files and workspace tree state persist across launches in the XDG state directory;
+- edits in one pane synchronize the shared document text into sibling views;
+- caret, selection, scroll, focus, and text-layout caches remain pane-local;
+- closing a pane-local shared view does not close the shared document;
+- closing a pane rehomes documents that would otherwise lose their final live view.
 
 The editor must preserve M3.1b performance behavior: no idle frames, no reshaping for caret,
 selection, focus, or menu changes, overscanned raster reuse during ordinary scrolling, and bounded
@@ -132,6 +139,7 @@ native event / AccessKit action / scheduled logical update
     -> UTF-8 file/dialog service + storage observation boundary
     -> MRU recent-file projection + external-state transition
     -> workspace scan/mutation policy + persistent session state
+    -> recursive pane topology + shared document/view projection
     -> platform-neutral Luna application state
     -> retained text/layout/chrome or retained static scene
     -> dynamic display list + shared validated semantic snapshot
@@ -145,7 +153,8 @@ Moth-specific product policy. See `docs/ARCHITECTURE.md`, `docs/PORTING_MAP.md`,
 `docs/M3_1C_GALLERY_ACCESSIBILITY.md`, `docs/M3_1D_DROPDOWN_MENUS.md`,
 `docs/M3_2A_DOCUMENT_LIFECYCLE.md`, `docs/M3_2B_FILE_DIALOG_SERVICES.md`,
 `docs/M3_2C_RECENT_EXTERNAL_CHANGES.md`, `docs/M3_2D_WORKSPACE_TREE.md`,
-`docs/M3_2E_WORKSPACE_OPERATIONS_SESSION.md`, and `docs/SWIFT_PARITY.md`.
+`docs/M3_2E_WORKSPACE_OPERATIONS_SESSION.md`, `docs/M3_3A_SPLIT_PANES.md`, and
+`docs/SWIFT_PARITY.md`.
 
 ## License
 

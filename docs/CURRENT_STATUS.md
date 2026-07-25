@@ -1,53 +1,58 @@
 # Current Status
 
-**Milestone:** M3.2e workspace operations and persistent session runtime
+**Milestone:** M3.3a recursive split-pane runtime
 
 ## Verified baseline
 
-The project owner locally validated and committed M3.2d. Real Open Folder behavior, recursive
-workspace snapshots, stable node identities, expansion and selection preservation, accessibility,
-and UI-thread refresh are the accepted baseline.
+The project owner locally validated and committed M3.2e.2. Controlled workspace mutation,
+persistent recent/workspace state, dirty-document deletion policy, strict Clippy fixes, the editor
+demo, and the proof gallery are the accepted baseline.
 
-## Implemented in M3.2e
+## Implemented in M3.3a
 
-- product-neutral create-file, create-folder, rename, and recursive-delete contracts;
-- explicit `FailIfExists` and regular-file-only `ReplaceFile` collision policies;
-- standard-library and deterministic in-memory mutation adapters;
-- leaf-name validation that rejects empty, reserved, multi-component, separator, and NUL input;
-- native Zenity/KDialog prompts and confirmations with scripted test equivalents;
-- workspace-root protection for rename and delete;
-- open-document identity relocation when a file or ancestor directory is renamed;
-- dirty-state preservation through file relocation;
-- dirty-delete Keep Open, Discard & Close, or Cancel policy;
-- Keep Open detachment into a new monotonic Untitled identity without losing local edits;
-- recent-file relocation/removal after workspace mutation;
-- new `luna-session` crate with versioned atomic session storage;
-- persistent recent files, workspace root, expanded paths, and selected path;
-- XDG state-directory resolution with exact Unix path-byte preservation;
-- startup workspace/session restoration with visible stale-session failures;
-- product-neutral `DocumentViewRegistry` seam for multiple views sharing one document buffer;
-- native watcher event and full/subtree refresh-scope boundaries;
-- focused `scripts/test-m3-2e.sh` quality gate and runtime fixture generator.
+- new product-neutral `luna-panes` crate;
+- recursive binary pane trees with stable leaf and split identities;
+- horizontal and vertical split commands;
+- pane-local ordered tabs and active-view ownership;
+- multiple `DocumentViewId` values sharing one `DocumentId` lifecycle buffer;
+- synchronized shared text revisions with independent caret, selection, and scroll;
+- per-view retained text-layout cache identities;
+- deterministic depth-first pane focus traversal with wrapping;
+- draggable splitters with clamped ratios and minimum pane extents;
+- pane collapse after closing the final local view;
+- protection against closing the final editor pane;
+- document rehoming when a closed pane held a document's only live view;
+- reusable `EditorPaneSurface` paint, hit-test, label, and accessibility geometry;
+- pane groups, tab lists, tab nodes, close buttons, editor groups, and splitter semantics;
+- pane-aware Open, New, Save, Find, Close, workspace rename/delete, pointer, and keyboard routing;
+- focused `scripts/test-m3-3a.sh` quality gate and runtime fixture generator.
 
 ## Runtime scope
 
-The proof editor still owns one live editor view per open document and uses its deterministic
-one-second complete workspace rescan. M3.2e establishes the buffer/view identity and watcher-event
-contracts without pretending that split panes or a native inotify backend already exist.
+One `DocumentId` still owns file identity, storage observation, dirty baseline, and save/close
+policy. Each pane tab owns an independent `DocumentViewId` plus caret, selection, scroll, focus,
+semantic identity, and retained layout cache.
 
-Filesystem operations are destructive only after explicit application policy. Regular files may be
-replaced after confirmation; directories and symlinks are never collision-replaced. Recursive
-delete confirms first and resolves every affected dirty document before touching storage.
+The editor synchronizes immutable text snapshots and edit revisions after each edit. This provides a
+shared logical buffer without concurrent mutable aliases and preserves the single UI-lane rule.
+Pane topology is not yet persisted in session state.
 
-The standard session file is:
+The existing one-second workspace polling remains the safe runtime source for tree refreshes.
+M3.3a does not claim a native watcher backend or incremental subtree replacement.
 
-```text
-${XDG_STATE_HOME:-$HOME/.local/state}/luna-ui-rust/editor-session-v1.txt
+## Local validation required
+
+Run:
+
+```bash
+./scripts/test-m3-3a.sh
 ```
+
+Then verify recursive splits, shared edits, independent caret/selection/scroll, splitter dragging,
+pane focus traversal, pane-local tabs, close/collapse/rehoming behavior, accessibility actions,
+menus, command palette, file/workspace regressions, and the proof gallery.
 
 ## Next milestone
 
-M3.3a begins the expanded editor shell with recursive split panes, draggable splitters, shared
-document buffers, independent caret/selection/scroll state per view, pane focus traversal, and
-pane-aware tab ownership. Native watcher backends and incremental subtree reconciliation remain a
-later platform-hardening step behind the seams introduced in M3.2e.
+M3.3b adds advanced tab behavior and richer desktop command surfaces: tab reordering and movement,
+pinned/preview/overflow policy, nested menus, context menus, and completion-popup foundations.

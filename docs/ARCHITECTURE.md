@@ -28,6 +28,10 @@ luna-workspaces
 luna-session
   └── std path, filesystem, and collection contracts only
 
+luna-panes
+  ├── luna-core
+  └── luna-documents
+
 luna-text
   └── unicode-segmentation
 
@@ -48,6 +52,8 @@ luna-ui
   ├── luna-theme
   ├── luna-render
   ├── luna-accessibility
+  ├── luna-documents
+  ├── luna-panes
   ├── luna-text
   └── luna-text-cosmic
 
@@ -64,7 +70,8 @@ applications
         ├── luna-documents
         ├── luna-document-services
         ├── luna-workspaces
-        └── luna-session
+        ├── luna-session
+        └── luna-panes
 ```
 
 Dependencies point toward small product-neutral contracts. Platform integrations and stateful
@@ -229,8 +236,34 @@ A `DocumentId` identifies one buffer, file identity, dirty baseline, and storage
 `DocumentViewId` identifies one independent presentation of that buffer. `DocumentViewRegistry`
 allows multiple views to reference the same document without duplicating lifecycle state.
 
-Caret, selection, scrolling, folding, pane focus, and presentation caches remain view-owned. M3.2e
-introduces this identity seam; M3.3a will consume it for live split panes.
+Caret, selection, scrolling, folding, pane focus, and presentation caches remain view-owned. M3.3a
+consumes this identity seam with synchronized per-view text snapshots. An edit commits one shared
+text revision to the canonical document and updates sibling views while preserving/clamping their
+local caret and selection; scroll remains independent.
+
+
+## Recursive pane boundary
+
+`luna-panes` owns product-neutral topology and deterministic geometry, not document bytes or editor
+commands.
+
+```text
+DocumentId lifecycle buffer
+    -> one or more DocumentViewId records
+    -> PaneTree
+         -> Leaf: ordered pane-local views + active view
+         -> Split: axis + ratio + two recursive children
+    -> PaneLayoutSnapshot
+         -> leaf/tab/editor rectangles
+         -> splitter rectangles and containers
+    -> luna-ui::EditorPaneSurface
+         -> shared paint / hit / label / accessibility geometry
+```
+
+The application owns the synchronization transaction between the active view and canonical buffer.
+Closing a leaf collapses its parent into the surviving sibling; the final pane is protected. Pane
+focus, tab activation, pointer splitter dragging, and accessibility actions all resolve through the
+same stable identities on the UI lane.
 
 ## Text model boundary
 
@@ -345,8 +378,8 @@ cost visible. Application errors propagate to the caller rather than being hidde
 
 The architectural spine is near parity with Swift Luna UI, but feature breadth is not. Rust currently
 has stronger retained editor-raster and concrete AccessKit paths, while Swift remains substantially
-ahead in nested submenus, context menus, completion, advanced workspace operations, split panes, advanced
-tabs, and paired Moth integration. [`SWIFT_PARITY.md`](SWIFT_PARITY.md) is the governing inventory;
+ahead in nested submenus, context menus, completion, native watcher breadth, advanced tabs, richer
+pane movement/docking, and paired Moth integration. [`SWIFT_PARITY.md`](SWIFT_PARITY.md) is the governing inventory;
 performance milestones must not be described as equivalent to editor-product feature parity.
 
 ## Safety policy

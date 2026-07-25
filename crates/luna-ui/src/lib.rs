@@ -9,6 +9,7 @@
 mod controls;
 mod demo_panel;
 mod dropdown_menu;
+mod editor_panes;
 mod editor_shell;
 mod frame;
 mod overlays;
@@ -23,6 +24,10 @@ pub use demo_panel::DemoPanel;
 pub use dropdown_menu::{
     DropdownMenu, DropdownMenuLayout, DropdownMenuRowFrame, DropdownMenuState, MenuCommand,
     MenuDefinition, MenuItem,
+};
+pub use editor_panes::{
+    EditorPaneSurface, EditorPaneSurfaceHit, EditorPaneSurfaceLayout, EditorPaneSurfaceState,
+    PanePresentation, PaneTab, PaneTabFrame,
 };
 pub use editor_shell::{
     EditorShell, EditorShellHit, EditorShellLayout, EditorShellMetrics, EditorShellState,

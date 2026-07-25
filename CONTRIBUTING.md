@@ -22,9 +22,11 @@ Before submitting changes:
     not call `std::fs` directly.
 11. Keep persisted recent/workspace state behind `luna-session`; rendering and document crates must
     not know the session-file format.
-12. Deliver watcher events and filesystem snapshots onto the application UI thread before mutating
+12. Keep recursive pane topology and pane-local tab ownership in `luna-panes`; document bytes and
+    lifecycle state remain keyed by `DocumentId`.
+13. Deliver watcher events and filesystem snapshots onto the application UI thread before mutating
     editor state.
-13. Run `./scripts/validate.sh` and the current milestone-specific test script.
+14. Run `./scripts/validate.sh` and the current milestone-specific test script.
 
 Add dependencies only in the narrowest adapter crate that needs them. A window backend does not
 belong in `luna-core`; a shaping cache does not belong in `luna-text`; a GPU backend does not belong

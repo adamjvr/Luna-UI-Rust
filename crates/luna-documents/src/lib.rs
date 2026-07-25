@@ -41,6 +41,12 @@ impl Display for DocumentId {
 pub struct DocumentViewId(u64);
 
 impl DocumentViewId {
+    /// Returns the underlying monotonically assigned value.
+    #[must_use]
+    pub const fn value(self) -> u64 {
+        self.0
+    }
+
     /// Returns a stable string suitable for widget and accessibility keys.
     #[must_use]
     pub fn stable_key(self) -> String {
@@ -104,6 +110,12 @@ impl DocumentViewRegistry {
     #[must_use]
     pub fn views(&self) -> &[DocumentViewRecord] {
         &self.views
+    }
+
+    /// Looks up one registered view.
+    #[must_use]
+    pub fn view(&self, id: DocumentViewId) -> Option<DocumentViewRecord> {
+        self.views.iter().copied().find(|view| view.id == id)
     }
 
     /// Returns all views sharing one document buffer.

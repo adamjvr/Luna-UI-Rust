@@ -15,6 +15,7 @@ members = [
     "crates/luna-host-winit",
     "crates/luna-input",
     "crates/luna-layout",
+    "crates/luna-panes",
     "crates/luna-render",
     "crates/luna-session",
     "crates/luna-text",

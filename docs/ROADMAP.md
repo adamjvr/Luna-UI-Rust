@@ -132,7 +132,7 @@
 - Native Open Folder and real editor sidebar rows.
 - Duplicate-safe file activation and one-second UI-thread refresh.
 
-### M3.2e — workspace operations, views, and persistent sessions — implemented
+### M3.2e — workspace operations, views, and persistent sessions — complete
 
 - Product-neutral create file/folder, rename, and recursive delete operations.
 - Explicit fail/replace collision policy and native confirmation boundaries.
@@ -144,14 +144,15 @@
 - Native watcher-event and full/subtree refresh-scope boundaries.
 - Deterministic standard-library, in-memory, scripted-dialog, session, and editor tests.
 
-## M3.3 — expanded editor shell — next
+## M3.3 — expanded editor shell — active
 
-### M3.3a — shared-buffer split panes
+### M3.3a — shared-buffer split panes — implemented
 
-- Recursive pane trees and pane-local tab ownership.
-- Multiple `DocumentViewId` records sharing one `DocumentId` buffer.
-- Independent caret, selection, scroll, focus, and presentation state per view.
-- Draggable splitters, minimum pane sizes, focus traversal, and close routing.
+- Recursive horizontal and vertical pane trees with stable identities.
+- Multiple `DocumentViewId` records sharing one `DocumentId` lifecycle buffer.
+- Synchronized shared text revisions with independent caret, selection, scroll, focus, and caches.
+- Pane-local tabs, close/collapse behavior, and unique-document rehoming.
+- Draggable splitters, minimum pane sizes, depth-first focus traversal, and accessibility.
 
 ### M3.3b — advanced tabs and command surfaces
 
@@ -184,5 +185,5 @@
 
 See [`SWIFT_PARITY.md`](SWIFT_PARITY.md). M3.1 now combines selected later-stage performance
 mechanics with first-level desktop dropdown menus. M3.2 supplies the real file/workspace runtime;
-M3.3 is now expected to produce the next largest visible parity gain through live panes and advanced
-shell behavior.
+M3.3a supplies the first live recursive pane runtime. M3.3b is the next largest visible parity gain
+through advanced tabs, nested menus, context menus, and completion surfaces.

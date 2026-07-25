@@ -11,7 +11,9 @@ publish.workspace = true
 [dependencies]
 luna-accessibility = { path = "../luna-accessibility" }
 luna-core = { path = "../luna-core" }
+luna-documents = { path = "../luna-documents" }
 luna-layout = { path = "../luna-layout" }
+luna-panes = { path = "../luna-panes" }
 luna-render = { path = "../luna-render" }
 luna-text = { path = "../luna-text" }
 luna-text-cosmic = { path = "../luna-text-cosmic" }
