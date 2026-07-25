@@ -8,7 +8,7 @@ workspace root, scan it through a product-neutral service, preserve tree interac
 refreshes, and open files directly from real sidebar rows.
 
 The phase deliberately stops before filesystem mutation policy. Create, rename, delete, persistent
-workspace sessions, and shared-buffer pane views remain M3.2e work.
+workspace sessions, and shared-buffer identity were intentionally left for M3.2e.
 
 ## `luna-workspaces`
 
@@ -188,11 +188,9 @@ The phase adds coverage for:
 - Close Workspace fallback;
 - dynamic menu and command-palette projection.
 
-## Deferred to M3.2e
+## Delivered in M3.2e and deferred beyond it
 
-- create file/folder operations;
-- rename and delete operations;
-- operation confirmation and conflict policy;
-- persistent workspace/session restoration;
-- shared document buffers with multiple independent editor views;
-- native event watcher backends and incremental subtree updates.
+M3.2e delivers create file/folder, rename, recursive delete, confirmation and collision policy,
+persistent recent/workspace restoration, shared buffer/view identity, and watcher-event/subtree-refresh
+contracts. Native watcher backends, incremental immutable-subtree reconciliation, and live split-pane
+views remain later work.

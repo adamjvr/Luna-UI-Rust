@@ -111,13 +111,13 @@ M3.2b implements strict UTF-8 reading, deterministic storage snapshots, atomic w
 and Save As dialogs, dirty-close choices, and save-conflict resolution through the separate
 `luna-document-services` crate.
 
-M3.2c now adds bounded in-memory recent files, UI-thread observation delivery, missing/recreated
-notices, and explicit Reload from Disk behavior. M3.2d adds the product-neutral workspace tree,
-Open Folder, sidebar expansion, selection, refresh preservation, and workspace-file activation.
+M3.2c adds bounded recent files, UI-thread observation delivery, missing/recreated notices,
+and explicit Reload from Disk behavior. M3.2d adds the product-neutral workspace tree, Open Folder,
+sidebar expansion, selection, refresh preservation, and workspace-file activation. M3.2e adds
+controlled mutation, persistent recent/workspace session state, and shared document/view identity.
 
 Still deferred:
 
-- persistent recent-file/workspace/session storage;
-- native event-based watcher backends and incremental subtree updates;
-- workspace create, rename, and delete operations;
-- shared buffers with independent editor views.
+- native event-based watcher backends and incremental subtree reconciliation;
+- live split panes with independent editor-view state;
+- reopening the previous complete tab/pane set.

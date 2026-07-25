@@ -111,8 +111,9 @@ The deterministic adapters cover:
 - editor polling transitions across Modified, Replaced, Missing, and Recreated;
 - explicit Reload restoring InSync state.
 
-## Deferred
+## Follow-up status
 
-M3.2d now provides workspace/folder adapters and real project-tree snapshots. Persistent
-recent/workspace storage, native event-based watcher backends, filesystem mutations, shared buffers,
-and session restoration remain M3.2e or later application/platform work.
+M3.2d provides workspace/folder adapters and real project-tree snapshots. M3.2e provides persistent
+recent/workspace restoration, filesystem mutation commands, shared document/view identity, and
+native watcher delivery seams. Native watcher backends, incremental subtree reconciliation, and live
+split-pane views remain later work.

@@ -36,6 +36,94 @@ impl Display for DocumentId {
     }
 }
 
+/// Stable application-local identity for one editor view of a document buffer.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct DocumentViewId(u64);
+
+impl DocumentViewId {
+    /// Returns a stable string suitable for widget and accessibility keys.
+    #[must_use]
+    pub fn stable_key(self) -> String {
+        format!("document-view-{}", self.0)
+    }
+}
+
+/// One view-to-buffer association. Caret, selection, scroll, and folding remain application-owned.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DocumentViewRecord {
+    id: DocumentViewId,
+    document_id: DocumentId,
+}
+
+impl DocumentViewRecord {
+    /// Returns the view identity.
+    #[must_use]
+    pub const fn id(self) -> DocumentViewId {
+        self.id
+    }
+
+    /// Returns the shared document buffer identity.
+    #[must_use]
+    pub const fn document_id(self) -> DocumentId {
+        self.document_id
+    }
+}
+
+/// Registry allowing multiple independent editor views to reference one document buffer.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DocumentViewRegistry {
+    next_id: u64,
+    views: Vec<DocumentViewRecord>,
+}
+
+impl Default for DocumentViewRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl DocumentViewRegistry {
+    /// Creates an empty registry.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            next_id: 1,
+            views: Vec::new(),
+        }
+    }
+
+    /// Creates another independent view of `document_id`.
+    pub fn create_view(&mut self, document_id: DocumentId) -> DocumentViewId {
+        let id = DocumentViewId(self.next_id);
+        self.next_id = self.next_id.saturating_add(1);
+        self.views.push(DocumentViewRecord { id, document_id });
+        id
+    }
+
+    /// Returns all registered views in insertion order.
+    #[must_use]
+    pub fn views(&self) -> &[DocumentViewRecord] {
+        &self.views
+    }
+
+    /// Returns all views sharing one document buffer.
+    pub fn views_for_document(
+        &self,
+        document_id: DocumentId,
+    ) -> impl Iterator<Item = DocumentViewRecord> + '_ {
+        self.views
+            .iter()
+            .copied()
+            .filter(move |view| view.document_id == document_id)
+    }
+
+    /// Removes one view.
+    pub fn remove_view(&mut self, id: DocumentViewId) -> Option<DocumentViewRecord> {
+        let index = self.views.iter().position(|view| view.id == id)?;
+        Some(self.views.remove(index))
+    }
+}
+
 /// Canonical identity supplied by a filesystem adapter.
 ///
 /// Luna requires an absolute path with no `.` or `..` components. The adapter remains responsible
@@ -415,6 +503,52 @@ impl RecentFileList {
         self.entries.retain(|entry| &entry.identity != identity);
     }
 
+    /// Replaces one recent-file identity while preserving its MRU position.
+    pub fn relocate(
+        &mut self,
+        previous: &FileIdentity,
+        replacement: FileIdentity,
+        title: impl Into<String>,
+    ) {
+        let title = title.into();
+        if let Some(previous_index) = self
+            .entries
+            .iter()
+            .position(|entry| &entry.identity == previous)
+        {
+            let replacement_index = self
+                .entries
+                .iter()
+                .position(|entry| entry.identity == replacement);
+            let insertion_index = replacement_index
+                .filter(|index| *index < previous_index)
+                .map_or(previous_index, |_| previous_index.saturating_sub(1));
+            self.entries
+                .retain(|entry| &entry.identity != previous && entry.identity != replacement);
+            self.entries.insert(
+                insertion_index.min(self.entries.len()),
+                RecentFileEntry {
+                    identity: replacement,
+                    title,
+                },
+            );
+        }
+    }
+
+    /// Replaces the complete list from most recent to least recent.
+    pub fn restore(&mut self, entries: impl IntoIterator<Item = (FileIdentity, String)>) {
+        self.entries.clear();
+        for (identity, title) in entries {
+            if self.entries.len() >= self.capacity {
+                break;
+            }
+            if self.entries.iter().any(|entry| entry.identity == identity) {
+                continue;
+            }
+            self.entries.push(RecentFileEntry { identity, title });
+        }
+    }
+
     /// Removes every recent-file entry.
     pub fn clear(&mut self) {
         self.entries.clear();
@@ -573,6 +707,71 @@ impl DocumentRegistry {
         Ok(())
     }
 
+    /// Relocates a file-backed document without changing its saved edit revision.
+    ///
+    /// This is used when the backing file or one of its ancestor directories is renamed. The
+    /// editor buffer remains dirty or clean exactly as it was before the relocation.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DocumentError::UnknownDocument`] when `id` is absent,
+    /// [`DocumentError::NotFileBacked`] for untitled or virtual content, or
+    /// [`DocumentError::FileAlreadyOpen`] when another document owns the destination identity.
+    pub fn relocate_file(
+        &mut self,
+        id: DocumentId,
+        identity: FileIdentity,
+        title: impl Into<String>,
+        storage_snapshot: Option<StorageSnapshot>,
+    ) -> Result<(), DocumentError> {
+        let index = self
+            .record_index(id)
+            .ok_or(DocumentError::UnknownDocument(id))?;
+        if !matches!(self.records[index].source, DocumentSource::File(_)) {
+            return Err(DocumentError::NotFileBacked(id));
+        }
+        if let Some(existing) = self.file_index.get(&identity)
+            && *existing != id
+        {
+            return Err(DocumentError::FileAlreadyOpen {
+                identity,
+                existing: *existing,
+            });
+        }
+        self.remove_source_index(index);
+        self.file_index.insert(identity.clone(), id);
+        let record = &mut self.records[index];
+        record.source = DocumentSource::File(identity);
+        record.title = title.into();
+        record.storage_snapshot = storage_snapshot;
+        record.external_state = ExternalState::InSync;
+        Ok(())
+    }
+
+    /// Detaches a file-backed document into a new untitled identity while preserving dirty state.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DocumentError::UnknownDocument`] when `id` is absent or
+    /// [`DocumentError::NotFileBacked`] when the document is not associated with a file.
+    pub fn detach_file_to_untitled(&mut self, id: DocumentId) -> Result<(), DocumentError> {
+        let index = self
+            .record_index(id)
+            .ok_or(DocumentError::UnknownDocument(id))?;
+        if !matches!(self.records[index].source, DocumentSource::File(_)) {
+            return Err(DocumentError::NotFileBacked(id));
+        }
+        self.remove_source_index(index);
+        let sequence = self.next_untitled_sequence;
+        self.next_untitled_sequence = self.next_untitled_sequence.saturating_add(1);
+        let record = &mut self.records[index];
+        record.source = DocumentSource::Untitled { sequence };
+        record.title = format!("Untitled-{sequence}");
+        record.storage_snapshot = None;
+        record.external_state = ExternalState::InSync;
+        Ok(())
+    }
+
     /// Removes a document and releases its file or virtual identity.
     pub fn remove(&mut self, id: DocumentId) -> Option<DocumentRecord> {
         let index = self.record_index(id)?;
@@ -618,6 +817,8 @@ pub enum DocumentError {
     EmptyVirtualKey,
     /// A requested document identity was not registered.
     UnknownDocument(DocumentId),
+    /// A relocation or detachment was requested for non-file-backed content.
+    NotFileBacked(DocumentId),
     /// Another open document already owns a requested file identity.
     FileAlreadyOpen {
         /// Conflicting canonical identity.
@@ -637,6 +838,7 @@ impl Display for DocumentError {
             ),
             Self::EmptyVirtualKey => formatter.write_str("virtual document key cannot be empty"),
             Self::UnknownDocument(id) => write!(formatter, "unknown document: {id}"),
+            Self::NotFileBacked(id) => write!(formatter, "document is not file-backed: {id}"),
             Self::FileAlreadyOpen { identity, existing } => write!(
                 formatter,
                 "file is already open as {existing}: {}",
@@ -995,6 +1197,87 @@ mod tests {
         recent.clear();
         assert!(recent.entries().is_empty());
         Ok(())
+    }
+
+    #[test]
+    fn relocation_preserves_dirty_baseline_and_updates_file_index() -> Result<(), Box<dyn Error>> {
+        let mut registry = DocumentRegistry::new();
+        let original = canonical("original.txt")?;
+        let replacement = canonical("renamed.txt")?;
+        let OpenFileOutcome::Opened(id) =
+            registry.register_file(original.clone(), "original.txt", 4, Some(snapshot(1, 2)))
+        else {
+            return Err(std::io::Error::other("file registration did not open").into());
+        };
+
+        registry.relocate_file(id, replacement.clone(), "renamed.txt", Some(snapshot(3, 4)))?;
+
+        assert_eq!(registry.document_for_file(&original), None);
+        assert_eq!(registry.document_for_file(&replacement), Some(id));
+        let record = registry
+            .get(id)
+            .ok_or_else(|| std::io::Error::other("record missing"))?;
+        assert_eq!(record.saved_edit_revision(), 4);
+        assert!(record.is_dirty(5));
+        assert_eq!(record.storage_snapshot(), Some(snapshot(3, 4)));
+        Ok(())
+    }
+
+    #[test]
+    fn deleting_dirty_file_can_detach_it_to_monotonic_untitled_content()
+    -> Result<(), Box<dyn Error>> {
+        let mut registry = DocumentRegistry::new();
+        let original = canonical("delete-me.txt")?;
+        let OpenFileOutcome::Opened(id) =
+            registry.register_file(original.clone(), "delete-me.txt", 2, Some(snapshot(1, 1)))
+        else {
+            return Err(std::io::Error::other("file registration did not open").into());
+        };
+
+        registry.detach_file_to_untitled(id)?;
+
+        assert_eq!(registry.document_for_file(&original), None);
+        let record = registry
+            .get(id)
+            .ok_or_else(|| std::io::Error::other("record missing"))?;
+        assert_eq!(record.title(), "Untitled-1");
+        assert!(record.is_dirty(3));
+        assert_eq!(record.save_requirement(3), SaveRequirement::SaveAs);
+        Ok(())
+    }
+
+    #[test]
+    fn recent_relocation_preserves_position_and_restore_deduplicates() -> Result<(), Box<dyn Error>>
+    {
+        let mut recent = RecentFileList::new(3);
+        let first = canonical("first-old.txt")?;
+        let renamed = canonical("first-new.txt")?;
+        let second = canonical("second.txt")?;
+        recent.record(first.clone(), "first-old.txt");
+        recent.record(second.clone(), "second.txt");
+        recent.relocate(&first, renamed.clone(), "first-new.txt");
+        assert_eq!(recent.entries()[1].identity(), &renamed);
+
+        recent.restore([
+            (renamed.clone(), "first-new.txt".to_owned()),
+            (renamed.clone(), "duplicate".to_owned()),
+            (second.clone(), "second.txt".to_owned()),
+        ]);
+        assert_eq!(recent.entries().len(), 2);
+        assert_eq!(recent.entries()[0].identity(), &renamed);
+        Ok(())
+    }
+
+    #[test]
+    fn multiple_views_can_share_one_document_buffer_identity() {
+        let mut views = super::DocumentViewRegistry::new();
+        let document = super::DocumentId(7);
+        let first = views.create_view(document);
+        let second = views.create_view(document);
+        assert_ne!(first, second);
+        assert_eq!(views.views_for_document(document).count(), 2);
+        assert!(views.remove_view(first).is_some());
+        assert_eq!(views.views_for_document(document).count(), 1);
     }
 
     #[test]

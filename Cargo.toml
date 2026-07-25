@@ -16,6 +16,7 @@ members = [
     "crates/luna-input",
     "crates/luna-layout",
     "crates/luna-render",
+    "crates/luna-session",
     "crates/luna-text",
     "crates/luna-text-cosmic",
     "crates/luna-theme",

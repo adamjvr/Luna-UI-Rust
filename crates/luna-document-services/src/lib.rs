@@ -526,6 +526,35 @@ pub enum SaveConflictChoice {
     Cancel,
 }
 
+/// User decision when a workspace mutation collides with an existing regular file.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WorkspaceCollisionChoice {
+    /// Replace the existing regular file.
+    Replace,
+    /// Leave the workspace unchanged.
+    Cancel,
+}
+
+/// User decision before deleting one workspace entry.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WorkspaceDeleteChoice {
+    /// Delete the selected entry or directory tree.
+    Delete,
+    /// Leave the workspace unchanged.
+    Cancel,
+}
+
+/// User decision for an open dirty document affected by workspace deletion.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WorkspaceDirtyDeleteChoice {
+    /// Detach the editor buffer into a new untitled document before deletion.
+    KeepOpen,
+    /// Discard the editor buffer and close its tab after deletion.
+    DiscardAndClose,
+    /// Cancel the complete workspace deletion.
+    Cancel,
+}
+
 /// Product-neutral synchronous dialog operations used by the document lifecycle.
 pub trait DocumentDialogService {
     /// Chooses one file to open, or returns `None` when canceled.
@@ -550,6 +579,34 @@ pub trait DocumentDialogService {
         title: &str,
         path: &Path,
     ) -> Result<SaveConflictChoice, DialogError>;
+
+    /// Prompts for one workspace leaf name, or returns `None` when canceled.
+    fn prompt_workspace_name(
+        &mut self,
+        title: &str,
+        prompt: &str,
+        initial_name: &str,
+    ) -> Result<Option<String>, DialogError>;
+
+    /// Resolves replacement of an existing regular file.
+    fn confirm_workspace_replace(
+        &mut self,
+        path: &Path,
+    ) -> Result<WorkspaceCollisionChoice, DialogError>;
+
+    /// Confirms deletion of one file or recursive directory tree.
+    fn confirm_workspace_delete(
+        &mut self,
+        path: &Path,
+        is_directory: bool,
+    ) -> Result<WorkspaceDeleteChoice, DialogError>;
+
+    /// Resolves a dirty open document affected by workspace deletion.
+    fn resolve_dirty_workspace_delete(
+        &mut self,
+        title: &str,
+        path: &Path,
+    ) -> Result<WorkspaceDirtyDeleteChoice, DialogError>;
 }
 
 /// Broad native-dialog failure classification.
@@ -835,6 +892,125 @@ impl DocumentDialogService for SystemDialogService {
             QuestionResult::Primary => SaveConflictChoice::Overwrite,
             QuestionResult::Secondary => SaveConflictChoice::Reload,
             QuestionResult::Cancel => SaveConflictChoice::Cancel,
+        })
+    }
+
+    fn prompt_workspace_name(
+        &mut self,
+        title: &str,
+        prompt: &str,
+        initial_name: &str,
+    ) -> Result<Option<String>, DialogError> {
+        let output = match self.backend {
+            SystemDialogBackend::Zenity => self.run(
+                "zenity",
+                &[
+                    OsString::from("--entry"),
+                    OsString::from(format!("--title={title}")),
+                    OsString::from(format!("--text={prompt}")),
+                    OsString::from(format!("--entry-text={initial_name}")),
+                ],
+            )?,
+            SystemDialogBackend::KDialog => self.run(
+                "kdialog",
+                &[
+                    OsString::from("--title"),
+                    OsString::from(title),
+                    OsString::from("--inputbox"),
+                    OsString::from(prompt),
+                    OsString::from(initial_name),
+                ],
+            )?,
+            SystemDialogBackend::Unavailable => return Err(DialogError::unavailable()),
+        };
+        if output.status.success() {
+            let value = String::from_utf8(output.stdout)
+                .map_err(|error| DialogError::invalid_response(error.to_string()))?;
+            let value = value
+                .strip_suffix("\r\n")
+                .or_else(|| value.strip_suffix('\n'))
+                .unwrap_or(&value);
+            Ok(Some(value.to_owned()))
+        } else if is_cancel_status(output.status) {
+            Ok(None)
+        } else {
+            Err(dialog_output_error(output))
+        }
+    }
+
+    fn confirm_workspace_replace(
+        &mut self,
+        path: &Path,
+    ) -> Result<WorkspaceCollisionChoice, DialogError> {
+        let text = format!("Replace the existing file {}?", path.display());
+        let result = match self.backend {
+            SystemDialogBackend::Zenity => {
+                self.zenity_question("Replace Existing File", &text, "Replace", "Cancel")?
+            }
+            SystemDialogBackend::KDialog => {
+                self.kdialog_question("Replace Existing File", &text)?
+            }
+            SystemDialogBackend::Unavailable => return Err(DialogError::unavailable()),
+        };
+        Ok(if result == QuestionResult::Primary {
+            WorkspaceCollisionChoice::Replace
+        } else {
+            WorkspaceCollisionChoice::Cancel
+        })
+    }
+
+    fn confirm_workspace_delete(
+        &mut self,
+        path: &Path,
+        is_directory: bool,
+    ) -> Result<WorkspaceDeleteChoice, DialogError> {
+        let object = if is_directory {
+            "directory tree"
+        } else {
+            "file"
+        };
+        let text = format!("Permanently delete this {object}?\n{}", path.display());
+        let result = match self.backend {
+            SystemDialogBackend::Zenity => {
+                self.zenity_question("Delete Workspace Entry", &text, "Delete", "Cancel")?
+            }
+            SystemDialogBackend::KDialog => {
+                self.kdialog_question("Delete Workspace Entry", &text)?
+            }
+            SystemDialogBackend::Unavailable => return Err(DialogError::unavailable()),
+        };
+        Ok(if result == QuestionResult::Primary {
+            WorkspaceDeleteChoice::Delete
+        } else {
+            WorkspaceDeleteChoice::Cancel
+        })
+    }
+
+    fn resolve_dirty_workspace_delete(
+        &mut self,
+        title: &str,
+        path: &Path,
+    ) -> Result<WorkspaceDirtyDeleteChoice, DialogError> {
+        let text = format!(
+            "{title} has unsaved changes and is being deleted from the workspace. Keep the buffer as an untitled document, discard and close it, or cancel?\n{}",
+            path.display()
+        );
+        let result = match self.backend {
+            SystemDialogBackend::Zenity => self.zenity_question(
+                "Unsaved Workspace Document",
+                &text,
+                "Keep Open",
+                "Discard & Close",
+            )?,
+            SystemDialogBackend::KDialog => {
+                self.kdialog_question("Unsaved Workspace Document", &text)?
+            }
+            SystemDialogBackend::Unavailable => return Err(DialogError::unavailable()),
+        };
+        Ok(match result {
+            QuestionResult::Primary => WorkspaceDirtyDeleteChoice::KeepOpen,
+            QuestionResult::Secondary => WorkspaceDirtyDeleteChoice::DiscardAndClose,
+            QuestionResult::Cancel => WorkspaceDirtyDeleteChoice::Cancel,
         })
     }
 }
@@ -1135,6 +1311,10 @@ struct ScriptedDialogState {
     save_files: VecDeque<Option<PathBuf>>,
     close_choices: VecDeque<DirtyCloseChoice>,
     conflict_choices: VecDeque<SaveConflictChoice>,
+    workspace_names: VecDeque<Option<String>>,
+    workspace_collisions: VecDeque<WorkspaceCollisionChoice>,
+    workspace_deletes: VecDeque<WorkspaceDeleteChoice>,
+    workspace_dirty_deletes: VecDeque<WorkspaceDirtyDeleteChoice>,
 }
 
 impl ScriptedDialogService {
@@ -1161,6 +1341,32 @@ impl ScriptedDialogService {
     /// Appends one save-conflict decision.
     pub fn push_save_conflict(&self, choice: SaveConflictChoice) {
         self.state.borrow_mut().conflict_choices.push_back(choice);
+    }
+
+    /// Appends one workspace-name prompt result.
+    pub fn push_workspace_name(&self, name: Option<String>) {
+        self.state.borrow_mut().workspace_names.push_back(name);
+    }
+
+    /// Appends one workspace-collision decision.
+    pub fn push_workspace_collision(&self, choice: WorkspaceCollisionChoice) {
+        self.state
+            .borrow_mut()
+            .workspace_collisions
+            .push_back(choice);
+    }
+
+    /// Appends one workspace-delete confirmation.
+    pub fn push_workspace_delete(&self, choice: WorkspaceDeleteChoice) {
+        self.state.borrow_mut().workspace_deletes.push_back(choice);
+    }
+
+    /// Appends one dirty-workspace-document deletion decision.
+    pub fn push_workspace_dirty_delete(&self, choice: WorkspaceDirtyDeleteChoice) {
+        self.state
+            .borrow_mut()
+            .workspace_dirty_deletes
+            .push_back(choice);
     }
 }
 
@@ -1202,6 +1408,58 @@ impl DocumentDialogService for ScriptedDialogService {
             .pop_front()
             .unwrap_or(SaveConflictChoice::Cancel))
     }
+
+    fn prompt_workspace_name(
+        &mut self,
+        _title: &str,
+        _prompt: &str,
+        _initial_name: &str,
+    ) -> Result<Option<String>, DialogError> {
+        Ok(self
+            .state
+            .borrow_mut()
+            .workspace_names
+            .pop_front()
+            .flatten())
+    }
+
+    fn confirm_workspace_replace(
+        &mut self,
+        _path: &Path,
+    ) -> Result<WorkspaceCollisionChoice, DialogError> {
+        Ok(self
+            .state
+            .borrow_mut()
+            .workspace_collisions
+            .pop_front()
+            .unwrap_or(WorkspaceCollisionChoice::Cancel))
+    }
+
+    fn confirm_workspace_delete(
+        &mut self,
+        _path: &Path,
+        _is_directory: bool,
+    ) -> Result<WorkspaceDeleteChoice, DialogError> {
+        Ok(self
+            .state
+            .borrow_mut()
+            .workspace_deletes
+            .pop_front()
+            .unwrap_or(WorkspaceDeleteChoice::Cancel))
+    }
+
+    fn resolve_dirty_workspace_delete(
+        &mut self,
+        _title: &str,
+        _path: &Path,
+    ) -> Result<WorkspaceDirtyDeleteChoice, DialogError> {
+        Ok(self
+            .state
+            .borrow_mut()
+            .workspace_dirty_deletes
+            .pop_front()
+            .unwrap_or(WorkspaceDirtyDeleteChoice::Cancel))
+    }
 }
 
 fn content_revision(bytes: &[u8]) -> StorageRevision {
@@ -1218,7 +1476,8 @@ mod tests {
     use super::{
         DirtyCloseChoice, DocumentDialogService, FileObservation, FileServiceErrorKind,
         MemoryTextFileService, SaveConflictChoice, ScriptedDialogService, StdTextFileService,
-        TEMP_FILE_SEQUENCE, TextFileService, WritePrecondition, path_from_dialog_stdout,
+        TEMP_FILE_SEQUENCE, TextFileService, WorkspaceCollisionChoice, WorkspaceDeleteChoice,
+        WorkspaceDirtyDeleteChoice, WritePrecondition, path_from_dialog_stdout,
     };
     use std::error::Error;
     use std::fs;
@@ -1433,6 +1692,10 @@ mod tests {
         scripted.push_save_file(Some(PathBuf::from("/tmp/save.txt")));
         scripted.push_dirty_close(DirtyCloseChoice::Discard);
         scripted.push_save_conflict(SaveConflictChoice::Reload);
+        scripted.push_workspace_name(Some("renamed.txt".to_owned()));
+        scripted.push_workspace_collision(WorkspaceCollisionChoice::Replace);
+        scripted.push_workspace_delete(WorkspaceDeleteChoice::Delete);
+        scripted.push_workspace_dirty_delete(WorkspaceDirtyDeleteChoice::KeepOpen);
         let mut dialogs = scripted;
 
         assert_eq!(
@@ -1454,6 +1717,22 @@ mod tests {
         assert_eq!(
             dialogs.resolve_save_conflict("save.txt", Path::new("/tmp/save.txt"))?,
             SaveConflictChoice::Reload
+        );
+        assert_eq!(
+            dialogs.prompt_workspace_name("Rename", "Name", "old.txt")?,
+            Some("renamed.txt".to_owned())
+        );
+        assert_eq!(
+            dialogs.confirm_workspace_replace(Path::new("/tmp/renamed.txt"))?,
+            WorkspaceCollisionChoice::Replace
+        );
+        assert_eq!(
+            dialogs.confirm_workspace_delete(Path::new("/tmp/renamed.txt"), false)?,
+            WorkspaceDeleteChoice::Delete
+        );
+        assert_eq!(
+            dialogs.resolve_dirty_workspace_delete("renamed.txt", Path::new("/tmp/renamed.txt"))?,
+            WorkspaceDirtyDeleteChoice::KeepOpen
         );
         Ok(())
     }

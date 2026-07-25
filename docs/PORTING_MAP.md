@@ -11,7 +11,7 @@
 | `LunaHostCore` | `luna-host-core` | Frame invalidation/runtime implemented |
 | `LunaLayout` | `luna-layout` | Row/column/stack/split snapshots implemented |
 | `LunaCommands` | `luna-commands` | Typed registry and key bindings implemented |
-| Swift document/session identity and lifecycle | `luna-documents` | Stable IDs, file identity, duplicate prevention, dirty/save/close decisions, storage snapshots, and modified/replaced/missing/recreated state implemented |
+| Swift document/session identity and lifecycle | `luna-documents` | Stable buffer IDs, independent view IDs, file identity, duplicate prevention, dirty/save/close decisions, storage snapshots, relocation, and detachment implemented |
 | Swift static/editable text foundation | `luna-text` | UTF-8/grapheme-safe model implemented |
 | Swift shaping/glyph path | `luna-text-cosmic` | Retained logical layout plus overscanned visible-run raster implemented |
 | `LunaStaticTextView` / editable editor surface | `luna-ui::TextView` | Full logical geometry plus partial-raster placement implemented |
@@ -21,9 +21,10 @@
 | find/replace panel foundation | `luna-ui::FindPanel` | M3 reusable geometry/state/accessibility implemented |
 | general proof controls | `Button`, `Toggle`, `ProgressBar`, `TextLabel` | Reusable primitives plus stable-slot label cache implemented |
 | `LunaUITestApp --proof-gallery` | `luna-ui-rust-proof-gallery` | Retained layout/static paint/semantics with isolated animation-lane rendering implemented |
-| Swift file/dialog service boundary | `luna-document-services` | M3.2d UTF-8 reads, atomic writes, file/folder dialogs, storage observation, and deterministic mocks implemented |
-| Swift workspace/project adapters | `luna-workspaces` | Stable recursive snapshots, scan policies, expansion, selection, reveal, refresh preservation, standard and memory adapters implemented |
-| default `LunaUITestApp` editor mode | `luna-ui-rust-editor-demo` | Real files plus Open Folder, project-tree rows, duplicate activation, refresh, and accessibility integrated |
+| Swift file/dialog service boundary | `luna-document-services` | UTF-8 reads, atomic writes, file/folder dialogs, workspace mutation choices, storage observation, and deterministic mocks implemented |
+| Swift workspace/project adapters | `luna-workspaces` | Stable recursive snapshots, create/rename/delete operations, collision policy, expansion, refresh preservation, watcher seams, and standard/memory adapters implemented |
+| Swift persistent editor session | `luna-session` | Versioned atomic recent-file and workspace-tree restoration with standard and memory stores implemented |
+| default `LunaUITestApp` editor mode | `luna-ui-rust-editor-demo` | Real files, workspace tree and mutations, persistent recents/session restoration, duplicate activation, refresh, and accessibility integrated |
 | `LunaHostSDL` / `LunaHostMetal` | `luna-host-winit` plus render adapters | Retained working/static CPU buffers, timed update lane, and conditional AccessKit submission implemented |
 | incremental gallery/accessibility pipeline | existing host/gallery/accessibility crates | M3.1c retained static layer, dirty-region restore, input coalescing, and semantic fingerprints implemented |
 | Swift Phase 4C first-level menu behavior | `luna-ui::DropdownMenu` plus editor demo routing | M3.1d complete for first-level menus; submenus/mnemonics remain M3.3 |
@@ -41,6 +42,7 @@ semantics.
 See [`SWIFT_PARITY.md`](SWIFT_PARITY.md) for the broader feature inventory. Foundational module
 coverage is near parity. First-level dropdown menus, document lifecycle state, UTF-8 file I/O,
 atomic Save, Save As, native dialogs, recent files, continuous external-change delivery, and one
-real recursive workspace tree now exist. Workspace mutations and persistence, panes, nested menus,
-context menus, completion, and direct Moth integration remain concentrated in later M3.2, M3.3,
-and M6 work.
+real recursive workspace tree, controlled workspace mutations, and persistent recent/workspace
+restoration now exist. Live panes, advanced tabs, nested menus, context menus, completion, native
+watcher backends, and direct Moth integration remain concentrated in M3.3, later platform work, and
+M6.

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-//! Native M3.2d editor integration harness for Luna UI Rust.
+//! Native M3.2e editor integration harness for Luna UI Rust.
 //!
 //! This application mirrors the purpose of Swift LunaUITestApp's default editor mode: reusable
 //! shell anatomy and editor text are exercised together without embedding Moth Text product
@@ -8,7 +8,8 @@
 //! real dropdown menus, a separate command palette, find panel, document lifecycle tracking,
 //! UTF-8 open/save services, native dialog boundaries, accessibility,
 //! retained document layouts, recent-file projection, UI-thread external observation, real
-//! workspace trees, overscanned glyph rasters, and stable-slot chrome-label caching.
+//! workspace trees, controlled workspace mutations, persistent session restoration, overscanned
+//! glyph rasters, and stable-slot chrome-label caching.
 //!
 //! Shortcuts: Control-P command palette, Control-O open, Control-F find, Control-H replace,
 //! Control-S save, Control-Shift-S Save As, Control-Shift-O Open Folder, Control-Shift-R refresh
@@ -21,7 +22,8 @@ use luna_core::{InsetsI, NodeId, PointI, RectI, SizeI};
 use luna_document_services::{
     DirtyCloseChoice, DocumentDialogService, FileObservation, FileServiceError,
     FileServiceErrorKind, SaveConflictChoice, StdTextFileService, SystemDialogService,
-    TextFileService, WritePrecondition,
+    TextFileService, WorkspaceCollisionChoice, WorkspaceDeleteChoice, WorkspaceDirtyDeleteChoice,
+    WritePrecondition,
 };
 use luna_documents::{
     CloseRequirement, DocumentId, DocumentRecord, DocumentRegistry, DocumentSource, ExternalState,
@@ -35,6 +37,11 @@ use luna_input::{
     InputEvent, Key, Modifiers, NamedKey, PointerButton, PointerEvent, PointerEventKind,
 };
 use luna_render::DisplayList;
+#[cfg(test)]
+use luna_session::MemorySessionStore;
+use luna_session::{
+    SessionRecentFile, SessionState, SessionStore, SessionWorkspace, StdSessionStore,
+};
 use luna_text::{EditableText, SnapBias, TextLocation, TextRange, TextScroll};
 use luna_text_cosmic::{
     TextEngine, TextLayoutCache, TextLayoutCacheStats, TextLayoutRequest, TextLayoutSnapshot,
@@ -47,13 +54,13 @@ use luna_ui::{
     TextAlignment, TextLabel, TextLabelCache, TextView, TextViewStyle, UiFrame, Widget,
 };
 use luna_workspaces::{
-    StdWorkspaceService, WorkspaceModel, WorkspaceNodeKind, WorkspaceNodeStatus,
-    WorkspaceScanOptions, WorkspaceService,
+    StdWorkspaceService, WorkspaceCollisionPolicy, WorkspaceErrorKind, WorkspaceModel,
+    WorkspaceNodeKind, WorkspaceNodeStatus, WorkspaceRuntimeService, WorkspaceScanOptions,
 };
 use std::collections::HashMap;
 use std::error::Error;
 use std::ops::Range;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 const ROOT_ID: &str = "m3-editor-window";
@@ -68,7 +75,7 @@ const RECENT_FILE_LIMIT: usize = 8;
 
 const README_TEXT: &str = concat!(
     "# Luna UI Rust\n\n",
-    "M3.2d adds real workspace and project-tree runtime.\n\n",
+    "M3.2e adds workspace operations and persistent session runtime.\n\n",
     "- Deterministic shell geometry\n",
     "- Revision-keyed document shaping\n",
     "- Viewport-band glyph rasterization\n",
@@ -80,7 +87,9 @@ const README_TEXT: &str = concat!(
     "- Atomic writes with optimistic conflict checks\n",
     "- Shared accessibility geometry\n",
     "- Open Folder and recursive workspace sidebar rows\n",
-    "- Stable expansion and refresh state\n\n",
+    "- Stable expansion and refresh state\n",
+    "- Create, rename, and delete workspace entries\n",
+    "- Persistent recent files and workspace tree restoration\n\n",
     "Click File/Edit/Find/View/Help, or press Control-P for the palette.\n",
 );
 const EDITOR_TEXT: &str = concat!(
@@ -149,7 +158,8 @@ struct EditorDemoApplication {
     document_registry: DocumentRegistry,
     file_service: Box<dyn TextFileService>,
     dialog_service: Box<dyn DocumentDialogService>,
-    workspace_service: Box<dyn WorkspaceService>,
+    workspace_service: Box<dyn WorkspaceRuntimeService>,
+    session_store: Box<dyn SessionStore>,
     workspace: Option<WorkspaceModel>,
     workspace_options: WorkspaceScanOptions,
     recent_files: RecentFileList,
@@ -178,12 +188,15 @@ struct EditorDemoApplication {
 
 impl EditorDemoApplication {
     fn new() -> Result<Self, ApplicationError> {
-        Self::with_services(
+        Self::with_runtime_services(
             Box::new(StdTextFileService),
             Box::new(SystemDialogService::detect()),
+            Box::new(StdWorkspaceService),
+            Box::new(StdSessionStore::for_application("luna-ui-rust")?),
         )
     }
 
+    #[cfg(test)]
     fn with_services(
         file_service: Box<dyn TextFileService>,
         dialog_service: Box<dyn DocumentDialogService>,
@@ -191,16 +204,31 @@ impl EditorDemoApplication {
         Self::with_all_services(file_service, dialog_service, Box::new(StdWorkspaceService))
     }
 
+    #[cfg(test)]
     fn with_all_services(
         file_service: Box<dyn TextFileService>,
         dialog_service: Box<dyn DocumentDialogService>,
-        workspace_service: Box<dyn WorkspaceService>,
+        workspace_service: Box<dyn WorkspaceRuntimeService>,
+    ) -> Result<Self, ApplicationError> {
+        Self::with_runtime_services(
+            file_service,
+            dialog_service,
+            workspace_service,
+            Box::new(MemorySessionStore::default()),
+        )
+    }
+
+    fn with_runtime_services(
+        file_service: Box<dyn TextFileService>,
+        dialog_service: Box<dyn DocumentDialogService>,
+        workspace_service: Box<dyn WorkspaceRuntimeService>,
+        session_store: Box<dyn SessionStore>,
     ) -> Result<Self, ApplicationError> {
         let mut document_registry = DocumentRegistry::new();
         let readme_id = document_registry.register_virtual("readme", "README.md", 0)?;
         let editor_id = document_registry.register_virtual("editor", "EditorSurface.rs", 0)?;
         let theme_id = document_registry.register_virtual("theme", "Theme.json", 0)?;
-        Ok(Self {
+        let mut application = Self {
             root_id: NodeId::new(ROOT_ID)?,
             shell_id: NodeId::new(SHELL_ID)?,
             text_id: NodeId::new(TEXT_ID)?,
@@ -211,6 +239,7 @@ impl EditorDemoApplication {
             file_service,
             dialog_service,
             workspace_service,
+            session_store,
             workspace: None,
             workspace_options: WorkspaceScanOptions::default(),
             recent_files: RecentFileList::new(RECENT_FILE_LIMIT),
@@ -239,7 +268,91 @@ impl EditorDemoApplication {
             observation_elapsed: Duration::ZERO,
             workspace_refresh_elapsed: Duration::ZERO,
             frame_build_count: 0,
-        })
+        };
+        application.restore_session();
+        Ok(application)
+    }
+
+    fn restore_session(&mut self) {
+        let state = match self.session_store.load() {
+            Ok(state) => state,
+            Err(error) => {
+                self.lifecycle_notice = Some(format!("Session restore failed: {error}"));
+                return;
+            }
+        };
+        self.recent_files
+            .restore(state.recent_files.into_iter().filter_map(|recent| {
+                FileIdentity::from_canonical_path(recent.path)
+                    .ok()
+                    .map(|identity| (identity, recent.title))
+            }));
+        if let Some(session_workspace) = state.workspace {
+            match self
+                .workspace_service
+                .scan(&session_workspace.root, self.workspace_options)
+            {
+                Ok(snapshot) => {
+                    let mut workspace = WorkspaceModel::new(snapshot);
+                    let _ = workspace.restore_tree_state(
+                        &session_workspace.expanded_paths,
+                        session_workspace.selected_path.as_deref(),
+                    );
+                    self.workspace = Some(workspace);
+                    self.sidebar_is_visible = true;
+                    self.lifecycle_notice = Some(format!(
+                        "Restored workspace {}",
+                        session_workspace.root.display()
+                    ));
+                }
+                Err(error) => {
+                    self.lifecycle_notice =
+                        Some(format!("Saved workspace could not be restored: {error}"));
+                }
+            }
+        }
+        if let Some(workspace) = &self.workspace {
+            self.selected_sidebar_id = workspace
+                .selected()
+                .or_else(|| Some(workspace.snapshot().root_id()))
+                .map(|id| id.stable_key().to_owned());
+        } else {
+            self.select_active_in_sidebar();
+        }
+    }
+
+    fn session_state(&self) -> SessionState {
+        let recent_files = self
+            .recent_files
+            .entries()
+            .iter()
+            .map(|entry| SessionRecentFile {
+                path: entry.identity().path().to_path_buf(),
+                title: entry.title().to_owned(),
+            })
+            .collect();
+        let workspace = self.workspace.as_ref().map(|workspace| {
+            let selected_path = workspace
+                .selected()
+                .and_then(|id| workspace.snapshot().node(id))
+                .map(|node| node.path().to_path_buf());
+            SessionWorkspace {
+                root: workspace.snapshot().root().to_path_buf(),
+                expanded_paths: workspace.expanded_paths(),
+                selected_path,
+            }
+        });
+        SessionState {
+            recent_files,
+            workspace,
+        }
+    }
+
+    fn persist_session(&mut self) {
+        let state = self.session_state();
+        if let Err(error) = self.session_store.save(&state) {
+            self.lifecycle_notice = Some(format!("Session save failed: {error}"));
+        }
     }
 
     fn active_document(&self) -> &DemoDocument {
@@ -270,6 +383,11 @@ impl EditorDemoApplication {
             )
         });
         let find_navigation_is_enabled = self.find.is_some() && !self.find_matches.is_empty();
+        let selected_workspace = self.selected_workspace_entry();
+        let workspace_mutation_is_enabled = self.workspace.is_some();
+        let workspace_entry_mutation_is_enabled = selected_workspace
+            .as_ref()
+            .is_some_and(|(_, _, is_root)| !is_root);
         let mut file_items = vec![
             MenuItem::command(MenuCommand::new("new-file", "New File", "Ctrl+N")),
             MenuItem::command(MenuCommand::new("open", "Open…", "Ctrl+O")),
@@ -287,6 +405,23 @@ impl EditorDemoApplication {
                     "Ctrl+Shift+R",
                 )),
                 MenuItem::command(MenuCommand::new("close-workspace", "Close Workspace", "")),
+                MenuItem::Separator,
+                MenuItem::command(
+                    MenuCommand::new("new-workspace-file", "New File in Workspace…", "")
+                        .with_enabled(workspace_mutation_is_enabled),
+                ),
+                MenuItem::command(
+                    MenuCommand::new("new-workspace-folder", "New Folder…", "")
+                        .with_enabled(workspace_mutation_is_enabled),
+                ),
+                MenuItem::command(
+                    MenuCommand::new("rename-workspace-entry", "Rename Workspace Entry…", "")
+                        .with_enabled(workspace_entry_mutation_is_enabled),
+                ),
+                MenuItem::command(
+                    MenuCommand::new("delete-workspace-entry", "Delete Workspace Entry…", "")
+                        .with_enabled(workspace_entry_mutation_is_enabled),
+                ),
             ]);
         }
         if !self.recent_files.entries().is_empty() {
@@ -894,6 +1029,22 @@ impl EditorDemoApplication {
                 self.close_workspace();
                 InvalidationClass::WidgetLayout
             }
+            "new-workspace-file" => {
+                self.create_workspace_file();
+                InvalidationClass::WidgetLayout
+            }
+            "new-workspace-folder" => {
+                self.create_workspace_folder();
+                InvalidationClass::WidgetLayout
+            }
+            "rename-workspace-entry" => {
+                self.rename_workspace_entry();
+                InvalidationClass::WidgetLayout
+            }
+            "delete-workspace-entry" => {
+                self.delete_workspace_entry();
+                InvalidationClass::WidgetLayout
+            }
             "save" => {
                 let _ = self.save_active();
                 InvalidationClass::WidgetLayout
@@ -909,6 +1060,7 @@ impl EditorDemoApplication {
             "clear-recent-files" => {
                 self.recent_files.clear();
                 self.lifecycle_notice = Some("Recent files cleared".to_owned());
+                self.persist_session();
                 InvalidationClass::WidgetLayout
             }
             "close-tab" if self.documents.len() > 1 => {
@@ -1008,6 +1160,435 @@ impl EditorDemoApplication {
         }
     }
 
+    fn selected_workspace_entry(&self) -> Option<(PathBuf, WorkspaceNodeKind, bool)> {
+        let workspace = self.workspace.as_ref()?;
+        let id = workspace
+            .selected()
+            .unwrap_or_else(|| workspace.snapshot().root_id());
+        let node = workspace.snapshot().node(id)?;
+        Some((
+            node.path().to_path_buf(),
+            node.kind(),
+            node.id() == workspace.snapshot().root_id(),
+        ))
+    }
+
+    fn workspace_creation_parent(&self) -> Option<PathBuf> {
+        let (path, kind, _) = self.selected_workspace_entry()?;
+        match kind {
+            WorkspaceNodeKind::Directory => Some(path),
+            WorkspaceNodeKind::File | WorkspaceNodeKind::Symlink => {
+                path.parent().map(Path::to_path_buf)
+            }
+        }
+    }
+
+    fn select_workspace_path(&mut self, path: &Path) {
+        let selected = self.workspace.as_ref().and_then(|workspace| {
+            workspace
+                .snapshot()
+                .node_for_path(path)
+                .map(|node| node.id().clone())
+        });
+        if let Some(selected) = selected
+            && let Some(workspace) = self.workspace.as_mut()
+        {
+            let _ = workspace.reveal(&selected);
+            self.selected_sidebar_id = Some(selected.stable_key().to_owned());
+        }
+    }
+
+    fn create_workspace_file(&mut self) {
+        let Some(parent) = self.workspace_creation_parent() else {
+            self.lifecycle_notice = Some("No workspace is open".to_owned());
+            return;
+        };
+        let name = match self.dialog_service.prompt_workspace_name(
+            "New Workspace File",
+            "Enter a file name:",
+            "untitled.txt",
+        ) {
+            Ok(Some(name)) => name,
+            Ok(None) => {
+                self.lifecycle_notice = Some("New workspace file canceled".to_owned());
+                return;
+            }
+            Err(error) => {
+                self.lifecycle_notice = Some(format!("New file dialog unavailable: {error}"));
+                return;
+            }
+        };
+        let mut result = self.workspace_service.create_file(
+            &parent,
+            &name,
+            WorkspaceCollisionPolicy::FailIfExists,
+        );
+        if result
+            .as_ref()
+            .is_err_and(|error| error.kind() == WorkspaceErrorKind::AlreadyExists)
+        {
+            let destination = parent.join(&name);
+            if let Ok(identity) = FileIdentity::from_canonical_path(destination.clone())
+                && let Some(existing) = self.document_registry.document_for_file(&identity)
+            {
+                self.activate_document_id(existing);
+                self.lifecycle_notice = Some(
+                    "The existing workspace file is already open; it was not replaced".to_owned(),
+                );
+                return;
+            }
+            match self.dialog_service.confirm_workspace_replace(&destination) {
+                Ok(WorkspaceCollisionChoice::Replace) => {
+                    result = self.workspace_service.create_file(
+                        &parent,
+                        &name,
+                        WorkspaceCollisionPolicy::ReplaceFile,
+                    );
+                }
+                Ok(WorkspaceCollisionChoice::Cancel) => {
+                    self.lifecycle_notice = Some("New workspace file canceled".to_owned());
+                    return;
+                }
+                Err(error) => {
+                    self.lifecycle_notice =
+                        Some(format!("Replacement confirmation unavailable: {error}"));
+                    return;
+                }
+            }
+        }
+        match result {
+            Ok(outcome) => {
+                let path = outcome.path().to_path_buf();
+                let _ = self.refresh_workspace(false);
+                self.select_workspace_path(&path);
+                self.lifecycle_notice = Some(format!("Created {}", path.display()));
+                self.persist_session();
+            }
+            Err(error) => {
+                self.lifecycle_notice = Some(format!("Create file failed: {error}"));
+            }
+        }
+    }
+
+    fn create_workspace_folder(&mut self) {
+        let Some(parent) = self.workspace_creation_parent() else {
+            self.lifecycle_notice = Some("No workspace is open".to_owned());
+            return;
+        };
+        let name = match self.dialog_service.prompt_workspace_name(
+            "New Workspace Folder",
+            "Enter a folder name:",
+            "new-folder",
+        ) {
+            Ok(Some(name)) => name,
+            Ok(None) => {
+                self.lifecycle_notice = Some("New workspace folder canceled".to_owned());
+                return;
+            }
+            Err(error) => {
+                self.lifecycle_notice = Some(format!("New folder dialog unavailable: {error}"));
+                return;
+            }
+        };
+        match self.workspace_service.create_directory(&parent, &name) {
+            Ok(outcome) => {
+                let path = outcome.path().to_path_buf();
+                let _ = self.refresh_workspace(false);
+                self.select_workspace_path(&path);
+                self.lifecycle_notice = Some(format!("Created {}", path.display()));
+                self.persist_session();
+            }
+            Err(error) => {
+                self.lifecycle_notice = Some(format!("Create folder failed: {error}"));
+            }
+        }
+    }
+
+    fn affected_file_documents(&self, path: &Path) -> Vec<(DocumentId, FileIdentity)> {
+        self.document_registry
+            .records()
+            .iter()
+            .filter_map(|record| match record.source() {
+                DocumentSource::File(identity) if identity.path().starts_with(path) => {
+                    Some((record.id(), identity.clone()))
+                }
+                DocumentSource::File(_)
+                | DocumentSource::Untitled { .. }
+                | DocumentSource::Virtual { .. } => None,
+            })
+            .collect()
+    }
+
+    fn rename_workspace_entry(&mut self) {
+        let Some((source, _kind, is_root)) = self.selected_workspace_entry() else {
+            self.lifecycle_notice = Some("No workspace entry is selected".to_owned());
+            return;
+        };
+        if is_root {
+            self.lifecycle_notice = Some("The workspace root cannot be renamed".to_owned());
+            return;
+        }
+        let initial_name = source
+            .file_name()
+            .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
+        let new_name = match self.dialog_service.prompt_workspace_name(
+            "Rename Workspace Entry",
+            "Enter the new name:",
+            &initial_name,
+        ) {
+            Ok(Some(name)) => name,
+            Ok(None) => {
+                self.lifecycle_notice = Some("Rename canceled".to_owned());
+                return;
+            }
+            Err(error) => {
+                self.lifecycle_notice = Some(format!("Rename dialog unavailable: {error}"));
+                return;
+            }
+        };
+        let Some(parent) = source.parent() else {
+            self.lifecycle_notice = Some("Rename source has no parent directory".to_owned());
+            return;
+        };
+        let destination = parent.join(&new_name);
+        let affected = self.affected_file_documents(&source);
+        if let Ok(destination_identity) = FileIdentity::from_canonical_path(destination.clone())
+            && let Some(existing) = self
+                .document_registry
+                .document_for_file(&destination_identity)
+            && affected.iter().all(|(id, _)| *id != existing)
+        {
+            self.activate_document_id(existing);
+            self.lifecycle_notice =
+                Some("Rename destination is already open as another document".to_owned());
+            return;
+        }
+        for (_, identity) in &affected {
+            let relative = identity
+                .path()
+                .strip_prefix(&source)
+                .unwrap_or_else(|_| Path::new(""));
+            let candidate = destination.join(relative);
+            if let Ok(candidate_identity) = FileIdentity::from_canonical_path(candidate)
+                && let Some(existing) = self
+                    .document_registry
+                    .document_for_file(&candidate_identity)
+                && affected.iter().all(|(id, _)| *id != existing)
+            {
+                self.activate_document_id(existing);
+                self.lifecycle_notice =
+                    Some("Rename destination is already open as another document".to_owned());
+                return;
+            }
+        }
+        let mut result = self.workspace_service.rename(
+            &source,
+            &new_name,
+            WorkspaceCollisionPolicy::FailIfExists,
+        );
+        if result
+            .as_ref()
+            .is_err_and(|error| error.kind() == WorkspaceErrorKind::AlreadyExists)
+        {
+            match self.dialog_service.confirm_workspace_replace(&destination) {
+                Ok(WorkspaceCollisionChoice::Replace) => {
+                    result = self.workspace_service.rename(
+                        &source,
+                        &new_name,
+                        WorkspaceCollisionPolicy::ReplaceFile,
+                    );
+                }
+                Ok(WorkspaceCollisionChoice::Cancel) => {
+                    self.lifecycle_notice = Some("Rename canceled".to_owned());
+                    return;
+                }
+                Err(error) => {
+                    self.lifecycle_notice =
+                        Some(format!("Replacement confirmation unavailable: {error}"));
+                    return;
+                }
+            }
+        }
+        let outcome = match result {
+            Ok(outcome) => outcome,
+            Err(error) => {
+                self.lifecycle_notice = Some(format!("Rename failed: {error}"));
+                return;
+            }
+        };
+        let renamed_root = outcome.path().to_path_buf();
+        let recent_relocations = self
+            .recent_files
+            .entries()
+            .iter()
+            .filter_map(|entry| {
+                let relative = entry.identity().path().strip_prefix(&source).ok()?;
+                let replacement =
+                    FileIdentity::from_canonical_path(renamed_root.join(relative)).ok()?;
+                Some((
+                    entry.identity().clone(),
+                    replacement.clone(),
+                    file_title(&replacement),
+                ))
+            })
+            .collect::<Vec<_>>();
+        for (previous, replacement, title) in recent_relocations {
+            self.recent_files.relocate(&previous, replacement, title);
+        }
+        let mut relocation_error = None;
+        for (document_id, previous_identity) in affected {
+            let relative = previous_identity
+                .path()
+                .strip_prefix(&source)
+                .unwrap_or_else(|_| Path::new(""));
+            let new_path = renamed_root.join(relative);
+            match self.file_service.load_utf8(&new_path) {
+                Ok(loaded) => {
+                    let title = file_title(loaded.identity());
+                    if let Err(error) = self.document_registry.relocate_file(
+                        document_id,
+                        loaded.identity().clone(),
+                        title.clone(),
+                        Some(loaded.snapshot()),
+                    ) {
+                        relocation_error = Some(format!(
+                            "Renamed storage but document relocation failed: {error}"
+                        ));
+                        continue;
+                    }
+                }
+                Err(error) => {
+                    relocation_error = Some(format!(
+                        "Renamed storage but could not observe {}: {error}",
+                        new_path.display()
+                    ));
+                }
+            }
+        }
+        let _ = self.refresh_workspace(false);
+        self.select_workspace_path(&renamed_root);
+        if relocation_error.is_none() {
+            relocation_error = Some(format!(
+                "Renamed {} to {}",
+                source.display(),
+                renamed_root.display()
+            ));
+        }
+        self.lifecycle_notice = relocation_error;
+        self.persist_session();
+    }
+
+    fn delete_workspace_entry(&mut self) {
+        let Some((path, kind, is_root)) = self.selected_workspace_entry() else {
+            self.lifecycle_notice = Some("No workspace entry is selected".to_owned());
+            return;
+        };
+        if is_root {
+            self.lifecycle_notice = Some("The workspace root cannot be deleted".to_owned());
+            return;
+        }
+        match self
+            .dialog_service
+            .confirm_workspace_delete(&path, kind == WorkspaceNodeKind::Directory)
+        {
+            Ok(WorkspaceDeleteChoice::Delete) => {}
+            Ok(WorkspaceDeleteChoice::Cancel) => {
+                self.lifecycle_notice = Some("Delete canceled".to_owned());
+                return;
+            }
+            Err(error) => {
+                self.lifecycle_notice = Some(format!("Delete confirmation unavailable: {error}"));
+                return;
+            }
+        }
+        let affected = self.affected_file_documents(&path);
+        let deleted_recent_identities = self
+            .recent_files
+            .entries()
+            .iter()
+            .filter(|entry| entry.identity().path().starts_with(&path))
+            .map(|entry| entry.identity().clone())
+            .collect::<Vec<_>>();
+        let mut detach = Vec::new();
+        let mut close = Vec::new();
+        for (document_id, identity) in &affected {
+            let Some(index) = self
+                .documents
+                .iter()
+                .position(|document| document.id == *document_id)
+            else {
+                continue;
+            };
+            if self.documents[index].is_dirty(&self.document_registry) {
+                let title = self.documents[index]
+                    .title(&self.document_registry)
+                    .to_owned();
+                let choice = self
+                    .dialog_service
+                    .resolve_dirty_workspace_delete(&title, identity.path());
+                match choice {
+                    Ok(WorkspaceDirtyDeleteChoice::KeepOpen) => detach.push(*document_id),
+                    Ok(WorkspaceDirtyDeleteChoice::DiscardAndClose) => close.push(*document_id),
+                    Ok(WorkspaceDirtyDeleteChoice::Cancel) => {
+                        self.lifecycle_notice = Some("Delete canceled".to_owned());
+                        return;
+                    }
+                    Err(error) => {
+                        self.lifecycle_notice =
+                            Some(format!("Dirty-document resolution unavailable: {error}"));
+                        return;
+                    }
+                }
+            } else {
+                close.push(*document_id);
+            }
+        }
+        if let Err(error) = self.workspace_service.delete(&path) {
+            self.lifecycle_notice = Some(format!("Delete failed: {error}"));
+            return;
+        }
+        for identity in deleted_recent_identities {
+            self.recent_files.remove(&identity);
+        }
+        let mut detach_error = None;
+        for document_id in &detach {
+            if let Err(error) = self.document_registry.detach_file_to_untitled(*document_id) {
+                detach_error = Some(format!(
+                    "Deleted storage but could not detach an open document: {error}"
+                ));
+            }
+        }
+        for document_id in close {
+            self.remove_document_id(document_id);
+        }
+        if self.documents.is_empty() {
+            self.new_document();
+        }
+        let _ = self.refresh_workspace(false);
+        self.select_active_in_sidebar();
+        if detach_error.is_none() {
+            detach_error = Some(format!("Deleted {}", path.display()));
+        }
+        self.lifecycle_notice = detach_error;
+        self.persist_session();
+    }
+
+    fn remove_document_id(&mut self, id: DocumentId) {
+        let Some(index) = self.documents.iter().position(|document| document.id == id) else {
+            return;
+        };
+        let removed_key = id.stable_key();
+        self.documents.remove(index);
+        let _ = self.document_registry.remove(id);
+        let _ = self.text_layouts.remove(&removed_key);
+        if index < self.active_index {
+            self.active_index = self.active_index.saturating_sub(1);
+        }
+        self.active_index = self
+            .active_index
+            .min(self.documents.len().saturating_sub(1));
+    }
+
     fn open_workspace(&mut self) {
         let selected = match self.dialog_service.choose_open_folder() {
             Ok(Some(path)) => path,
@@ -1038,6 +1619,7 @@ impl EditorDemoApplication {
                 self.selected_sidebar_id = Some(root_key);
                 self.lifecycle_notice = Some(format!("Opened workspace {root_title}"));
                 self.workspace_refresh_elapsed = Duration::ZERO;
+                self.persist_session();
             }
             Err(error) => {
                 self.lifecycle_notice = Some(format!("Open Folder failed: {error}"));
@@ -1049,6 +1631,7 @@ impl EditorDemoApplication {
         if self.workspace.take().is_some() {
             self.select_active_in_sidebar();
             self.lifecycle_notice = Some("Workspace closed".to_owned());
+            self.persist_session();
         }
     }
 
@@ -1088,6 +1671,7 @@ impl EditorDemoApplication {
             if announce_unchanged {
                 self.lifecycle_notice = Some("Workspace refreshed".to_owned());
             }
+            self.persist_session();
         } else if announce_unchanged {
             self.lifecycle_notice = Some("Workspace is already up to date".to_owned());
         }
@@ -1106,6 +1690,7 @@ impl EditorDemoApplication {
                 let _ = workspace.select(Some(node_id.clone()));
             }
             self.selected_sidebar_id = Some(node_id.stable_key().to_owned());
+            self.persist_session();
         } else {
             self.activate_document(id);
         }
@@ -1136,6 +1721,7 @@ impl EditorDemoApplication {
                     let _ = workspace.toggle_expanded(&node_id);
                 }
                 self.lifecycle_notice = None;
+                self.persist_session();
             }
             (WorkspaceNodeKind::File, WorkspaceNodeStatus::Available) => self.open_path(&path),
             (WorkspaceNodeKind::Symlink, _) => {
@@ -1195,6 +1781,7 @@ impl EditorDemoApplication {
                     && let Ok(identity) = self.file_service.identity_for_save(path)
                 {
                     self.recent_files.remove(&identity);
+                    self.persist_session();
                 }
                 self.lifecycle_notice = Some(format!("Open failed: {error}"));
                 return;
@@ -1205,6 +1792,7 @@ impl EditorDemoApplication {
         let storage_snapshot = loaded.snapshot();
         let editor = EditableText::new(loaded.into_text());
         self.recent_files.record(identity.clone(), title.clone());
+        self.persist_session();
         match self.document_registry.register_file(
             identity,
             title.clone(),
@@ -1343,6 +1931,7 @@ impl EditorDemoApplication {
         }
         self.recent_files
             .record(written.identity().clone(), title.clone());
+        self.persist_session();
         let _ = self.refresh_workspace(false);
         self.select_active_in_sidebar();
         self.lifecycle_notice = Some(format!("Saved {title}"));
@@ -1371,6 +1960,7 @@ impl EditorDemoApplication {
         let title = file_title(written.identity());
         self.recent_files
             .record(written.identity().clone(), title.clone());
+        self.persist_session();
         let _ = self.refresh_workspace(false);
         self.select_active_in_sidebar();
         self.lifecycle_notice = Some(format!("Saved {title}"));
@@ -2782,11 +3372,12 @@ mod tests {
     use luna_core::PointI;
     use luna_document_services::{
         DirtyCloseChoice, MemoryTextFileService, SaveConflictChoice, ScriptedDialogService,
-        TextFileService,
+        TextFileService, WorkspaceDeleteChoice, WorkspaceDirtyDeleteChoice,
     };
     use luna_documents::{DocumentRecord, DocumentSource, ExternalState};
     use luna_host_winit::{AccessibilityActionKind, AccessibilityActionRequest, NativeApplication};
     use luna_input::{InputEvent, Modifiers, PointerButton, PointerEvent, PointerEventKind};
+    use luna_session::{MemorySessionStore, SessionRecentFile, SessionState, SessionWorkspace};
     use luna_workspaces::{MemoryWorkspaceService, WorkspaceNodeKind};
     use std::error::Error;
     use std::path::{Path, PathBuf};
@@ -3757,6 +4348,266 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(palette_ids.iter().any(|id| id == "refresh-workspace"));
         assert!(palette_ids.iter().any(|id| id == "close-workspace"));
+        Ok(())
+    }
+    #[test]
+    fn workspace_create_rename_and_delete_commands_mutate_tree() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let workspace = test_workspace_service()?;
+        dialogs.push_open_folder(Some(PathBuf::from("/luna-editor-tests")));
+        let mut application = test_application_with_workspace(&files, &dialogs, &workspace)?;
+        application.open_workspace();
+
+        dialogs.push_workspace_name(Some("created.txt".to_owned()));
+        application.create_workspace_file();
+        assert!(
+            application
+                .workspace
+                .as_ref()
+                .and_then(|model| model
+                    .snapshot()
+                    .node_for_path(Path::new("/luna-editor-tests/created.txt")))
+                .is_some()
+        );
+
+        application.select_workspace_path(Path::new("/luna-editor-tests/created.txt"));
+        dialogs.push_workspace_name(Some("renamed.txt".to_owned()));
+        application.rename_workspace_entry();
+        assert!(
+            application
+                .workspace
+                .as_ref()
+                .and_then(|model| model
+                    .snapshot()
+                    .node_for_path(Path::new("/luna-editor-tests/renamed.txt")))
+                .is_some()
+        );
+
+        dialogs.push_workspace_delete(WorkspaceDeleteChoice::Delete);
+        application.delete_workspace_entry();
+        assert!(
+            application
+                .workspace
+                .as_ref()
+                .and_then(|model| model
+                    .snapshot()
+                    .node_for_path(Path::new("/luna-editor-tests/renamed.txt")))
+                .is_none()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn deleting_dirty_workspace_file_can_keep_buffer_as_untitled() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let workspace = test_workspace_service()?;
+        let path = Path::new("/luna-editor-tests/dirty.txt");
+        files.insert_utf8(path, "original")?;
+        workspace.insert_file(Path::new("dirty.txt"))?;
+        dialogs.push_open_folder(Some(PathBuf::from("/luna-editor-tests")));
+        let mut application = test_application_with_workspace(&files, &dialogs, &workspace)?;
+        application.open_workspace();
+        application.open_path(path);
+        let _ = application
+            .active_document_mut()
+            .editor
+            .insert_text(" changed");
+        application.select_workspace_path(path);
+        dialogs.push_workspace_delete(WorkspaceDeleteChoice::Delete);
+        dialogs.push_workspace_dirty_delete(WorkspaceDirtyDeleteChoice::KeepOpen);
+
+        application.delete_workspace_entry();
+
+        assert!(matches!(
+            application
+                .document_registry
+                .get(application.active_document().id)
+                .map(DocumentRecord::source),
+            Some(DocumentSource::Untitled { .. })
+        ));
+        assert!(
+            application
+                .active_document()
+                .is_dirty(&application.document_registry)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn persisted_recent_files_and_workspace_tree_are_restored() -> TestResult {
+        let files = MemoryTextFileService::new(PathBuf::from("/luna-editor-tests"))?;
+        let dialogs = ScriptedDialogService::default();
+        let workspace = test_workspace_service()?;
+        workspace.insert_file(Path::new("src/main.rs"))?;
+        let session = MemorySessionStore::default();
+        session.set_state(SessionState {
+            recent_files: vec![SessionRecentFile {
+                path: PathBuf::from("/luna-editor-tests/recent.txt"),
+                title: "recent.txt".to_owned(),
+            }],
+            workspace: Some(SessionWorkspace {
+                root: PathBuf::from("/luna-editor-tests"),
+                expanded_paths: vec![PathBuf::from("/luna-editor-tests/src")],
+                selected_path: Some(PathBuf::from("/luna-editor-tests/src/main.rs")),
+            }),
+        });
+        let application = EditorDemoApplication::with_runtime_services(
+            Box::new(files),
+            Box::new(dialogs),
+            Box::new(workspace),
+            Box::new(session.clone()),
+        )?;
+
+        assert_eq!(application.recent_files.entries().len(), 1);
+        let restored_workspace = application
+            .workspace
+            .as_ref()
+            .ok_or_else(|| std::io::Error::other("workspace was not restored"))?;
+        assert_eq!(
+            restored_workspace
+                .selected()
+                .and_then(|id| restored_workspace.snapshot().node(id))
+                .map(|node| node.path()),
+            Some(Path::new("/luna-editor-tests/src/main.rs")),
+        );
+        assert_eq!(
+            session
+                .state()
+                .workspace
+                .as_ref()
+                .map(|state| state.root.as_path()),
+            Some(Path::new("/luna-editor-tests"))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn file_menu_projects_workspace_mutation_commands_only_with_workspace() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let workspace = test_workspace_service()?;
+        let mut application = test_application_with_workspace(&files, &dialogs, &workspace)?;
+        let closed = application
+            .menu_definitions()
+            .into_iter()
+            .find(|menu| menu.id == "file")
+            .ok_or_else(|| std::io::Error::other("file menu missing"))?;
+        assert!(!closed.items.iter().any(|item| {
+            matches!(item, luna_ui::MenuItem::Command(command) if command.id == "new-workspace-file")
+        }));
+
+        dialogs.push_open_folder(Some(PathBuf::from("/luna-editor-tests")));
+        application.open_workspace();
+        let open = application
+            .menu_definitions()
+            .into_iter()
+            .find(|menu| menu.id == "file")
+            .ok_or_else(|| std::io::Error::other("file menu missing"))?;
+        assert!(open.items.iter().any(|item| {
+            matches!(item, luna_ui::MenuItem::Command(command) if command.id == "new-workspace-file")
+        }));
+        Ok(())
+    }
+
+    #[test]
+    fn create_collision_never_replaces_an_open_workspace_file() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let workspace = test_workspace_service()?;
+        let path = Path::new("/luna-editor-tests/existing.txt");
+        files.insert_utf8(path, "existing")?;
+        workspace.insert_file(Path::new("existing.txt"))?;
+        dialogs.push_open_folder(Some(PathBuf::from("/luna-editor-tests")));
+        let mut application = test_application_with_workspace(&files, &dialogs, &workspace)?;
+        application.open_workspace();
+        application.open_path(path);
+        application.select_workspace_path(Path::new("/luna-editor-tests"));
+        dialogs.push_workspace_name(Some("existing.txt".to_owned()));
+
+        application.create_workspace_file();
+
+        assert_eq!(files.bytes(path)?, Some(b"existing".to_vec()));
+        assert!(
+            application
+                .lifecycle_notice
+                .as_deref()
+                .is_some_and(|notice| notice.contains("already open"))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn renaming_open_dirty_file_relocates_identity_without_clearing_dirty_state() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let workspace = test_workspace_service()?;
+        let source = Path::new("/luna-editor-tests/source.txt");
+        let destination = Path::new("/luna-editor-tests/destination.txt");
+        files.insert_utf8(source, "original")?;
+        files.insert_utf8(destination, "original")?;
+        workspace.insert_file(Path::new("source.txt"))?;
+        dialogs.push_open_folder(Some(PathBuf::from("/luna-editor-tests")));
+        let mut application = test_application_with_workspace(&files, &dialogs, &workspace)?;
+        application.open_workspace();
+        application.open_path(source);
+        let _ = application
+            .active_document_mut()
+            .editor
+            .insert_text(" changed");
+        application.select_workspace_path(source);
+        dialogs.push_workspace_name(Some("destination.txt".to_owned()));
+
+        application.rename_workspace_entry();
+
+        let active = application.active_document();
+        let record = application
+            .document_registry
+            .get(active.id)
+            .ok_or_else(|| std::io::Error::other("relocated document missing"))?;
+        assert!(matches!(
+            record.source(),
+            DocumentSource::File(identity) if identity.path() == destination
+        ));
+        assert!(active.is_dirty(&application.document_registry));
+        Ok(())
+    }
+
+    #[test]
+    fn directory_rename_relocates_unopened_recent_files() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let workspace = test_workspace_service()?;
+        workspace.insert_file(Path::new("folder/recent.txt"))?;
+        dialogs.push_open_folder(Some(PathBuf::from("/luna-editor-tests")));
+        let mut application = test_application_with_workspace(&files, &dialogs, &workspace)?;
+        application.open_workspace();
+        let previous =
+            files.identity_for_save(Path::new("/luna-editor-tests/folder/recent.txt"))?;
+        application.recent_files.record(previous, "recent.txt");
+        application.select_workspace_path(Path::new("/luna-editor-tests/folder"));
+        dialogs.push_workspace_name(Some("renamed-folder".to_owned()));
+
+        application.rename_workspace_entry();
+
+        assert_eq!(
+            application.recent_files.entries()[0].identity().path(),
+            Path::new("/luna-editor-tests/renamed-folder/recent.txt")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn directory_delete_removes_unopened_recent_files_below_it() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let workspace = test_workspace_service()?;
+        workspace.insert_file(Path::new("folder/recent.txt"))?;
+        dialogs.push_open_folder(Some(PathBuf::from("/luna-editor-tests")));
+        let mut application = test_application_with_workspace(&files, &dialogs, &workspace)?;
+        application.open_workspace();
+        let recent = files.identity_for_save(Path::new("/luna-editor-tests/folder/recent.txt"))?;
+        application.recent_files.record(recent, "recent.txt");
+        application.select_workspace_path(Path::new("/luna-editor-tests/folder"));
+        dialogs.push_workspace_delete(WorkspaceDeleteChoice::Delete);
+
+        application.delete_workspace_entry();
+
+        assert!(application.recent_files.entries().is_empty());
         Ok(())
     }
 }

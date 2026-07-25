@@ -25,6 +25,9 @@ luna-document-services
 luna-workspaces
   └── std path, filesystem, and collection contracts only
 
+luna-session
+  └── std path, filesystem, and collection contracts only
+
 luna-text
   └── unicode-segmentation
 
@@ -60,7 +63,8 @@ applications
   └── luna-ui-rust-editor-demo
         ├── luna-documents
         ├── luna-document-services
-        └── luna-workspaces
+        ├── luna-workspaces
+        └── luna-session
 ```
 
 Dependencies point toward small product-neutral contracts. Platform integrations and stateful
@@ -152,10 +156,10 @@ Linux and passes arguments without a command shell. Tests use `MemoryTextFileSer
 `ScriptedDialogService`, so open/save/close/conflict behavior remains deterministic and does not
 create windows or touch the host filesystem.
 
-## Workspace-tree boundary
+## Workspace and mutation boundary
 
-`luna-workspaces` owns recursive folder snapshots and tree interaction state without owning document
-buffers, dialogs, or mutation policy.
+`luna-workspaces` separates immutable observation from controlled filesystem mutation. The snapshot
+model never performs byte I/O and the editor shell never calls `std::fs` directly.
 
 ```text
 native folder dialog
@@ -166,25 +170,67 @@ native folder dialog
          -> directory/file/symlink kind
          -> availability state and ordered children
     -> WorkspaceModel
-         -> expansion
-         -> selection
-         -> ancestor reveal
+         -> expansion / selection / reveal
          -> refresh reconciliation
     -> editor-shell SidebarItem projection
+
+application mutation command
+    -> DocumentDialogService product choice
+    -> WorkspaceMutationService
+         -> create file / create directory
+         -> rename within current parent
+         -> recursive delete
+         -> explicit WorkspaceCollisionPolicy
+    -> document/recent identity reconciliation
+    -> fresh immutable workspace snapshot
 ```
 
-The standard adapter canonicalizes the root, does not follow symlinks, sorts directories before
-files, and preserves partial trees when child directories are unreadable. The deterministic memory
-adapter supports the same snapshot and refresh contracts without touching host storage.
+The standard adapter canonicalizes scan roots, does not follow symlinks, sorts directories before
+files, and preserves partial trees when child directories are unreadable. Mutation paths use
+`symlink_metadata` so a symlink entry is renamed or deleted rather than its target. Replacement is
+restricted to confirmed regular-file collisions; directories and symlinks are never replaced by
+collision policy.
 
-The proof editor rescans once per second through `NativeApplication::update`. Snapshot comparison and
-model mutation stay on the UI lane. Unchanged scans request no frame, while changed scans invalidate
-widget layout without discarding document text caches. A future native watcher may perform discovery
-elsewhere, but snapshot delivery must still cross the explicit UI-thread boundary.
+A workspace rename relocates every open file-backed document below the renamed path while retaining
+its saved edit revision. Deletion resolves all affected dirty buffers before storage changes. A
+buffer may be detached to a new Untitled identity, discarded and closed, or protect the complete
+operation through Cancel.
 
-Create, rename, delete, collision, and persistent-session policy are intentionally not methods on the
-snapshot model. They belong to a later operation/service layer so observation remains immutable and
-safe to test.
+The editor currently rescans once per second through `NativeApplication::update`. Snapshot comparison
+and model mutation remain on the UI lane. `WorkspaceWatchService`, `WorkspaceWatchEvent`, and
+`WorkspaceRefreshScope` establish the later native-watcher and subtree-reconciliation boundary;
+background discovery still may not mutate editor state directly.
+
+## Session persistence boundary
+
+`luna-session` persists application restoration state without depending on UI, document, or
+workspace-model crates.
+
+```text
+application state transition
+    -> SessionState
+         -> recent canonical paths and titles
+         -> workspace root
+         -> expanded directory paths
+         -> selected workspace path
+    -> SessionStore
+         -> MemorySessionStore for deterministic tests
+         -> StdSessionStore versioned atomic file
+```
+
+The standard Linux path follows `XDG_STATE_HOME` with a `$HOME/.local/state` fallback. Paths and
+titles are encoded in a versioned text format; exact Unix path bytes are preserved. Session failure
+is visible but non-fatal. Closing a workspace persists an empty workspace field, preventing an
+unwanted restore on the next launch.
+
+## Shared document/view boundary
+
+A `DocumentId` identifies one buffer, file identity, dirty baseline, and storage observation.
+`DocumentViewId` identifies one independent presentation of that buffer. `DocumentViewRegistry`
+allows multiple views to reference the same document without duplicating lifecycle state.
+
+Caret, selection, scrolling, folding, pane focus, and presentation caches remain view-owned. M3.2e
+introduces this identity seam; M3.3a will consume it for live split panes.
 
 ## Text model boundary
 

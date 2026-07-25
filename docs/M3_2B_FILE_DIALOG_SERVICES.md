@@ -151,17 +151,16 @@ for assertions and later scripted responses.
   accessibility.
 - M3.1 retained text/menu/gallery behavior remains unchanged.
 
-## Delivered by M3.2c/M3.2d and deferred later
+## Delivered by M3.2c–M3.2e and deferred later
 
-M3.2c adds in-memory recent-file projection, storage observation, modified/replaced/missing/recreated
-state, UI-thread polling delivery, status/accessibility notices, and Reload from Disk. M3.2d adds
-Open Folder, product-neutral recursive workspace snapshots, real sidebar tree rows, expansion,
-selection, refresh preservation, and duplicate-safe file activation.
+M3.2c adds recent-file projection, storage observation, modified/replaced/missing/recreated state,
+UI-thread polling delivery, notices, and Reload from Disk. M3.2d adds Open Folder, recursive
+workspace snapshots, sidebar tree rows, expansion, selection, refresh preservation, and duplicate-safe
+activation. M3.2e adds create/rename/delete operations, mutation dialogs, persistent recent/workspace
+restoration, and shared buffer/view identity.
 
 Still deferred:
 
-- persistent recent-file and workspace/session storage;
 - native event watcher backends and incremental subtree delivery;
-- workspace create, rename, and delete operations;
-- shared buffers with independent pane views;
+- live split panes with independent views;
 - cross-platform native dialog adapters beyond the current Linux helper implementation.

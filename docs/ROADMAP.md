@@ -89,7 +89,7 @@
 - Shared command execution across keyboard, menus, palette, pointer, and accessibility.
 - Overlay-only menu invalidation with no document reshape or reraster.
 
-## M3.2 — real document and workspace runtime — active
+## M3.2 — real document and workspace runtime — complete after local validation
 
 ### M3.2a — document identity and lifecycle model — complete
 
@@ -115,42 +115,47 @@
 
 ### M3.2c — recent files and external-change delivery — complete
 
-- bounded MRU recent-file model with canonical identities;
-- File-menu and command-palette recent-file projections;
-- content revision plus concrete storage-instance snapshots;
-- modified, replaced, missing, and recreated-file distinctions;
-- 750 ms storage polling delivered through the UI-thread update contract;
-- no redraw for unchanged observations;
-- status/accessibility notices and explicit Reload from Disk;
-- save/conflict handling for clean or dirty documents with external state;
-- deterministic observation and editor integration tests.
+- Bounded MRU recent-file model with canonical identities.
+- File-menu and command-palette recent-file projections.
+- Content revision plus concrete storage-instance snapshots.
+- Modified, replaced, missing, and recreated-file distinctions.
+- UI-thread storage observation with unchanged-state frame suppression.
+- Status/accessibility notices and explicit Reload from Disk.
+- Save/conflict handling for clean or dirty externally changed documents.
 
-### M3.2d — workspace and project-tree runtime — implemented
+### M3.2d — workspace and project-tree runtime — complete
 
-- product-neutral `luna-workspaces` model and scan adapters;
-- exact stable path identities and immutable recursive snapshots;
-- directories-before-files ordering with hidden, symlink, and depth policies;
-- expansion, selection, ancestor reveal, and refresh preservation;
-- permission, depth-limit, and unreadable-node projection;
-- native Open Folder and scripted folder-dialog results;
-- real sidebar rows with pointer, keyboard-command, and accessibility routing;
-- duplicate-safe workspace-file activation;
-- one-second UI-thread refresh with unchanged-state suppression;
-- deterministic standard-library, in-memory, and editor-integration tests.
+- Product-neutral recursive workspace snapshots and scan adapters.
+- Exact stable path identities and directories-before-files ordering.
+- Hidden, symlink, depth, permission, and unreadable-node policies.
+- Expansion, selection, ancestor reveal, and refresh preservation.
+- Native Open Folder and real editor sidebar rows.
+- Duplicate-safe file activation and one-second UI-thread refresh.
 
-### M3.2e — workspace operations, shared buffers, and session runtime — next
+### M3.2e — workspace operations, views, and persistent sessions — implemented
 
-- filesystem create file/folder, rename, and delete operations;
-- operation confirmation, collision, and dirty-document policy;
-- persistent recent-file and workspace/session state;
-- shared document buffers with independent editor views;
-- native watcher adapters and incremental subtree refresh;
-- workspace/session restoration.
+- Product-neutral create file/folder, rename, and recursive delete operations.
+- Explicit fail/replace collision policy and native confirmation boundaries.
+- Dirty affected-document Keep Open, Discard & Close, or Cancel handling.
+- File and ancestor-directory rename propagation into open document and recent-file identities.
+- Versioned persistent recent-file and workspace tree state through `luna-session`.
+- Startup restoration of workspace root, expanded paths, and selection.
+- Multiple document-view identities sharing one buffer identity.
+- Native watcher-event and full/subtree refresh-scope boundaries.
+- Deterministic standard-library, in-memory, scripted-dialog, session, and editor tests.
 
-## M3.3 — expanded editor shell
+## M3.3 — expanded editor shell — next
 
-- Tab overflow, scrolling, pinned tabs, and targeted close routing.
-- Split panes, draggable splitters, and independent view state.
+### M3.3a — shared-buffer split panes
+
+- Recursive pane trees and pane-local tab ownership.
+- Multiple `DocumentViewId` records sharing one `DocumentId` buffer.
+- Independent caret, selection, scroll, focus, and presentation state per view.
+- Draggable splitters, minimum pane sizes, focus traversal, and close routing.
+
+### M3.3b — advanced tabs and command surfaces
+
+- Tab overflow, scrolling, pinned tabs, and active-tab visibility.
 - Nested submenus, mnemonic traversal, and broader menu focus integration.
 - Product-neutral context menus and completion popups.
 - Richer find/replace behavior and scrollbar interaction.
@@ -178,5 +183,6 @@
 ## Swift parity checkpoints
 
 See [`SWIFT_PARITY.md`](SWIFT_PARITY.md). M3.1 now combines selected later-stage performance
-mechanics with first-level desktop dropdown menus. M3.2 and M3.3 are still expected to produce the
-largest visible parity gain.
+mechanics with first-level desktop dropdown menus. M3.2 supplies the real file/workspace runtime;
+M3.3 is now expected to produce the next largest visible parity gain through live panes and advanced
+shell behavior.

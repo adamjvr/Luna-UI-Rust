@@ -16,6 +16,7 @@ luna-document-services = { path = "../../crates/luna-document-services" }
 luna-host-winit = { path = "../../crates/luna-host-winit" }
 luna-input = { path = "../../crates/luna-input" }
 luna-render = { path = "../../crates/luna-render" }
+luna-session = { path = "../../crates/luna-session" }
 luna-text = { path = "../../crates/luna-text" }
 luna-text-cosmic = { path = "../../crates/luna-text-cosmic" }
 luna-theme = { path = "../../crates/luna-theme" }

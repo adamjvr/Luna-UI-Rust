@@ -3,8 +3,9 @@
 //! Product-neutral workspace trees and filesystem scan adapters.
 //!
 //! This crate owns stable workspace-node identities, recursive immutable snapshots, expansion and
-//! selection state, visible-row flattening, refresh preservation, and synchronous scan boundaries.
-//! It intentionally does not own native dialogs, editor tabs, command policy, or file mutations.
+//! selection state, visible-row flattening, refresh preservation, synchronous scan and mutation
+//! boundaries, and native-watcher delivery contracts. It intentionally does not own native dialogs,
+//! editor tabs, command policy, or application-specific confirmation behavior.
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -409,6 +410,41 @@ impl WorkspaceModel {
         self.expanded.contains(id)
     }
 
+    /// Returns expanded directory paths in deterministic order.
+    #[must_use]
+    pub fn expanded_paths(&self) -> Vec<PathBuf> {
+        self.expanded
+            .iter()
+            .filter_map(|id| self.snapshot.node(id))
+            .map(|node| node.path.clone())
+            .collect()
+    }
+
+    /// Restores expansion and selection state from persisted paths.
+    pub fn restore_tree_state(
+        &mut self,
+        expanded_paths: &[PathBuf],
+        selected_path: Option<&Path>,
+    ) -> bool {
+        let mut next = BTreeSet::new();
+        let _ = next.insert(self.snapshot.root_id.clone());
+        for path in expanded_paths {
+            if let Some(node) = self.snapshot.node_for_path(path)
+                && node.kind == WorkspaceNodeKind::Directory
+                && node.status.is_available()
+            {
+                let _ = next.insert(node.id.clone());
+            }
+        }
+        let selected = selected_path
+            .and_then(|path| self.snapshot.node_for_path(path))
+            .map(|node| node.id.clone());
+        let changed = self.expanded != next || self.selected != selected;
+        self.expanded = next;
+        self.selected = selected;
+        changed
+    }
+
     /// Replaces the snapshot while preserving surviving expansion and selection state.
     pub fn refresh(&mut self, snapshot: WorkspaceSnapshot) -> bool {
         if self.snapshot == snapshot {
@@ -460,6 +496,155 @@ impl WorkspaceModel {
     }
 }
 
+/// Collision policy for workspace mutation operations.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WorkspaceCollisionPolicy {
+    /// Fail when the destination already exists.
+    FailIfExists,
+    /// Replace an existing regular file, but never a directory or symbolic link.
+    ReplaceFile,
+}
+
+/// Result of creating or renaming one workspace entry.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WorkspaceMutationOutcome {
+    path: PathBuf,
+    kind: WorkspaceNodeKind,
+}
+
+impl WorkspaceMutationOutcome {
+    /// Returns the absolute resulting path.
+    #[must_use]
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    /// Returns the resulting entry kind.
+    #[must_use]
+    pub const fn kind(&self) -> WorkspaceNodeKind {
+        self.kind
+    }
+}
+
+/// Product-neutral synchronous filesystem mutation boundary.
+pub trait WorkspaceMutationService {
+    /// Creates an empty regular file below `parent`.
+    fn create_file(
+        &self,
+        parent: &Path,
+        name: &str,
+        collision: WorkspaceCollisionPolicy,
+    ) -> Result<WorkspaceMutationOutcome, WorkspaceError>;
+
+    /// Creates one directory below `parent`.
+    fn create_directory(
+        &self,
+        parent: &Path,
+        name: &str,
+    ) -> Result<WorkspaceMutationOutcome, WorkspaceError>;
+
+    /// Renames one file or directory within its current parent directory.
+    fn rename(
+        &self,
+        path: &Path,
+        new_name: &str,
+        collision: WorkspaceCollisionPolicy,
+    ) -> Result<WorkspaceMutationOutcome, WorkspaceError>;
+
+    /// Deletes one file, symlink, or directory tree.
+    fn delete(&self, path: &Path) -> Result<(), WorkspaceError>;
+}
+
+/// Combined scan-and-mutation service used by editor workspace runtimes.
+pub trait WorkspaceRuntimeService: WorkspaceService + WorkspaceMutationService {}
+
+impl<T> WorkspaceRuntimeService for T where T: WorkspaceService + WorkspaceMutationService {}
+
+/// Broad filesystem change classification delivered by a future native watcher.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WorkspaceWatchKind {
+    /// One path was created.
+    Created,
+    /// Existing contents or metadata changed.
+    Modified,
+    /// One path was removed.
+    Removed,
+    /// One path moved or was renamed.
+    Renamed,
+    /// The backend could not classify the event more precisely.
+    RescanRequired,
+}
+
+/// One path-level watcher event delivered to the UI thread.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WorkspaceWatchEvent {
+    /// Affected absolute path.
+    pub path: PathBuf,
+    /// Broad change classification.
+    pub kind: WorkspaceWatchKind,
+}
+
+/// Native-watcher delivery boundary. Implementations must not mutate UI state directly.
+pub trait WorkspaceWatchService {
+    /// Starts observing one canonical workspace root.
+    fn watch(&mut self, root: &Path) -> Result<(), WorkspaceError>;
+
+    /// Drains pending events for delivery on the caller's UI thread.
+    fn drain_events(&mut self) -> Result<Vec<WorkspaceWatchEvent>, WorkspaceError>;
+}
+
+/// Deterministic watcher queue for tests and host integration work.
+#[derive(Clone, Debug, Default)]
+pub struct MemoryWorkspaceWatchService {
+    root: Option<PathBuf>,
+    events: Vec<WorkspaceWatchEvent>,
+}
+
+impl MemoryWorkspaceWatchService {
+    /// Appends one pending event.
+    pub fn push(&mut self, event: WorkspaceWatchEvent) {
+        self.events.push(event);
+    }
+}
+
+impl WorkspaceWatchService for MemoryWorkspaceWatchService {
+    fn watch(&mut self, root: &Path) -> Result<(), WorkspaceError> {
+        validate_absolute_path(root)?;
+        self.root = Some(root.to_path_buf());
+        self.events.clear();
+        Ok(())
+    }
+
+    fn drain_events(&mut self) -> Result<Vec<WorkspaceWatchEvent>, WorkspaceError> {
+        let Some(root) = &self.root else {
+            return Err(WorkspaceError::invalid_path(
+                Path::new("/"),
+                "workspace watcher has no active root",
+            ));
+        };
+        if self
+            .events
+            .iter()
+            .any(|event| !event.path.starts_with(root))
+        {
+            return Err(WorkspaceError::invalid_path(
+                root,
+                "watcher event escaped the active workspace root",
+            ));
+        }
+        Ok(std::mem::take(&mut self.events))
+    }
+}
+
+/// Scope requested for a future incremental workspace rescan.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum WorkspaceRefreshScope {
+    /// Rebuild the complete workspace snapshot.
+    Full,
+    /// Rebuild one directory subtree and reconcile it into the current snapshot.
+    Subtree(PathBuf),
+}
+
 /// Synchronous adapter used to obtain recursive workspace snapshots.
 pub trait WorkspaceService {
     /// Scans one directory into an immutable recursive snapshot.
@@ -493,6 +678,156 @@ impl WorkspaceService for StdWorkspaceService {
             return Err(WorkspaceError::not_directory(&canonical));
         }
         build_std_snapshot(canonical, options)
+    }
+}
+
+impl WorkspaceMutationService for StdWorkspaceService {
+    fn create_file(
+        &self,
+        parent: &Path,
+        name: &str,
+        collision: WorkspaceCollisionPolicy,
+    ) -> Result<WorkspaceMutationOutcome, WorkspaceError> {
+        let parent = canonical_directory(parent)?;
+        validate_entry_name(name, &parent)?;
+        let path = parent.join(name);
+        match collision {
+            WorkspaceCollisionPolicy::FailIfExists => {
+                fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&path)
+                    .map_err(|error| WorkspaceError::io("create workspace file", &path, error))?;
+            }
+            WorkspaceCollisionPolicy::ReplaceFile => {
+                if let Ok(metadata) = fs::symlink_metadata(&path)
+                    && (!metadata.file_type().is_file() || metadata.file_type().is_symlink())
+                {
+                    return Err(WorkspaceError::already_exists(
+                        "replace workspace file",
+                        &path,
+                        "only an existing regular file may be replaced",
+                    ));
+                }
+                fs::OpenOptions::new()
+                    .write(true)
+                    .create(true)
+                    .truncate(true)
+                    .open(&path)
+                    .map_err(|error| WorkspaceError::io("replace workspace file", &path, error))?;
+            }
+        }
+        Ok(WorkspaceMutationOutcome {
+            path,
+            kind: WorkspaceNodeKind::File,
+        })
+    }
+
+    fn create_directory(
+        &self,
+        parent: &Path,
+        name: &str,
+    ) -> Result<WorkspaceMutationOutcome, WorkspaceError> {
+        let parent = canonical_directory(parent)?;
+        validate_entry_name(name, &parent)?;
+        let path = parent.join(name);
+        fs::create_dir(&path)
+            .map_err(|error| WorkspaceError::io("create workspace directory", &path, error))?;
+        Ok(WorkspaceMutationOutcome {
+            path,
+            kind: WorkspaceNodeKind::Directory,
+        })
+    }
+
+    fn rename(
+        &self,
+        path: &Path,
+        new_name: &str,
+        collision: WorkspaceCollisionPolicy,
+    ) -> Result<WorkspaceMutationOutcome, WorkspaceError> {
+        let canonical = path.to_path_buf();
+        validate_absolute_path(&canonical)?;
+        let parent = canonical.parent().ok_or_else(|| {
+            WorkspaceError::invalid_path(&canonical, "workspace root cannot be renamed")
+        })?;
+        validate_entry_name(new_name, parent)?;
+        let destination = parent.join(new_name);
+        let source_metadata = fs::symlink_metadata(&canonical)
+            .map_err(|error| WorkspaceError::io("read rename source", &canonical, error))?;
+        let kind = if source_metadata.file_type().is_symlink() {
+            WorkspaceNodeKind::Symlink
+        } else if source_metadata.is_dir() {
+            WorkspaceNodeKind::Directory
+        } else {
+            WorkspaceNodeKind::File
+        };
+        if destination == canonical {
+            return Ok(WorkspaceMutationOutcome {
+                path: canonical,
+                kind,
+            });
+        }
+        let destination_metadata = match fs::symlink_metadata(&destination) {
+            Ok(metadata) => Some(metadata),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => {
+                return Err(WorkspaceError::io(
+                    "read rename destination",
+                    &destination,
+                    error,
+                ));
+            }
+        };
+        if let Some(destination_metadata) = destination_metadata {
+            match collision {
+                WorkspaceCollisionPolicy::FailIfExists => {
+                    return Err(WorkspaceError::already_exists(
+                        "rename workspace entry",
+                        &destination,
+                        "destination already exists",
+                    ));
+                }
+                WorkspaceCollisionPolicy::ReplaceFile => {
+                    if !source_metadata.file_type().is_file()
+                        || !destination_metadata.file_type().is_file()
+                        || destination_metadata.file_type().is_symlink()
+                    {
+                        return Err(WorkspaceError::already_exists(
+                            "replace rename destination",
+                            &destination,
+                            "replacement is limited to regular files",
+                        ));
+                    }
+                    #[cfg(not(unix))]
+                    fs::remove_file(&destination).map_err(|error| {
+                        WorkspaceError::io("remove rename destination", &destination, error)
+                    })?;
+                }
+            }
+        }
+        fs::rename(&canonical, &destination)
+            .map_err(|error| WorkspaceError::io("rename workspace entry", &canonical, error))?;
+        Ok(WorkspaceMutationOutcome {
+            path: destination,
+            kind,
+        })
+    }
+
+    fn delete(&self, path: &Path) -> Result<(), WorkspaceError> {
+        let metadata = fs::symlink_metadata(path)
+            .map_err(|error| WorkspaceError::io("read delete target", path, error))?;
+        if metadata.file_type().is_symlink() || metadata.is_file() {
+            fs::remove_file(path)
+                .map_err(|error| WorkspaceError::io("delete workspace file", path, error))
+        } else if metadata.is_dir() {
+            fs::remove_dir_all(path)
+                .map_err(|error| WorkspaceError::io("delete workspace directory", path, error))
+        } else {
+            Err(WorkspaceError::invalid_path(
+                path,
+                "unsupported workspace entry type",
+            ))
+        }
     }
 }
 
@@ -682,6 +1017,163 @@ impl WorkspaceService for MemoryWorkspaceService {
     }
 }
 
+impl WorkspaceMutationService for MemoryWorkspaceService {
+    fn create_file(
+        &self,
+        parent: &Path,
+        name: &str,
+        collision: WorkspaceCollisionPolicy,
+    ) -> Result<WorkspaceMutationOutcome, WorkspaceError> {
+        let parent = self.resolve(parent)?;
+        validate_entry_name(name, &parent)?;
+        let path = parent.join(name);
+        let mut entries = self.entries.borrow_mut();
+        let Some(parent_entry) = entries.get(&parent) else {
+            return Err(WorkspaceError::not_found("create memory file", &parent));
+        };
+        if parent_entry.kind != WorkspaceNodeKind::Directory {
+            return Err(WorkspaceError::not_directory(&parent));
+        }
+        if let Some(existing) = entries.get(&path)
+            && (collision == WorkspaceCollisionPolicy::FailIfExists
+                || existing.kind != WorkspaceNodeKind::File)
+        {
+            return Err(WorkspaceError::already_exists(
+                "create memory file",
+                &path,
+                "destination already exists",
+            ));
+        }
+        let _ = entries.insert(
+            path.clone(),
+            MemoryWorkspaceEntry {
+                kind: WorkspaceNodeKind::File,
+                status: WorkspaceNodeStatus::Available,
+            },
+        );
+        Ok(WorkspaceMutationOutcome {
+            path,
+            kind: WorkspaceNodeKind::File,
+        })
+    }
+
+    fn create_directory(
+        &self,
+        parent: &Path,
+        name: &str,
+    ) -> Result<WorkspaceMutationOutcome, WorkspaceError> {
+        let parent = self.resolve(parent)?;
+        validate_entry_name(name, &parent)?;
+        let path = parent.join(name);
+        let mut entries = self.entries.borrow_mut();
+        let Some(parent_entry) = entries.get(&parent) else {
+            return Err(WorkspaceError::not_found(
+                "create memory directory",
+                &parent,
+            ));
+        };
+        if parent_entry.kind != WorkspaceNodeKind::Directory {
+            return Err(WorkspaceError::not_directory(&parent));
+        }
+        if entries.contains_key(&path) {
+            return Err(WorkspaceError::already_exists(
+                "create memory directory",
+                &path,
+                "destination already exists",
+            ));
+        }
+        let _ = entries.insert(
+            path.clone(),
+            MemoryWorkspaceEntry {
+                kind: WorkspaceNodeKind::Directory,
+                status: WorkspaceNodeStatus::Available,
+            },
+        );
+        Ok(WorkspaceMutationOutcome {
+            path,
+            kind: WorkspaceNodeKind::Directory,
+        })
+    }
+
+    fn rename(
+        &self,
+        path: &Path,
+        new_name: &str,
+        collision: WorkspaceCollisionPolicy,
+    ) -> Result<WorkspaceMutationOutcome, WorkspaceError> {
+        let path = self.resolve(path)?;
+        if path == self.root {
+            return Err(WorkspaceError::invalid_path(
+                &path,
+                "the memory workspace root cannot be renamed",
+            ));
+        }
+        let parent = path
+            .parent()
+            .ok_or_else(|| WorkspaceError::invalid_path(&path, "rename source has no parent"))?;
+        validate_entry_name(new_name, parent)?;
+        let destination = parent.join(new_name);
+        let mut entries = self.entries.borrow_mut();
+        let source = entries
+            .get(&path)
+            .cloned()
+            .ok_or_else(|| WorkspaceError::not_found("rename memory entry", &path))?;
+        if destination == path {
+            return Ok(WorkspaceMutationOutcome {
+                path,
+                kind: source.kind,
+            });
+        }
+        if let Some(existing) = entries.get(&destination) {
+            if collision == WorkspaceCollisionPolicy::FailIfExists
+                || source.kind != WorkspaceNodeKind::File
+                || existing.kind != WorkspaceNodeKind::File
+            {
+                return Err(WorkspaceError::already_exists(
+                    "rename memory entry",
+                    &destination,
+                    "destination already exists",
+                ));
+            }
+            let _ = entries.remove(&destination);
+        }
+        let moved = entries
+            .iter()
+            .filter(|(candidate, _)| candidate.starts_with(&path))
+            .map(|(candidate, entry)| {
+                let relative = candidate
+                    .strip_prefix(&path)
+                    .unwrap_or_else(|_| Path::new(""));
+                (destination.join(relative), entry.clone())
+            })
+            .collect::<Vec<_>>();
+        entries.retain(|candidate, _| !candidate.starts_with(&path));
+        for (candidate, entry) in moved {
+            let _ = entries.insert(candidate, entry);
+        }
+        Ok(WorkspaceMutationOutcome {
+            path: destination,
+            kind: source.kind,
+        })
+    }
+
+    fn delete(&self, path: &Path) -> Result<(), WorkspaceError> {
+        let path = self.resolve(path)?;
+        if path == self.root {
+            return Err(WorkspaceError::invalid_path(
+                &path,
+                "the memory workspace root cannot be deleted",
+            ));
+        }
+        let mut entries = self.entries.borrow_mut();
+        if !entries.contains_key(&path) {
+            return Err(WorkspaceError::not_found("delete memory entry", &path));
+        }
+        entries.retain(|candidate, _| !candidate.starts_with(&path));
+        Ok(())
+    }
+}
+
 /// Error category for workspace scanning and model construction.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum WorkspaceErrorKind {
@@ -691,6 +1183,10 @@ pub enum WorkspaceErrorKind {
     NotFound,
     /// Requested root is not a directory.
     NotDirectory,
+    /// A create or rename destination already exists.
+    AlreadyExists,
+    /// A leaf name was empty, reserved, or contained a path separator.
+    InvalidName,
     /// Permission denied.
     PermissionDenied,
     /// Snapshot invariants were violated.
@@ -745,9 +1241,28 @@ impl WorkspaceError {
         }
     }
 
+    fn already_exists(operation: &'static str, path: &Path, message: impl Into<String>) -> Self {
+        Self {
+            operation,
+            path: path.to_path_buf(),
+            kind: WorkspaceErrorKind::AlreadyExists,
+            message: message.into(),
+        }
+    }
+
+    fn invalid_name(path: &Path, message: impl Into<String>) -> Self {
+        Self {
+            operation: "validate workspace entry name",
+            path: path.to_path_buf(),
+            kind: WorkspaceErrorKind::InvalidName,
+            message: message.into(),
+        }
+    }
+
     fn io(operation: &'static str, path: &Path, error: std::io::Error) -> Self {
         let kind = match error.kind() {
             std::io::ErrorKind::NotFound => WorkspaceErrorKind::NotFound,
+            std::io::ErrorKind::AlreadyExists => WorkspaceErrorKind::AlreadyExists,
             std::io::ErrorKind::PermissionDenied => WorkspaceErrorKind::PermissionDenied,
             _ => WorkspaceErrorKind::Io,
         };
@@ -1025,6 +1540,38 @@ fn path_title(path: &Path) -> String {
     )
 }
 
+fn canonical_directory(path: &Path) -> Result<PathBuf, WorkspaceError> {
+    let canonical = fs::canonicalize(path)
+        .map_err(|error| WorkspaceError::io("canonicalize workspace directory", path, error))?;
+    validate_absolute_path(&canonical)?;
+    let metadata = fs::metadata(&canonical)
+        .map_err(|error| WorkspaceError::io("read workspace directory", &canonical, error))?;
+    if !metadata.is_dir() {
+        return Err(WorkspaceError::not_directory(&canonical));
+    }
+    Ok(canonical)
+}
+
+fn validate_entry_name(name: &str, parent: &Path) -> Result<(), WorkspaceError> {
+    if name.is_empty() || name == "." || name == ".." {
+        return Err(WorkspaceError::invalid_name(
+            parent,
+            "workspace entry name cannot be empty, '.' or '..'",
+        ));
+    }
+    if Path::new(name).components().count() != 1
+        || name.contains('/')
+        || name.contains('\\')
+        || name.contains('\0')
+    {
+        return Err(WorkspaceError::invalid_name(
+            parent,
+            "workspace entry name must be one leaf name without separators",
+        ));
+    }
+    Ok(())
+}
+
 fn validate_absolute_path(path: &Path) -> Result<(), WorkspaceError> {
     if !path.is_absolute() {
         return Err(WorkspaceError::invalid_path(
@@ -1101,9 +1648,10 @@ fn path_bytes(value: &OsStr) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::{
-        HiddenFilePolicy, MemoryWorkspaceService, StdWorkspaceService, SymlinkPolicy,
-        WorkspaceModel, WorkspaceNodeId, WorkspaceNodeKind, WorkspaceNodeStatus,
-        WorkspaceScanOptions, WorkspaceService,
+        HiddenFilePolicy, MemoryWorkspaceService, MemoryWorkspaceWatchService, StdWorkspaceService,
+        SymlinkPolicy, WorkspaceCollisionPolicy, WorkspaceModel, WorkspaceMutationService,
+        WorkspaceNodeId, WorkspaceNodeKind, WorkspaceNodeStatus, WorkspaceScanOptions,
+        WorkspaceService, WorkspaceWatchEvent, WorkspaceWatchKind, WorkspaceWatchService,
     };
     use std::error::Error;
     use std::fs;
@@ -1440,6 +1988,181 @@ mod tests {
         assert!(linked.children().is_empty());
         fs::remove_dir_all(root)?;
         fs::remove_dir_all(outside)?;
+        Ok(())
+    }
+
+    #[test]
+    fn mutation_names_reject_reserved_and_multi_component_values() -> TestResult {
+        let service = memory()?;
+        for name in ["", ".", "..", "nested/name", "nested\\name", "bad\0name"] {
+            let error = service
+                .create_file(
+                    Path::new("/workspace"),
+                    name,
+                    WorkspaceCollisionPolicy::FailIfExists,
+                )
+                .err()
+                .ok_or_else(|| std::io::Error::other("invalid name was accepted"))?;
+            assert_eq!(error.kind(), super::WorkspaceErrorKind::InvalidName);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn memory_mutations_create_rename_replace_and_delete_subtrees() -> TestResult {
+        let service = memory()?;
+        let created = service.create_directory(Path::new("/workspace"), "src")?;
+        assert_eq!(created.path(), Path::new("/workspace/src"));
+        let file = service.create_file(
+            Path::new("/workspace/src"),
+            "main.rs",
+            WorkspaceCollisionPolicy::FailIfExists,
+        )?;
+        assert_eq!(file.kind(), WorkspaceNodeKind::File);
+        assert!(
+            service
+                .create_file(
+                    Path::new("/workspace/src"),
+                    "main.rs",
+                    WorkspaceCollisionPolicy::FailIfExists,
+                )
+                .is_err()
+        );
+        let renamed = service.rename(
+            Path::new("/workspace/src"),
+            "source",
+            WorkspaceCollisionPolicy::FailIfExists,
+        )?;
+        assert_eq!(renamed.path(), Path::new("/workspace/source"));
+        let snapshot = service.scan(Path::new("/workspace"), WorkspaceScanOptions::default())?;
+        assert!(
+            snapshot
+                .node_for_path(Path::new("/workspace/source/main.rs"))
+                .is_some()
+        );
+        service.delete(Path::new("/workspace/source"))?;
+        let snapshot = service.scan(Path::new("/workspace"), WorkspaceScanOptions::default())?;
+        assert!(
+            snapshot
+                .node_for_path(Path::new("/workspace/source"))
+                .is_none()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn same_name_rename_is_a_non_destructive_no_op() -> TestResult {
+        let service = memory()?;
+        service.insert_file(Path::new("same.txt"))?;
+        let outcome = service.rename(
+            Path::new("/workspace/same.txt"),
+            "same.txt",
+            WorkspaceCollisionPolicy::ReplaceFile,
+        )?;
+        assert_eq!(outcome.path(), Path::new("/workspace/same.txt"));
+        assert!(
+            service
+                .scan(Path::new("/workspace"), WorkspaceScanOptions::default())?
+                .node_for_path(Path::new("/workspace/same.txt"))
+                .is_some()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn model_restores_persisted_expansion_and_selection_paths() -> TestResult {
+        let service = memory()?;
+        service.insert_file(Path::new("src/nested/main.rs"))?;
+        let snapshot = service.scan(Path::new("/workspace"), WorkspaceScanOptions::default())?;
+        let mut model = WorkspaceModel::new(snapshot);
+        assert!(model.restore_tree_state(
+            &[
+                PathBuf::from("/workspace/src"),
+                PathBuf::from("/workspace/src/nested"),
+            ],
+            Some(Path::new("/workspace/src/nested/main.rs")),
+        ));
+        assert_eq!(model.expanded_paths().len(), 3);
+        assert_eq!(
+            model
+                .selected()
+                .and_then(|id| model.snapshot().node(id))
+                .map(|node| node.path()),
+            Some(Path::new("/workspace/src/nested/main.rs")),
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn standard_mutation_round_trip_uses_real_filesystem() -> TestResult {
+        let root = temp_root("mutations")?;
+        StdWorkspaceService.create_directory(&root, "src")?;
+        StdWorkspaceService.create_file(
+            &root.join("src"),
+            "main.rs",
+            WorkspaceCollisionPolicy::FailIfExists,
+        )?;
+        StdWorkspaceService.rename(
+            &root.join("src/main.rs"),
+            "lib.rs",
+            WorkspaceCollisionPolicy::FailIfExists,
+        )?;
+        assert!(root.join("src/lib.rs").is_file());
+        StdWorkspaceService.delete(&root.join("src"))?;
+        assert!(!root.join("src").exists());
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rename_never_replaces_a_broken_symlink_destination() -> TestResult {
+        use std::os::unix::fs::symlink;
+
+        let root = temp_root("broken-symlink-collision")?;
+        fs::write(
+            root.join("source.txt"),
+            "source
+",
+        )?;
+        symlink(root.join("missing-target"), root.join("destination.txt"))?;
+
+        let error = StdWorkspaceService
+            .rename(
+                &root.join("source.txt"),
+                "destination.txt",
+                WorkspaceCollisionPolicy::ReplaceFile,
+            )
+            .err()
+            .ok_or_else(|| std::io::Error::other("broken symlink was unexpectedly replaced"))?;
+
+        assert_eq!(error.kind(), super::WorkspaceErrorKind::AlreadyExists);
+        assert!(root.join("source.txt").is_file());
+        assert!(
+            fs::symlink_metadata(root.join("destination.txt"))?
+                .file_type()
+                .is_symlink()
+        );
+        fs::remove_file(root.join("destination.txt"))?;
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn watcher_events_are_drained_only_for_active_root() -> TestResult {
+        let mut watcher = MemoryWorkspaceWatchService::default();
+        watcher.watch(Path::new("/workspace"))?;
+        watcher.push(WorkspaceWatchEvent {
+            path: PathBuf::from("/workspace/src/main.rs"),
+            kind: WorkspaceWatchKind::Modified,
+        });
+        assert_eq!(watcher.drain_events()?.len(), 1);
+        assert!(watcher.drain_events()?.is_empty());
+        watcher.push(WorkspaceWatchEvent {
+            path: PathBuf::from("/outside/file.txt"),
+            kind: WorkspaceWatchKind::Created,
+        });
+        assert!(watcher.drain_events().is_err());
         Ok(())
     }
 }
