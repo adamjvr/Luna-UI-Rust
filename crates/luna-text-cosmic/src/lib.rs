@@ -18,11 +18,29 @@ use luna_text::{TextDocument, TextLocation, TextRange};
 use luna_theme::Rgba8;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
+use std::ops::Range;
 use std::sync::Arc;
 
 const CONTENT_PADDING: u32 = 4;
 const DEFAULT_MAXIMUM_RASTER_WIDTH: u32 = 16_384;
 const DEFAULT_OVERSCAN_VIEWPORTS: u32 = 1;
+
+/// One UTF-8 byte range with a syntax or semantic foreground override.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TextColorSpan {
+    /// Styled UTF-8 byte range.
+    pub range: Range<usize>,
+    /// Foreground color for the range.
+    pub foreground: Rgba8,
+}
+
+impl TextColorSpan {
+    /// Creates one color span.
+    #[must_use]
+    pub const fn new(range: Range<usize>, foreground: Rgba8) -> Self {
+        Self { range, foreground }
+    }
+}
 
 /// Inputs controlling one immutable shaped-text snapshot.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -309,6 +327,7 @@ impl TextLayoutCacheStats {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct TextGeometryKey {
     document_revision: u64,
+    style_revision: u64,
     width: u32,
     maximum_raster_width: u32,
     font_size_bits: u32,
@@ -317,9 +336,10 @@ struct TextGeometryKey {
 }
 
 impl TextGeometryKey {
-    fn new(document_revision: u64, request: TextLayoutRequest) -> Self {
+    fn new(document_revision: u64, style_revision: u64, request: TextLayoutRequest) -> Self {
         Self {
             document_revision,
+            style_revision,
             width: request.width,
             maximum_raster_width: request.maximum_raster_width,
             font_size_bits: request.font_size.to_bits(),
@@ -405,12 +425,41 @@ impl TextLayoutCache {
         scroll_y: i32,
         viewport_height: u32,
     ) -> Result<&TextLayoutSnapshot, TextLayoutError> {
+        self.update_styled(
+            engine,
+            document,
+            document_revision,
+            0,
+            &[],
+            request,
+            scroll_y,
+            viewport_height,
+        )
+    }
+
+    /// Updates the cache with validated per-range foreground attributes.
+    ///
+    /// `style_revision` must change whenever the span ranges or colors change. Keeping it separate
+    /// from the document revision lets applications restyle an unchanged buffer deterministically.
+    #[allow(clippy::too_many_arguments)]
+    pub fn update_styled(
+        &mut self,
+        engine: &mut TextEngine,
+        document: &TextDocument,
+        document_revision: u64,
+        style_revision: u64,
+        color_spans: &[TextColorSpan],
+        request: TextLayoutRequest,
+        scroll_y: i32,
+        viewport_height: u32,
+    ) -> Result<&TextLayoutSnapshot, TextLayoutError> {
         validate_request(request)?;
-        let geometry_key = TextGeometryKey::new(document_revision, request);
+        validate_color_spans(document.text(), color_spans)?;
+        let geometry_key = TextGeometryKey::new(document_revision, style_revision, request);
         if self.geometry_key == Some(geometry_key) {
             self.stats.layout_hits = self.stats.layout_hits.saturating_add(1);
         } else {
-            self.prepared = Some(engine.prepare(document, request)?);
+            self.prepared = Some(engine.prepare_styled(document, request, color_spans)?);
             self.geometry_key = Some(geometry_key);
             self.raster_foreground = None;
             self.snapshot = None;
@@ -482,7 +531,7 @@ impl TextEngine {
         request: TextLayoutRequest,
     ) -> Result<TextLayoutSnapshot, TextLayoutError> {
         validate_request(request)?;
-        let mut prepared = self.prepare(document, request)?;
+        let mut prepared = self.prepare_styled(document, request, &[])?;
         let bounds = RectI::new(
             0,
             0,
@@ -492,10 +541,11 @@ impl TextEngine {
         self.rasterize(&mut prepared, request.foreground, bounds)
     }
 
-    fn prepare(
+    fn prepare_styled(
         &mut self,
         document: &TextDocument,
         request: TextLayoutRequest,
+        color_spans: &[TextColorSpan],
     ) -> Result<PreparedTextLayout, TextLayoutError> {
         let rounded_line_height = rounded_positive_u32(request.line_height);
         let content_height = u32::try_from(document.line_count())
@@ -508,7 +558,12 @@ impl TextEngine {
         buffer.set_tab_width(request.tab_width);
         buffer.set_size(None, Some(content_height as f32));
         let attrs = Attrs::new().family(Family::Monospace);
-        buffer.set_text(document.text(), &attrs, Shaping::Advanced, None);
+        if color_spans.is_empty() {
+            buffer.set_text(document.text(), &attrs, Shaping::Advanced, None);
+        } else {
+            let rich_spans = rich_text_segments(document.text(), color_spans, attrs.clone());
+            buffer.set_rich_text(rich_spans, &attrs, Shaping::Advanced, None);
+        }
         buffer.shape_until_scroll(&mut self.font_system, false);
 
         let measured_text_width = buffer
@@ -655,6 +710,54 @@ fn collect_caret_stops(
     stops
 }
 
+fn rich_text_segments<'a>(
+    text: &'a str,
+    color_spans: &[TextColorSpan],
+    default_attrs: Attrs<'a>,
+) -> Vec<(&'a str, Attrs<'a>)> {
+    let mut segments = Vec::with_capacity(color_spans.len().saturating_mul(2).saturating_add(1));
+    let mut cursor = 0_usize;
+    for span in color_spans {
+        if cursor < span.range.start {
+            if let Some(segment) = text.get(cursor..span.range.start) {
+                segments.push((segment, default_attrs.clone()));
+            }
+        }
+        if let Some(segment) = text.get(span.range.clone()) {
+            let color = Color::rgba(
+                span.foreground.red,
+                span.foreground.green,
+                span.foreground.blue,
+                span.foreground.alpha,
+            );
+            segments.push((segment, default_attrs.clone().color(color)));
+        }
+        cursor = span.range.end;
+    }
+    if cursor < text.len() {
+        if let Some(segment) = text.get(cursor..) {
+            segments.push((segment, default_attrs));
+        }
+    }
+    segments
+}
+
+fn validate_color_spans(text: &str, spans: &[TextColorSpan]) -> Result<(), TextLayoutError> {
+    let mut previous_end = 0_usize;
+    for span in spans {
+        if span.range.start >= span.range.end
+            || span.range.end > text.len()
+            || !text.is_char_boundary(span.range.start)
+            || !text.is_char_boundary(span.range.end)
+            || span.range.start < previous_end
+        {
+            return Err(TextLayoutError::InvalidColorSpan(span.range.clone()));
+        }
+        previous_end = span.range.end;
+    }
+    Ok(())
+}
+
 fn validate_request(request: TextLayoutRequest) -> Result<(), TextLayoutError> {
     if !request.font_size.is_finite() || request.font_size <= 0.0 {
         return Err(TextLayoutError::InvalidFontSize);
@@ -704,6 +807,8 @@ pub enum TextLayoutError {
     InvalidFontSize,
     /// Line height was zero, negative, NaN, or infinite.
     InvalidLineHeight,
+    /// One syntax-color span was empty, overlapping, out of bounds, or not UTF-8 aligned.
+    InvalidColorSpan(Range<usize>),
     /// An internal cache invariant was unexpectedly unavailable.
     InvalidCacheState,
     /// Transparent glyph framebuffer allocation failed.
@@ -721,6 +826,11 @@ impl Display for TextLayoutError {
             Self::InvalidLineHeight => {
                 formatter.write_str("text line height must be finite and positive")
             }
+            Self::InvalidColorSpan(range) => write!(
+                formatter,
+                "text color span {}..{} was invalid",
+                range.start, range.end
+            ),
             Self::InvalidCacheState => formatter.write_str("text layout cache state was invalid"),
             Self::Framebuffer(error) => write!(formatter, "text framebuffer failed: {error}"),
             Self::RasterImage(error) => write!(formatter, "text raster image failed: {error}"),
@@ -733,7 +843,10 @@ impl Error for TextLayoutError {
         match self {
             Self::Framebuffer(error) => Some(error),
             Self::RasterImage(error) => Some(error),
-            Self::InvalidFontSize | Self::InvalidLineHeight | Self::InvalidCacheState => None,
+            Self::InvalidFontSize
+            | Self::InvalidLineHeight
+            | Self::InvalidColorSpan(_)
+            | Self::InvalidCacheState => None,
         }
     }
 }
@@ -752,7 +865,7 @@ impl From<RasterImageError> for TextLayoutError {
 
 #[cfg(test)]
 mod tests {
-    use super::{TextEngine, TextLayoutCache, TextLayoutError, TextLayoutRequest};
+    use super::{TextColorSpan, TextEngine, TextLayoutCache, TextLayoutError, TextLayoutRequest};
     use luna_core::{PointI, SizeI};
     use luna_text::{TextDocument, TextLocation, TextRange};
     use luna_theme::Rgba8;
@@ -897,5 +1010,17 @@ mod tests {
         assert_eq!(cache.stats().layout_hits, 1);
         assert_eq!(cache.stats().raster_misses, 3);
         Ok(())
+    }
+    #[test]
+    fn styled_text_rejects_overlapping_or_unaligned_ranges() {
+        let document = TextDocument::new("aéz");
+        let request = TextLayoutRequest::new(120, 14.0, 20.0, Rgba8::opaque(240, 240, 240));
+        let mut engine = TextEngine::new();
+        let mut cache = TextLayoutCache::new();
+        let invalid = [TextColorSpan::new(2..3, Rgba8::opaque(255, 0, 0))];
+        assert!(matches!(
+            cache.update_styled(&mut engine, &document, 1, 1, &invalid, request, 0, 80),
+            Err(TextLayoutError::InvalidColorSpan(_))
+        ));
     }
 }

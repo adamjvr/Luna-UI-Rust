@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use crate::Widget;
-use luna_accessibility::{AccessibilityNode, AccessibilityRole, AccessibilityTextRange};
+use luna_accessibility::{
+    AccessibilityAction, AccessibilityNode, AccessibilityRole, AccessibilityTextRange,
+};
 use luna_core::{InsetsI, NodeId, PointI, RectI, SizeI};
 use luna_render::DisplayList;
 use luna_text::{SnapBias, TextDocument, TextLocation, TextRange, TextScroll};
@@ -19,6 +21,33 @@ pub enum VerticalScrollbarAction {
     DragThumb,
     /// Pointer is below the thumb and should page downward.
     PageDown,
+}
+
+/// Backend-neutral background and underline decoration for one shaped text range.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TextStyleDecoration {
+    /// Logical text range sharing the shaped snapshot's coordinate system.
+    pub range: TextRange,
+    /// Optional background painted beneath glyphs and selections.
+    pub background: Option<Rgba8>,
+    /// Optional one-pixel underline painted above glyph output.
+    pub underline: Option<Rgba8>,
+}
+
+impl TextStyleDecoration {
+    /// Creates one syntax or diagnostic decoration.
+    #[must_use]
+    pub const fn new(
+        range: TextRange,
+        background: Option<Rgba8>,
+        underline: Option<Rgba8>,
+    ) -> Self {
+        Self {
+            range,
+            background,
+            underline,
+        }
+    }
 }
 
 /// Visual metrics and colors for Luna's editor text surface.
@@ -77,6 +106,8 @@ pub struct TextView {
     layout: TextLayoutSnapshot,
     caret: TextLocation,
     selection: Option<TextRange>,
+    additional_selections: Vec<TextRange>,
+    decorations: Vec<TextStyleDecoration>,
     scroll: TextScroll,
     style: TextViewStyle,
     label: String,
@@ -112,12 +143,58 @@ impl TextView {
             layout,
             caret,
             selection,
+            additional_selections: Vec::new(),
+            decorations: Vec::new(),
             scroll,
             style,
             label: label.into(),
             is_focused,
             is_editable,
         }
+    }
+
+    /// Adds secondary carets or directional selections used by multi-selection editors.
+    ///
+    /// The primary caret and selection remain the accessibility authority. Secondary ranges are
+    /// clamped to the same immutable document and painted without changing hit-test geometry.
+    #[must_use]
+    pub fn with_additional_selections(
+        mut self,
+        selections: impl IntoIterator<Item = TextRange>,
+    ) -> Self {
+        self.additional_selections = selections
+            .into_iter()
+            .map(|selection| self.document.clamp_range(selection))
+            .collect();
+        self
+    }
+
+    /// Adds syntax, diagnostic, or application-defined text decorations.
+    #[must_use]
+    pub fn with_decorations(
+        mut self,
+        decorations: impl IntoIterator<Item = TextStyleDecoration>,
+    ) -> Self {
+        self.decorations = decorations
+            .into_iter()
+            .map(|decoration| TextStyleDecoration {
+                range: self.document.clamp_range(decoration.range),
+                ..decoration
+            })
+            .collect();
+        self
+    }
+
+    /// Returns the decorations painted with this immutable text snapshot.
+    #[must_use]
+    pub fn decorations(&self) -> &[TextStyleDecoration] {
+        &self.decorations
+    }
+
+    /// Returns secondary carets and selections in application-provided order.
+    #[must_use]
+    pub fn additional_selections(&self) -> &[TextRange] {
+        &self.additional_selections
     }
 
     /// Returns the complete text viewport excluding outer padding and gutter.
@@ -374,6 +451,29 @@ impl Widget for TextView {
             }
         }
 
+        for decoration in &self.decorations {
+            let Some(background) = decoration.background else {
+                continue;
+            };
+            for rectangle in self.layout.selection_rects(decoration.range) {
+                if let Some(bounds) = self.translated_content_rect(rectangle) {
+                    display_list.fill_rect(bounds, background);
+                }
+            }
+        }
+
+        let secondary_selection_color = self.style.selection_background.with_alpha(64);
+        for selection in &self.additional_selections {
+            if selection.is_collapsed() {
+                continue;
+            }
+            for rectangle in self.layout.selection_rects(*selection) {
+                if let Some(bounds) = self.translated_content_rect(rectangle) {
+                    display_list.fill_rect(bounds, secondary_selection_color);
+                }
+            }
+        }
+
         if let Some(selection) = self.selection {
             for rectangle in self.layout.selection_rects(selection) {
                 if let Some(bounds) = self.translated_content_rect(rectangle) {
@@ -392,6 +492,34 @@ impl Widget for TextView {
             self.layout.image().clone(),
             viewport,
         );
+
+        for decoration in &self.decorations {
+            let Some(underline) = decoration.underline else {
+                continue;
+            };
+            for rectangle in self.layout.selection_rects(decoration.range) {
+                let line = RectI::new(
+                    rectangle.x,
+                    i32::try_from(rectangle.bottom().saturating_sub(1)).unwrap_or(rectangle.y),
+                    rectangle.width,
+                    1,
+                );
+                if let Some(bounds) = self.translated_content_rect(line) {
+                    display_list.fill_rect(bounds, underline);
+                }
+            }
+        }
+
+        if self.is_focused {
+            let secondary_caret = self.style.caret.with_alpha(176);
+            for selection in &self.additional_selections {
+                if let Some(caret) = self.layout.caret_rect(selection.focus)
+                    && let Some(bounds) = self.translated_content_rect(caret)
+                {
+                    display_list.fill_rect(bounds, secondary_caret);
+                }
+            }
+        }
 
         if self.is_focused
             && let Some(caret) = self.layout.caret_rect(self.caret)
@@ -461,11 +589,28 @@ impl Widget for TextView {
 
         let root =
             AccessibilityNode::new(self.id.clone(), AccessibilityRole::TextArea, self.bounds)
-                .with_label(self.label.clone())
+                .with_label(if self.additional_selections.is_empty() {
+                    self.label.clone()
+                } else {
+                    format!(
+                        "{} ({} cursors)",
+                        self.label,
+                        self.additional_selections.len().saturating_add(1)
+                    )
+                })
                 .with_value(self.document.text().to_owned())
                 .with_children(children)
                 .with_focused(self.is_focused)
                 .with_editable(self.is_editable)
+                .with_actions(if self.is_editable {
+                    vec![
+                        AccessibilityAction::Focus,
+                        AccessibilityAction::ReplaceSelectedText,
+                        AccessibilityAction::SetValue,
+                    ]
+                } else {
+                    vec![AccessibilityAction::Focus]
+                })
                 .with_text_ranges(Some(total), Some(caret), selected, Some(visible));
         nodes.insert(0, root);
         nodes

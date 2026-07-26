@@ -1,32 +1,38 @@
 # Luna-UI-Rust
 
 **Luna-UI-Rust** is a clean Rust-native rewrite of Luna UI: the product-neutral UI, input,
-layout, rendering, accessibility, command, document, text, and native-host foundation used to build
-editor-class desktop applications such as Moth Text.
+layout, rendering, accessibility, command, document, text, and native-host foundation for
+product-neutral desktop applications, including editor-class software.
 
 This is not a mechanical Swift-to-Rust translation. The rewrite preserves Luna's architectural
 contracts while expressing them through Rust ownership, explicit errors, immutable frame snapshots,
 small workspace crates, strict compiler tooling, and platform-specific leaf adapters.
 
-## M4 status
+## M5 status
 
 M0 established the deterministic core, M1 added the native host, M2 added editor-grade text, M3
 added the twin proof-gallery/editor applications, M3.1 made the CPU path incremental, M3.2 completed
-real file/workspace/session behavior, and M3.3 completed durable recursive panes and hardened desktop
-interaction.
+real file/workspace/session behavior, M3.3 completed durable recursive panes and hardened desktop
+interaction, and M4 added the optional `wgpu` backend plus four shared theme presets.
 
-M4 adds an optional GPU path while retaining the CPU renderer as the default oracle and fallback:
+M5 broadens product-neutral editor component parity:
 
-- `luna-render-wgpu` compiles immutable display lists into ordered solid/image quad batches;
-- nested logical clip stacks map to CPU clips and GPU scissors through one DPI rule;
-- repeated raster images share a bounded per-frame BGRA atlas;
-- `luna-host-wgpu` preserves the existing application, input, invalidation, and AccessKit contracts;
-- surface resize/loss and device-loss paths rebuild native GPU resources without resetting app state;
-- the proof gallery runs through either CPU/softbuffer or GPU/wgpu presentation;
-- Luna Dark, Luna Light, Amber Monitor, and Green Terminal are shared built-in theme presets;
-- the editor exposes the presets through **View > Color Scheme**.
+- `luna-editor` owns validated syntax snapshots, Sublime color-scheme import, edit history, multiple
+  selections, IME composition, and deterministic parity fixtures;
+- `luna-text-cosmic` shapes retained foreground spans while `TextView` paints syntax backgrounds and
+  underlines from the same immutable geometry;
+- typing, deletion, completion, find/replace, IME commit, and editable accessibility actions share
+  one transactional undo/redo path;
+- secondary carets and selections support simultaneous insertion, replacement, and grapheme-safe
+  deletion;
+- both native hosts forward IME pre-edit/commit events and candidate-window caret geometry;
+- command projection can query dynamic enabled/checked state;
+- AccessKit actions carry UTF-8 replacement/value payloads back to applications;
+- macOS now has an advisory Apple-Silicon CI lane and real-hardware acceptance protocol;
+- Windows is explicitly best-effort and is not an official support, CI, packaging, or release target.
 
-See `docs/M4_GPU_RENDERING.md`, `docs/ROADMAP.md`, and `docs/SWIFT_PARITY.md`.
+See `docs/M5_EDITOR_COMPONENT_PARITY.md`, `docs/MACOS_TESTING.md`, `docs/ROADMAP.md`, and
+`docs/SWIFT_PARITY.md`.
 
 ## Build and validate
 
@@ -37,10 +43,16 @@ cargo fmt --all
 ./scripts/validate.sh
 ```
 
-M4 includes the focused automated gate and CPU/GPU runtime checklist:
+M5 includes the focused automated gate and editor-mechanics runtime checklist:
 
 ```bash
-./scripts/test-m4.sh
+./scripts/test-m5.sh
+```
+
+On macOS, run the separate advisory gate:
+
+```bash
+./scripts/test-macos.sh
 ```
 
 Run the proof gallery with the deterministic CPU backend:
@@ -98,6 +110,9 @@ Editor shortcuts:
 - **Control-Alt-Left/Right** — focus the previous/next pane;
 - **Control-Shift-W** — close the focused pane;
 - **Control-Space** — open completion suggestions at the caret;
+- **Control-Z** — undo the active shared document transaction;
+- **Control-Shift-Z** — redo the active shared document transaction;
+- **Control-Shift-Up/Down** — add a cursor on the adjacent logical line;
 - **Control-A** — select all editor text;
 - **Escape** — close the active menu/overlay, or exit when none is open.
 
@@ -127,8 +142,13 @@ Current document, workspace, pane, popup, and rendering behavior:
 - pinned tabs remain leading and visible while regular tabs overflow;
 - tab dragging reorders locally or moves the existing view to another pane;
 - secondary-clicking a tab opens Pin/Preview/Move/Close commands;
-- completion acceptance replaces the active identifier prefix;
-- find/replace supports case and whole-word filters plus current/all replacement;
+- syntax scopes are supplied through a product-neutral provider and styled through an imported
+  Sublime color scheme;
+- completion acceptance replaces the active identifier prefix as one undoable transaction;
+- find/replace supports case and whole-word filters plus undoable current/all replacement;
+- multiple cursors insert, replace, and delete simultaneously while retaining one primary cursor;
+- IME pre-edit remains transient, anchors native candidate UI to the caret, and commits once;
+- editable accessibility replacement/value requests enter the same transaction history;
 - the vertical scrollbar shares exact paint and pointer geometry.
 
 The editor must preserve M3.1b performance behavior: no idle frames, no reshaping for caret,
@@ -157,8 +177,9 @@ native event / AccessKit action / scheduled logical update
     -> MRU recent-file projection + external-state transition
     -> workspace scan/mutation policy + persistent session state
     -> recursive pane topology + shared document/view projection
+    -> syntax/theme + transaction history + multiple-selection + IME mechanics
     -> platform-neutral Luna application state
-    -> retained text/layout/chrome or retained static scene
+    -> retained styled text/layout/chrome or retained static scene
     -> dynamic display list + shared validated semantic snapshot
     -> CPU retained framebuffers or ordered GPU quad/scissor/atlas compilation
     -> conditional AccessKit translation
@@ -173,7 +194,8 @@ Moth-specific product policy. See `docs/ARCHITECTURE.md`, `docs/PORTING_MAP.md`,
 `docs/M3_2C_RECENT_EXTERNAL_CHANGES.md`, `docs/M3_2D_WORKSPACE_TREE.md`,
 `docs/M3_2E_WORKSPACE_OPERATIONS_SESSION.md`, `docs/M3_3A_SPLIT_PANES.md`,
 `docs/M3_3B_ADVANCED_TABS_POPUPS.md`, `docs/M3_3C_DESKTOP_HARDENING.md`,
-`docs/M4_GPU_RENDERING.md`, and `docs/SWIFT_PARITY.md`.
+`docs/M4_GPU_RENDERING.md`, `docs/M5_EDITOR_COMPONENT_PARITY.md`,
+`docs/MACOS_TESTING.md`, and `docs/SWIFT_PARITY.md`.
 
 ## License
 

@@ -118,6 +118,7 @@ impl NativeApplication for NativeDemoApplication {
             }
             InputEvent::Pointer(_)
             | InputEvent::Text(_)
+            | InputEvent::Ime(_)
             | InputEvent::Scroll(_)
             | InputEvent::FocusGained
             | InputEvent::FocusLost => {}
@@ -138,7 +139,12 @@ impl NativeApplication for NativeDemoApplication {
                 self.state.focused_node = Some(self.command_button_id.clone());
                 HostControl::Redraw
             }
-            AccessibilityActionKind::Other => HostControl::Continue,
+            AccessibilityActionKind::ReplaceSelectedText
+            | AccessibilityActionKind::SetValue
+            | AccessibilityActionKind::ShowContextMenu
+            | AccessibilityActionKind::Increment
+            | AccessibilityActionKind::Decrement
+            | AccessibilityActionKind::Other => HostControl::Continue,
         }
     }
 }

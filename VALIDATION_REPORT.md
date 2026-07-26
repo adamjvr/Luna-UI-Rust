@@ -1,37 +1,39 @@
-# M4 Validation Report
+# M5 Validation Report
 
 ## Baseline
 
-M4 is developed from committed M3.3c at
-`b9aa4bbe8e65bc03e28ada1ec7a60726840bbb03`.
+M5 is developed from committed and locally validated M4 at
+`517480db511a209c3a365511763bc0db099f2619`.
 
 ## Change set
 
-- added `luna-render-wgpu` with ordered quad compilation, scissor batches, image-atlas upload, and
-  deterministic scene tests;
-- added `luna-host-wgpu` with winit lifecycle, AccessKit integration, surface recovery, device-loss
-  recovery with event-loop wakeup, and GPU diagnostics;
-- added nested display-list clip commands and matching CPU-renderer behavior;
-- added runtime CPU/GPU proof-gallery and editor selection;
-- added Luna Dark, Luna Light, Amber Monitor, and Green Terminal theme presets;
-- added proof-gallery cycling and editor **View > Color Scheme** projection;
-- added `docs/M4_GPU_RENDERING.md` and `scripts/test-m4.sh`;
-- updated README, architecture, current status, roadmap, porting map, Swift parity, and validation
-  documentation.
+- added `luna-editor` with syntax snapshots, Sublime color-scheme import, transaction history,
+  multiple selections, IME composition, and behavior-parity fixtures;
+- added style-revision-aware rich shaping and syntax decorations;
+- integrated undo/redo, secondary cursors, simultaneous editing, completion/find transactions, and
+  visible IME pre-edit into the editor harness;
+- added dynamic command state and explicit accessibility action/value delivery;
+- added native IME translation and candidate-window positioning to CPU and GPU hosts;
+- added `docs/M5_EDITOR_COMPONENT_PARITY.md`, `docs/MACOS_TESTING.md`, `scripts/test-m5.sh`, and
+  `scripts/test-macos.sh`;
+- added a non-blocking macOS 15 Apple-Silicon GitHub Actions job;
+- updated README, architecture, current status, roadmap, porting map, Swift parity, Rust practices,
+  and platform support policy.
 
 ## Implemented invariants
 
-- widgets and applications do not depend on `wgpu`;
-- CPU and GPU consume the same immutable display-list layers;
-- CPU and GPU nested clips use the same floor-leading/ceil-trailing DPI conversion;
-- disjoint image and stack clips draw nothing;
-- retained static paint precedes dynamic paint on both hosts;
-- repeated identical raster images occupy one per-frame atlas entry;
-- batch merging never reorders painter operations;
-- surface reconfiguration does not recreate application state;
-- device recovery rebuilds GPU resources while retaining application and accessibility state;
-- all built-in themes are selected through one stable `ThemePreset` catalog;
-- theme changes invalidate raster presentation, not document or pane identity.
+- syntax ranges are valid UTF-8 boundaries, sorted, and non-overlapping before shaping;
+- syntax/language providers remain outside text shaping and widgets;
+- simultaneous edits calculate pre-edit ranges and apply from right to left;
+- undo/redo restores complete text and directional selection sets;
+- caret-only movement does not change the saved checkpoint;
+- pre-edit text does not mutate document history before IME commit;
+- IME candidate geometry derives from the same shaped caret used for paint and hit testing;
+- completion, find replacement, accessibility replacement, and normal typing share transactions;
+- explicit semantic actions are translated by the AccessKit leaf adapter, not executed there;
+- CPU and GPU hosts deliver identical input, IME, command, and accessibility application contracts;
+- macOS is advisory until real-hardware acceptance exists;
+- Windows is not a blocking target or release promise.
 
 ## Static validation performed in the delivery environment
 
@@ -40,25 +42,30 @@ M4 is developed from committed M3.3c at
 - Rust lexical delimiter and duplicate-splice scans pass;
 - shell scripts pass `bash -n`;
 - `git diff --check` reports no malformed whitespace;
-- changed Rust and shell files retain SPDX identifiers;
+- changed Rust, shell, and workflow files retain required licensing/documentation conventions;
+- local Markdown links resolve;
 - generated archives are tested with `unzip -t`;
-- the repo-root overlay is reconstructed over the exact baseline and compared byte-for-byte;
+- the repo-root overlay is reconstructed over the exact M4 baseline and compared byte-for-byte;
 - SHA-256 manifests are generated after final archive creation.
 
 ## Compiler and runtime boundary
 
-Rust 1.97.1 and the new registry dependencies are unavailable in the artifact-building container.
-Therefore this report does **not** claim that Cargo dependency resolution, rustfmt, rustc, strict
-Clippy, tests, rustdoc, WGSL validation, adapter selection, surface presentation, or device recovery
-were executed there.
+Rust 1.97.1 is unavailable in the artifact-building container. This report therefore does **not**
+claim Cargo resolution, rustfmt, rustc, strict Clippy, tests, rustdoc, native IME, AccessKit actions,
+VoiceOver, GPU startup, or graphical presentation were executed there.
 
-The authoritative validation command is:
+Authoritative Linux/Pop!_OS validation:
 
 ```bash
-./scripts/test-m4.sh
+./scripts/test-m5.sh
 ```
 
-The manual CPU/GPU and four-theme runtime checklist is documented in
-`docs/M4_GPU_RENDERING.md` and generated at `/tmp/luna-m4-comparison/README.txt` by the script.
-Any formatting, compiler, Clippy, test, rustdoc, shader, surface, accessibility, parity, or runtime
-regression blocks acceptance.
+Advisory macOS validation:
+
+```bash
+./scripts/test-macos.sh
+```
+
+Any formatting, compiler, Clippy, test, rustdoc, syntax, history, multi-selection, IME, accessibility,
+CPU/GPU, or runtime regression blocks M5 acceptance on Linux. macOS failures remain advisory during
+M5 but must be recorded for M6.

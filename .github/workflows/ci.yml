@@ -3,12 +3,13 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  validate:
+  validate-linux:
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
@@ -21,3 +22,19 @@ jobs:
 
       - name: Validate workspace
         run: ./scripts/validate.sh
+
+  macos-advisory:
+    name: macOS 15 Apple Silicon advisory
+    runs-on: macos-15
+    continue-on-error: true
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal --component clippy,rustfmt
+          rustup default 1.97.1
+
+      - name: Run macOS advisory gate
+        run: ./scripts/test-macos.sh

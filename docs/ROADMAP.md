@@ -174,7 +174,7 @@
 - Native-first Linux watcher delivery, polling fallback, event coalescing, and incremental subtree
   reconciliation.
 
-## M4 — GPU backend and rendering scalability — implemented; local validation pending
+## M4 — GPU backend and rendering scalability — complete after local validation
 
 - `luna-render-wgpu` consumes the existing immutable display list through ordered solid/image quads.
 - `luna-host-wgpu` drives the existing native application contract with AccessKit preserved.
@@ -184,18 +184,28 @@
 - Proof-gallery and editor CPU/GPU runtime selection with a comparison checklist.
 - Stable Luna Dark, Luna Light, Amber Monitor, and Green Terminal theme presets.
 
-## M5 — broader editor component parity
+## M5 — broader editor component parity — implemented; local validation pending
 
-- Syntax spans and theme adapters, including Sublime color-scheme compatibility.
-- Richer command routing and accessibility actions.
-- Undo/redo integration, multiple cursors, and full IME pre-edit handling.
-- Behavior-parity fixtures against additional Swift Luna phases.
+- Product-neutral `luna-editor` crate for syntax snapshots, themes, history, selections, IME, and
+  behavior fixtures.
+- Validated syntax spans and a comment-tolerant Sublime `.sublime-color-scheme` adapter.
+- Retained foreground shaping plus backend-neutral syntax backgrounds and underlines.
+- Bounded coalescing edit history with text-based saved checkpoints and deterministic undo/redo.
+- Multiple directional selections, simultaneous edits, vertical cursor creation, and grapheme-safe
+  multi-cursor deletion.
+- Native IME enable/disable/pre-edit/commit delivery plus candidate-window caret geometry.
+- Dynamic command availability and explicit accessibility action/value routing.
+- Editor integration for typing, deletion, completion, find/replace, IME, accessibility, and history.
+- Rendering-independent parity fixtures suitable for matching Swift or other implementations.
+- Advisory macOS build/test lane and documented Apple-Silicon graphical acceptance protocol.
 
-## M6 — Moth integration and platform parity
+## M6 — macOS hardening and downstream integration
 
-- Moth-owned document/session/project adapters.
-- Packaging for Linux and macOS, followed by Windows host validation.
-- Replay fixtures, accessibility audits, product performance gates, and integration hardening.
+- Close macOS-specific host, Metal/wgpu, IME, VoiceOver, dialog, watcher, and packaging gaps.
+- Promote macOS CI from advisory to blocking only after repeated real-hardware acceptance.
+- Add downstream adapter examples without committing Luna-UI-Rust to any particular product rewrite.
+- Expand replay fixtures, accessibility audits, performance gates, and integration hardening.
+- Windows remains best-effort and non-blocking: no official CI, packaging, release, or support target.
 
 ## Swift parity checkpoints
 
@@ -203,4 +213,7 @@ See [`SWIFT_PARITY.md`](SWIFT_PARITY.md). M3.1 now combines selected later-stage
 mechanics with first-level desktop dropdown menus. M3.2 supplies the real file/workspace runtime;
 M3.3a supplies the first live recursive pane runtime. M3.3b adds advanced tabs, nested menus, context menus, completion, richer find/replace, and
 scrollbars. M3.3c adds durable pane sessions, recursive popup routing, asynchronous providers, and
-native-first incremental workspace delivery. M4 adds the optional `wgpu` renderer/host and four-palette comparison matrix. M5 is next after local validation.
+native-first incremental workspace delivery. M4 adds the optional `wgpu` renderer/host and
+four-palette comparison matrix. M5 adds reusable syntax/theme, history, multiple-selection, IME,
+command-state, and accessibility-action mechanics. M6 concentrates on macOS hardening; Windows is
+not an official project target.

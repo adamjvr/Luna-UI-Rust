@@ -59,4 +59,18 @@ Add a dependency only after documenting:
 Current external dependencies are isolated by role: winit and softbuffer in the CPU native host,
 AccessKit in the accessibility bridge, unicode-segmentation in the platform-neutral text model,
 cosmic-text in the shaping/raster adapter, and `wgpu`/pollster/bytemuck in the M4 GPU renderer and
-host leaf crates. GPU APIs do not enter `luna-core`, `luna-text`, or `luna-ui`.
+host leaf crates. M5 keeps syntax, history, multiple-selection, IME composition, and parity mechanics
+in `luna-editor`; it reuses the existing Unicode-segmentation dependency rather than selecting a
+parser framework or async runtime. GPU and native APIs do not enter `luna-core`, `luna-text`,
+`luna-editor`, or `luna-ui`.
+
+## Platform support
+
+Linux/Pop!_OS is the blocking development platform. macOS is an intended platform with a separate
+advisory CI lane and real-hardware acceptance protocol. Avoid introducing Linux-only assumptions
+above leaf adapters, and document every macOS divergence until that lane becomes blocking.
+
+Windows is not an official support target. Do not add Windows-specific dependencies, CI complexity,
+packaging policy, or public support promises unless the project explicitly changes this policy.
+Portable fixes are acceptable when they preserve Linux and macOS behavior and do not make Windows a
+release gate by implication.

@@ -789,6 +789,7 @@ impl NativeApplication for ProofGalleryApplication {
             },
             InputEvent::Keyboard(_)
             | InputEvent::Text(_)
+            | InputEvent::Ime(_)
             | InputEvent::Scroll(_)
             | InputEvent::FocusGained
             | InputEvent::FocusLost => HostControl::Continue,

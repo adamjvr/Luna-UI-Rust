@@ -8,6 +8,8 @@
 
 use luna_core::PointI;
 
+use std::ops::Range;
+
 /// Modifier-key state represented as a compact bit set without a third-party dependency.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Modifiers(u8);
@@ -127,7 +129,7 @@ pub struct KeyboardEvent {
     ///
     /// Native hosts should preserve this separately from `key`: command routing uses the logical
     /// key, while editable controls consume the committed text. IME composition commits may still
-    /// arrive through [`InputEvent::Text`].
+    /// arrive through [`InputEvent::Text`] or [`InputEvent::Ime`].
     pub text: Option<String>,
     /// Whether this event is a press (`true`) or release (`false`).
     pub is_pressed: bool,
@@ -152,6 +154,24 @@ pub struct ScrollEvent {
     pub timestamp_micros: u64,
 }
 
+/// Platform text-input composition event.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ImeEvent {
+    /// The platform activated input-method delivery for the focused surface.
+    Enabled,
+    /// The platform deactivated input-method delivery.
+    Disabled,
+    /// Uncommitted composition text and the selected UTF-8 byte subrange within it.
+    Preedit {
+        /// Current uncommitted composition string.
+        text: String,
+        /// Optional selection inside `text`, expressed as UTF-8 byte offsets.
+        selected_range: Option<Range<usize>>,
+    },
+    /// Final committed text.
+    Commit(String),
+}
+
 /// Input delivered to the deterministic Luna UI lane.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum InputEvent {
@@ -159,8 +179,10 @@ pub enum InputEvent {
     Pointer(PointerEvent),
     /// Keyboard activity.
     Keyboard(KeyboardEvent),
-    /// Text committed by the platform text-input system.
+    /// Text committed directly by the platform keyboard path.
     Text(String),
+    /// Input-method activation, pre-edit, cancellation, or commit.
+    Ime(ImeEvent),
     /// Scrolling.
     Scroll(ScrollEvent),
     /// The window or surface gained focus.

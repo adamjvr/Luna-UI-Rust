@@ -1,57 +1,68 @@
 # Current Status
 
-**Milestone:** M4 GPU backend and rendering scalability — implemented; local Pop!_OS validation pending
+**Milestone:** M5 broader editor component parity — implemented; local Pop!_OS validation pending
 
 ## Baseline
 
-M4 is based on committed and locally runnable M3.3c at
-`b9aa4bbe8e65bc03e28ada1ec7a60726840bbb03`. That baseline supplies durable recursive pane sessions,
-asynchronous completion delivery, deep popup routing, search history/options, scrollbar paging, and
-native-first incremental workspace refresh.
+M5 is based on committed and locally validated M4 at
+`517480db511a209c3a365511763bc0db099f2619`. The user confirmed CPU/GPU editor operation before the
+M4 commit. That baseline supplies the optional `wgpu` path, CPU oracle, nested clips, atlas/batching,
+surface/device recovery, and four built-in theme presets.
 
-## Implemented in M4
+## Implemented in M5
 
-- new `luna-render-wgpu` display-list backend pinned to `wgpu` 29.0.3;
-- new `luna-host-wgpu` native host driving the existing `NativeApplication` contract;
-- surface resize/loss/suboptimal/outdated/timeout/occlusion handling;
-- device-loss callback, event-loop wakeup, and complete GPU-resource reconstruction;
-- solid/image quad compilation with ordered scissor batches;
-- bounded per-frame BGRA image atlas and repeated-image deduplication;
-- nested `PushClip`/`PopClip` commands implemented by both CPU and GPU renderers;
-- retained static and dynamic display-list submission in painter order;
-- GPU timing, scene, atlas, surface-recovery, and device-recovery diagnostics;
-- CPU/GPU proof-gallery and editor selection through `LUNA_RENDER_BACKEND`;
-- shared `ThemePreset` catalog with Luna Dark, Luna Light, Amber Monitor, and Green Terminal;
-- four-palette theme cycling in the proof gallery;
-- checked **View > Color Scheme** submenu in the editor demo;
-- focused M4 tests, runtime checklist, architecture documentation, roadmap, parity, and porting updates.
+- new `luna-editor` crate with product-neutral syntax, Sublime scheme, history, selection, IME, and
+  deterministic parity-fixture contracts;
+- validated UTF-8 syntax snapshots and a lightweight Rust-like demonstration provider;
+- comment-tolerant Sublime `.sublime-color-scheme` JSON parsing with global and scoped styles;
+- style-revision-aware rich text shaping and retained syntax foregrounds;
+- backend-neutral syntax backgrounds and underlines in `TextView`;
+- bounded coalescing undo/redo history and text-only saved checkpoints;
+- normalized multiple directional selections and simultaneous right-to-left edits;
+- grapheme-safe multi-cursor Backspace/Delete plus vertical cursor creation;
+- IME enable/disable/pre-edit/commit delivery through `luna-input` and both native hosts;
+- application-owned IME candidate-window geometry and visible pre-edit state;
+- dynamic command enabled/checked contracts for Undo/Redo projection;
+- explicit semantic actions and UTF-8 accessibility replacement/value payload routing;
+- editor integration for typing, deletion, completion, find/replace, IME, accessibility, undo/redo,
+  and secondary-cursor presentation;
+- focused M5 validation script and runtime checklist;
+- advisory macOS 15 Apple-Silicon CI lane plus real-hardware test protocol;
+- explicit support policy: Linux primary, macOS intended/advisory, Windows best-effort and unofficial.
 
 ## Architectural boundary
 
-Widgets, text layout, command routing, editor state, and accessibility remain independent of `wgpu`.
-`luna-render-wgpu` only compiles immutable paint data. `luna-host-wgpu` is a leaf adapter that owns
-native GPU resources and translates lifecycle events. `luna-render` remains the reference CPU
-implementation and supplies the shared logical-to-physical rectangle rule.
+`luna-editor` contains reusable mechanisms, not language semantics or product workflow. Applications
+supply syntax providers and imported schemes. `luna-text-cosmic` receives validated visual spans but
+knows nothing about syntax scopes. `luna-ui::TextView` paints immutable decorations and selections but
+does not own edit history. Native hosts translate IME and accessibility requests without deciding
+what an editor command means.
 
 ## Validation status
 
-Static delimiter checks, TOML parsing, shell syntax, local-path checks, patch whitespace checks, and
-package reconstruction are performed in the delivery environment. That environment has no Rust
-1.97.1 toolchain and cannot download crates, so it does not claim rustfmt, rustc, Clippy, tests,
-rustdoc, shader validation, GPU startup, or presentation success.
+Static delimiter checks, TOML parsing, shell syntax, local-path checks, Markdown-link checks, patch
+whitespace checks, SPDX checks, and archive reconstruction are performed in the delivery environment.
+That environment has no Rust 1.97.1 toolchain and cannot download crates, so it does not claim
+rustfmt, rustc, Clippy, tests, rustdoc, native IME, accessibility, or graphical success.
 
 The authoritative Pop!_OS gate is:
 
 ```bash
 cargo fmt --all
-./scripts/test-m4.sh
+./scripts/test-m5.sh
 ```
 
-The first connected run will update `Cargo.lock` for the new pinned GPU dependencies. Commit that
-lockfile update with the phase. Then complete both backend runs described in
-[`M4_GPU_RENDERING.md`](M4_GPU_RENDERING.md).
+The macOS advisory gate is:
+
+```bash
+./scripts/test-macos.sh
+```
+
+See [`M5_EDITOR_COMPONENT_PARITY.md`](M5_EDITOR_COMPONENT_PARITY.md) and
+[`MACOS_TESTING.md`](MACOS_TESTING.md) for runtime acceptance.
 
 ## Next milestone
 
-M5 adds broader editor component parity: syntax spans, Sublime color-scheme adapters, richer command
-routing/accessibility actions, undo/redo, multiple cursors, and complete IME pre-edit handling.
+M6 hardens macOS hosting, Metal/wgpu presentation, IME, VoiceOver, dialogs, watchers, and packaging,
+then adds product-neutral downstream adapter examples. Windows is not planned as an official support
+or release platform.

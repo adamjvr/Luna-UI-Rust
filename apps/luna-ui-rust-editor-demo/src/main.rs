@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-//! Native M4 editor integration harness for Luna UI Rust.
+//! Native M5 editor integration harness for Luna UI Rust.
 //!
 //! This application mirrors the purpose of Swift LunaUITestApp's default editor mode: reusable
 //! shell anatomy and editor text are exercised together without embedding Moth Text product
@@ -20,8 +20,8 @@
 //! Control-\ split right, Control-Shift-\ split down, Control-Alt-Left/Right focus panes,
 //! Control-Shift-W close pane, Control-Shift-Left/Right reorder tabs,
 //! Control-Alt-Shift-Left/Right move tabs across panes, Control-Space completion popup,
-//! Control-A select all, and Escape
-//! closes the active menu/overlay or exits when no transient surface is open.
+//! Control-Z undo, Control-Shift-Z redo, Control-Shift-Up/Down add cursors, Control-A select all,
+//! and Escape clears secondary cursors, closes the active menu/overlay, or exits.
 
 use luna_accessibility::{AccessibilityNode, AccessibilityRole};
 use luna_core::{InsetsI, NodeId, PointI, RectI, SizeI};
@@ -36,13 +36,17 @@ use luna_documents::{
     DocumentViewRegistry, ExternalState, FileIdentity, OpenFileOutcome, RecentFileList,
     SaveRequirement, StorageInstance, StorageRevision, StorageSnapshot,
 };
+use luna_editor::{
+    ByteSelection, EditGroup, EditHistory, HistorySnapshot, ImeComposition, KeywordSyntaxProvider,
+    SelectionSet, SublimeColorSchemeAdapter, SyntaxProvider, SyntaxTheme,
+};
 use luna_host_wgpu::run_native_wgpu;
 use luna_host_winit::{
-    AccessibilityActionKind, AccessibilityActionRequest, ApplicationError, HostControl,
-    InvalidationClass, NativeApplication, WindowConfig, run_native,
+    AccessibilityActionData, AccessibilityActionKind, AccessibilityActionRequest, ApplicationError,
+    HostControl, InvalidationClass, NativeApplication, WindowConfig, run_native,
 };
 use luna_input::{
-    InputEvent, Key, Modifiers, NamedKey, PointerButton, PointerEvent, PointerEventKind,
+    ImeEvent, InputEvent, Key, Modifiers, NamedKey, PointerButton, PointerEvent, PointerEventKind,
 };
 use luna_panes::{
     PaneAxis, PaneId, PaneLayoutMetrics, PaneLeafSnapshot, PaneNodeSnapshot, PaneSplitSnapshot,
@@ -58,7 +62,8 @@ use luna_session::{
 };
 use luna_text::{EditableText, SnapBias, TextLocation, TextRange, TextScroll};
 use luna_text_cosmic::{
-    TextEngine, TextLayoutCache, TextLayoutCacheStats, TextLayoutRequest, TextLayoutSnapshot,
+    TextColorSpan, TextEngine, TextLayoutCache, TextLayoutCacheStats, TextLayoutRequest,
+    TextLayoutSnapshot,
 };
 use luna_theme::{Rgba8, Theme, ThemePreset};
 use luna_ui::DropdownMenuState;
@@ -70,8 +75,8 @@ use luna_ui::{
     EditorPaneSurfaceState, EditorShell, EditorShellHit, EditorShellMetrics, EditorShellState,
     FindField, FindPanel, FindPanelState, MenuCommand, MenuDefinition, MenuItem, PaletteItem,
     PanePresentation, PaneTab, SearchHistory, ShellMenu, SidebarItem, TabScrollDirection,
-    TextAlignment, TextLabel, TextLabelCache, TextView, TextViewStyle, UiFrame,
-    VerticalScrollbarAction, Widget,
+    TextAlignment, TextLabel, TextLabelCache, TextStyleDecoration, TextView, TextViewStyle,
+    UiFrame, VerticalScrollbarAction, Widget,
 };
 use luna_workspaces::{
     LinuxWorkspaceWatchService, StdWorkspaceService, WorkspaceCollisionPolicy, WorkspaceErrorKind,
@@ -99,9 +104,28 @@ const EXTERNAL_POLL_INTERVAL: Duration = Duration::from_millis(750);
 const WORKSPACE_REFRESH_INTERVAL: Duration = Duration::from_millis(1_000);
 const RECENT_FILE_LIMIT: usize = 8;
 
+const M5_SUBLIME_SCHEME: &str = r##"
+{
+  "name": "Luna M5 Demonstration",
+  "globals": {
+    "background": "#111318",
+    "foreground": "#d7dce2",
+    "caret": "#ffffff",
+    "selection": "#3b638f88"
+  },
+  "rules": [
+    { "scope": "comment", "foreground": "#6f9970", "font_style": "italic" },
+    { "scope": "string", "foreground": "#d8a657" },
+    { "scope": "constant.numeric", "foreground": "#b48ead" },
+    { "scope": "keyword", "foreground": "#e68a5c", "font_style": "bold" },
+    { "scope": "entity.name.type", "foreground": "#7fb6d6" }
+  ]
+}
+"##;
+
 const README_TEXT: &str = concat!(
     "# Luna UI Rust\n\n",
-    "M3.3c adds durable desktop sessions and asynchronous delivery.\n\n",
+    "M5 adds product-neutral syntax, history, multiple selections, IME, and accessibility actions.\n\n",
     "- Deterministic shell geometry\n",
     "- Revision-keyed document shaping\n",
     "- Viewport-band glyph rasterization\n",
@@ -124,7 +148,11 @@ const README_TEXT: &str = concat!(
     "- Arbitrary-depth menus, pointer intent, tab context menus, and mnemonics\n",
     "- Asynchronous completion popup and richer find/history controls\n",
     "- Interactive vertical scrollbars and track paging\n",
-    "- Native-first workspace watcher delivery and incremental subtree refresh\n\n",
+    "- Native-first workspace watcher delivery and incremental subtree refresh\n",
+    "- Imported Sublime color schemes and syntax-span rendering\n",
+    "- Transactional undo/redo with text-based saved checkpoints\n",
+    "- Multiple cursors with simultaneous grapheme-safe edits\n",
+    "- Native IME pre-edit/commit delivery and accessibility text actions\n\n",
     "Click File/Edit/Find/View/Help, or press Control-P for the palette.\n",
 );
 const EDITOR_TEXT: &str = concat!(
@@ -156,11 +184,44 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     Ok(())
 }
 
+fn selection_set_from_editor(editor: &EditableText) -> SelectionSet {
+    let document = editor.document();
+    let selection = editor.selection().map_or_else(
+        || {
+            let caret = document.absolute_offset(editor.caret(), SnapBias::Backward);
+            ByteSelection::caret(caret)
+        },
+        |selection| {
+            ByteSelection::new(
+                document.absolute_offset(selection.anchor, SnapBias::Backward),
+                document.absolute_offset(selection.focus, SnapBias::Backward),
+            )
+        },
+    );
+    SelectionSet::single(selection)
+}
+
+fn apply_selection_set_to_editor(editor: &mut EditableText, selections: &SelectionSet) {
+    let primary = selections.primary();
+    let anchor = editor
+        .document()
+        .location_for_offset(primary.anchor, SnapBias::Backward);
+    let focus = editor
+        .document()
+        .location_for_offset(primary.focus, SnapBias::Backward);
+    editor.set_selection(TextRange::new(anchor, focus));
+}
+
+fn history_snapshot_from_editor(editor: &EditableText) -> HistorySnapshot {
+    HistorySnapshot::new(editor.document().text(), selection_set_from_editor(editor))
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct DemoDocument {
     id: DocumentId,
     editor: EditableText,
     scroll: TextScroll,
+    history: EditHistory,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -169,6 +230,8 @@ struct PaneViewState {
     document_id: DocumentId,
     editor: EditableText,
     scroll: TextScroll,
+    selections: SelectionSet,
+    ime: ImeComposition,
     text_node_id: NodeId,
 }
 
@@ -179,6 +242,8 @@ impl PaneViewState {
             document_id: document.id,
             editor: document.editor.clone(),
             scroll: document.scroll,
+            selections: selection_set_from_editor(&document.editor),
+            ime: ImeComposition::new(),
             text_node_id: NodeId::new(format!("{TEXT_ID}-{}", id.value()))?,
         })
     }
@@ -403,10 +468,14 @@ impl CompletionProvider for DemoCompletionProvider {
 
 impl DemoDocument {
     fn new(id: DocumentId, text: impl Into<String>) -> Self {
+        let editor = EditableText::new(text);
+        let mut history = EditHistory::default();
+        history.mark_saved(&history_snapshot_from_editor(&editor));
         Self {
             id,
-            editor: EditableText::new(text),
+            editor,
             scroll: TextScroll::default(),
+            history,
         }
     }
 
@@ -467,6 +536,7 @@ struct EditorDemoApplication {
     documents: Vec<DemoDocument>,
     active_index: usize,
     engine: TextEngine,
+    syntax_theme: SyntaxTheme,
     text_layouts: HashMap<String, TextLayoutCache>,
     label_cache: TextLabelCache,
     last_editor_bounds: RectI,
@@ -592,6 +662,7 @@ impl EditorDemoApplication {
             documents,
             active_index: 1,
             engine: TextEngine::new(),
+            syntax_theme: SublimeColorSchemeAdapter::parse(M5_SUBLIME_SCHEME)?,
             text_layouts: HashMap::new(),
             label_cache: TextLabelCache::new(),
             last_editor_bounds: RectI::new(0, 0, 1, 1),
@@ -802,10 +873,15 @@ impl EditorDemoApplication {
                 }
             };
             let _ = document_map.insert(document_key, document_id);
+            let mut history = EditHistory::default();
+            if !is_dirty {
+                history.mark_saved(&history_snapshot_from_editor(&editor));
+            }
             documents.push(DemoDocument {
                 id: document_id,
                 editor,
                 scroll: TextScroll::default(),
+                history,
             });
         }
 
@@ -848,6 +924,7 @@ impl EditorDemoApplication {
             } else {
                 view.editor.set_caret(caret);
             }
+            view.selections = selection_set_from_editor(&view.editor);
             view.scroll = TextScroll::new(saved.scroll_x, saved.scroll_y);
             pane_views.push(view);
             let _ = view_map.insert(saved.view_key, view_id);
@@ -1019,6 +1096,137 @@ impl EditorDemoApplication {
         }
     }
 
+    fn active_history_snapshot(&self) -> HistorySnapshot {
+        HistorySnapshot::new(
+            self.active_view().editor.document().text(),
+            self.active_view().selections.clone(),
+        )
+    }
+
+    fn refresh_active_selection_set_from_editor(&mut self) {
+        let selections = selection_set_from_editor(&self.active_view().editor);
+        self.active_view_mut().selections = selections;
+    }
+
+    fn record_active_history(&mut self, before: HistorySnapshot, group: EditGroup) {
+        // `PaneViewState::selections` is authoritative for multiple cursors. Re-reading only the
+        // primary selection from `EditableText` here would silently discard secondary cursors.
+        let after = self.active_history_snapshot();
+        let document_id = self.active_view().document_id;
+        if let Some(document) = self
+            .documents
+            .iter_mut()
+            .find(|document| document.id == document_id)
+        {
+            document.history.record(before, after, group);
+        }
+    }
+
+    fn apply_multi_selection_edit(
+        &mut self,
+        group: EditGroup,
+        edit: impl FnOnce(&str, &SelectionSet) -> luna_editor::MultiEditResult,
+    ) -> bool {
+        let before = self.active_history_snapshot();
+        let result = edit(&before.text, &before.selections);
+        if !result.did_change {
+            return false;
+        }
+        let revision = self.active_view().editor.edit_revision().saturating_add(1);
+        {
+            let view = self.active_view_mut();
+            view.editor.synchronize_document(result.text, revision);
+            view.selections = result.selections;
+            apply_selection_set_to_editor(&mut view.editor, &view.selections);
+            view.ime.cancel();
+        }
+        self.record_active_history(before, group);
+        self.commit_active_view_to_buffer();
+        self.lifecycle_notice = None;
+        self.reveal_caret_on_next_frame = true;
+        true
+    }
+
+    fn apply_history_snapshot(&mut self, snapshot: HistorySnapshot) {
+        let revision = self.active_view().editor.edit_revision().saturating_add(1);
+        {
+            let view = self.active_view_mut();
+            view.editor.synchronize_document(snapshot.text, revision);
+            view.selections = snapshot.selections;
+            apply_selection_set_to_editor(&mut view.editor, &view.selections);
+            view.ime.cancel();
+        }
+        self.commit_active_view_to_buffer();
+        self.reveal_caret_on_next_frame = true;
+    }
+
+    fn undo_active(&mut self) -> bool {
+        let current = self.active_history_snapshot();
+        let document_id = self.active_view().document_id;
+        let snapshot = self
+            .documents
+            .iter_mut()
+            .find(|document| document.id == document_id)
+            .and_then(|document| document.history.undo(&current));
+        if let Some(snapshot) = snapshot {
+            self.apply_history_snapshot(snapshot);
+            self.lifecycle_notice = Some("Undo".to_owned());
+            true
+        } else {
+            false
+        }
+    }
+
+    fn redo_active(&mut self) -> bool {
+        let current = self.active_history_snapshot();
+        let document_id = self.active_view().document_id;
+        let snapshot = self
+            .documents
+            .iter_mut()
+            .find(|document| document.id == document_id)
+            .and_then(|document| document.history.redo(&current));
+        if let Some(snapshot) = snapshot {
+            self.apply_history_snapshot(snapshot);
+            self.lifecycle_notice = Some("Redo".to_owned());
+            true
+        } else {
+            false
+        }
+    }
+
+    fn can_undo_active(&self) -> bool {
+        let document_id = self.active_view().document_id;
+        self.documents
+            .iter()
+            .find(|document| document.id == document_id)
+            .is_some_and(|document| document.history.can_undo())
+    }
+
+    fn can_redo_active(&self) -> bool {
+        let document_id = self.active_view().document_id;
+        self.documents
+            .iter()
+            .find(|document| document.id == document_id)
+            .is_some_and(|document| document.history.can_redo())
+    }
+
+    fn add_cursor_vertical(&mut self, delta: i32) -> bool {
+        let text = self.active_view().editor.document().text().to_owned();
+        let changed = self
+            .active_view_mut()
+            .selections
+            .add_cursor_vertical(&text, delta);
+        if changed {
+            let selections = self.active_view().selections.clone();
+            apply_selection_set_to_editor(&mut self.active_view_mut().editor, &selections);
+            self.lifecycle_notice = Some(format!(
+                "{} cursors active",
+                self.active_view().selections.len()
+            ));
+        }
+        changed
+    }
+
     fn synchronize_document_views(&mut self, document_id: DocumentId) {
         let Some(document) = self
             .documents
@@ -1039,6 +1247,8 @@ impl EditorDemoApplication {
             {
                 view.editor.synchronize_document(text.clone(), revision);
             }
+            view.selections = view.selections.normalized(&text);
+            apply_selection_set_to_editor(&mut view.editor, &view.selections);
         }
     }
 
@@ -1071,6 +1281,8 @@ impl EditorDemoApplication {
             {
                 sibling.editor.synchronize_document(text.clone(), revision);
             }
+            sibling.selections = sibling.selections.normalized(&text);
+            apply_selection_set_to_editor(&mut sibling.editor, &sibling.selections);
         }
     }
 
@@ -1108,6 +1320,8 @@ impl EditorDemoApplication {
                 document_id,
                 editor: source.editor,
                 scroll: source.scroll,
+                selections: source.selections,
+                ime: ImeComposition::new(),
                 text_node_id: NodeId::new(format!("{TEXT_ID}-{}", view_id.value()))?,
             }
         } else {
@@ -1596,10 +1810,12 @@ impl EditorDemoApplication {
                 "Edit",
                 vec![
                     MenuItem::command(
-                        MenuCommand::new("undo", "Undo", "Ctrl+Z").with_enabled(false),
+                        MenuCommand::new("undo", "Undo", "Ctrl+Z")
+                            .with_enabled(self.can_undo_active()),
                     ),
                     MenuItem::command(
-                        MenuCommand::new("redo", "Redo", "Ctrl+Shift+Z").with_enabled(false),
+                        MenuCommand::new("redo", "Redo", "Ctrl+Shift+Z")
+                            .with_enabled(self.can_redo_active()),
                     ),
                     MenuItem::Separator,
                     MenuItem::command(MenuCommand::new("cut", "Cut", "Ctrl+X").with_enabled(false)),
@@ -1618,6 +1834,21 @@ impl EditorDemoApplication {
                         MenuCommand::new("select-all", "Select All", "Ctrl+A")
                             .with_enabled(!self.active_view().editor.document().text().is_empty())
                             .with_mnemonic('a'),
+                    ),
+                    MenuItem::Separator,
+                    MenuItem::command(MenuCommand::new(
+                        "add-cursor-above",
+                        "Add Cursor Above",
+                        "Ctrl+Shift+Up",
+                    )),
+                    MenuItem::command(MenuCommand::new(
+                        "add-cursor-below",
+                        "Add Cursor Below",
+                        "Ctrl+Shift+Down",
+                    )),
+                    MenuItem::command(
+                        MenuCommand::new("clear-secondary-cursors", "Single Cursor", "Escape")
+                            .with_enabled(self.active_view().selections.is_multiple()),
                     ),
                 ],
             )
@@ -1991,25 +2222,75 @@ impl EditorDemoApplication {
             .documents
             .iter()
             .find(|document| document.id == view.document_id)?;
-        Some(TextView::new(
-            view.text_node_id.clone(),
-            bounds,
-            view.editor.document().clone(),
-            layout,
-            view.editor.caret(),
-            view.editor.selection(),
-            view.scroll,
-            TextViewStyle::from_theme(self.theme),
-            format!("Editor for {}", document.title(&self.document_registry)),
-            self.text_is_focused
-                && self.pane_tree.focused_view() == view_id
-                && self.palette.is_none()
-                && self.completion.is_none()
-                && self.find.is_none()
-                && self.tab_context_menu.is_none()
-                && !self.menu.is_open(),
-            true,
-        ))
+        let primary = view.selections.primary();
+        let additional = view
+            .selections
+            .selections()
+            .iter()
+            .copied()
+            .filter(|selection| *selection != primary)
+            .map(|selection| {
+                TextRange::new(
+                    view.editor
+                        .document()
+                        .location_for_offset(selection.anchor, SnapBias::Backward),
+                    view.editor
+                        .document()
+                        .location_for_offset(selection.focus, SnapBias::Backward),
+                )
+            })
+            .collect::<Vec<_>>();
+        let decorations = KeywordSyntaxProvider::rust_demo()
+            .snapshot(view.editor.document().text(), view.editor.edit_revision())
+            .map(|snapshot| self.syntax_theme.resolve(&snapshot))
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|span| {
+                let background = span.style.background;
+                let underline = span
+                    .style
+                    .underline
+                    .then_some(span.style.foreground.unwrap_or(self.theme.foreground));
+                if background.is_none() && underline.is_none() {
+                    return None;
+                }
+                Some(TextStyleDecoration::new(
+                    TextRange::new(
+                        view.editor
+                            .document()
+                            .location_for_offset(span.range.start, SnapBias::Backward),
+                        view.editor
+                            .document()
+                            .location_for_offset(span.range.end, SnapBias::Forward),
+                    ),
+                    background,
+                    underline,
+                ))
+            })
+            .collect::<Vec<_>>();
+        Some(
+            TextView::new(
+                view.text_node_id.clone(),
+                bounds,
+                view.editor.document().clone(),
+                layout,
+                view.editor.caret(),
+                view.editor.selection(),
+                view.scroll,
+                TextViewStyle::from_theme(self.theme),
+                format!("Editor for {}", document.title(&self.document_registry)),
+                self.text_is_focused
+                    && self.pane_tree.focused_view() == view_id
+                    && self.palette.is_none()
+                    && self.completion.is_none()
+                    && self.find.is_none()
+                    && self.tab_context_menu.is_none()
+                    && !self.menu.is_open(),
+                true,
+            )
+            .with_additional_selections(additional)
+            .with_decorations(decorations),
+        )
     }
 
     fn current_text_view(&self) -> Option<TextView> {
@@ -2058,12 +2339,25 @@ impl EditorDemoApplication {
         let key = view.stable_key();
         let revision = view.editor.edit_revision();
         let document = view.editor.document().clone();
+        let syntax = KeywordSyntaxProvider::rust_demo().snapshot(document.text(), revision)?;
+        let color_spans = self
+            .syntax_theme
+            .resolve(&syntax)
+            .into_iter()
+            .filter_map(|span| {
+                span.style
+                    .foreground
+                    .map(|foreground| TextColorSpan::new(span.range, foreground))
+            })
+            .collect::<Vec<_>>();
         let cache = self.text_layouts.entry(key).or_default();
         Ok(cache
-            .update(
+            .update_styled(
                 &mut self.engine,
                 &document,
                 revision,
+                1,
+                &color_spans,
                 request,
                 scroll_y,
                 viewport_height,
@@ -2632,17 +2926,21 @@ impl EditorDemoApplication {
             return HostControl::Invalidate(InvalidationClass::TextOverlay);
         }
         if let Some(replacement) = replacement {
-            let document = self.active_view().editor.document().clone();
-            let anchor = document.location_for_offset(replacement.start, SnapBias::Backward);
-            let focus = document.location_for_offset(replacement.end, SnapBias::Forward);
-            self.active_view_mut()
-                .editor
-                .set_selection(TextRange::new(anchor, focus));
+            let text = self.active_view().editor.document().text();
+            let Ok(selections) = SelectionSet::new(
+                text,
+                [ByteSelection::new(replacement.start, replacement.end)],
+                0,
+            ) else {
+                return HostControl::Invalidate(InvalidationClass::TextOverlay);
+            };
+            self.active_view_mut().selections = selections;
         }
-        let result = self.active_view_mut().editor.insert_text(&item.insert_text);
-        if result.did_change {
-            self.commit_active_view_to_buffer();
-            self.reveal_caret_on_next_frame = true;
+        let changed = self
+            .apply_multi_selection_edit(EditGroup::Replacement, |document, selections| {
+                selections.replace_all(document, &item.insert_text)
+            });
+        if changed {
             self.lifecycle_notice = Some(format!("Inserted completion {}", item.label));
             HostControl::Invalidate(InvalidationClass::TextLayout)
         } else {
@@ -2699,17 +2997,17 @@ impl EditorDemoApplication {
             .find
             .as_ref()
             .map_or_else(String::new, |find| find.replacement.clone());
-        let document = self.active_view().editor.document().clone();
-        let anchor = document.location_for_offset(range.start, SnapBias::Backward);
-        let focus = document.location_for_offset(range.end, SnapBias::Forward);
-        self.active_view_mut()
-            .editor
-            .set_selection(TextRange::new(anchor, focus));
-        let result = self.active_view_mut().editor.insert_text(&replacement);
-        if result.did_change {
-            self.commit_active_view_to_buffer();
+        let text = self.active_view().editor.document().text();
+        let Ok(selections) =
+            SelectionSet::new(text, [ByteSelection::new(range.start, range.end)], 0)
+        else {
+            return;
+        };
+        self.active_view_mut().selections = selections;
+        if self.apply_multi_selection_edit(EditGroup::Replacement, |document, selections| {
+            selections.replace_all(document, &replacement)
+        }) {
             self.refresh_find_matches();
-            self.reveal_caret_on_next_frame = true;
             self.lifecycle_notice = Some("Replaced current match".to_owned());
         }
     }
@@ -2724,20 +3022,21 @@ impl EditorDemoApplication {
             .find
             .as_ref()
             .map_or_else(String::new, |find| find.replacement.clone());
-        let mut text = self.active_view().editor.document().text().to_owned();
         let count = self.find_matches.len();
-        for range in self.find_matches.iter().rev() {
-            text.replace_range(range.clone(), &replacement);
-        }
-        let end = self.active_view().editor.document().end_location();
-        self.active_view_mut()
-            .editor
-            .set_selection(TextRange::new(TextLocation::default(), end));
-        let result = self.active_view_mut().editor.insert_text(&text);
-        if result.did_change {
-            self.commit_active_view_to_buffer();
+        let selections = self
+            .find_matches
+            .iter()
+            .map(|range| ByteSelection::new(range.start, range.end))
+            .collect::<Vec<_>>();
+        let text = self.active_view().editor.document().text();
+        let Ok(selections) = SelectionSet::new(text, selections, 0) else {
+            return;
+        };
+        self.active_view_mut().selections = selections;
+        if self.apply_multi_selection_edit(EditGroup::Replacement, |document, selections| {
+            selections.replace_all(document, &replacement)
+        }) {
             self.refresh_find_matches();
-            self.reveal_caret_on_next_frame = true;
             self.lifecycle_notice = Some(format!("Replaced {count} matches"));
         }
     }
@@ -2880,6 +3179,20 @@ impl EditorDemoApplication {
                 self.focus_relative_pane(-1);
                 InvalidationClass::WidgetLayout
             }
+            "undo" if self.undo_active() => InvalidationClass::TextLayout,
+            "redo" if self.redo_active() => InvalidationClass::TextLayout,
+            "undo" | "redo" => return HostControl::Continue,
+            "add-cursor-above" if self.add_cursor_vertical(-1) => InvalidationClass::TextOverlay,
+            "add-cursor-below" if self.add_cursor_vertical(1) => InvalidationClass::TextOverlay,
+            "add-cursor-above" | "add-cursor-below" => return HostControl::Continue,
+            "clear-secondary-cursors" if self.active_view().selections.is_multiple() => {
+                self.active_view_mut().selections.clear_secondary();
+                let selections = self.active_view().selections.clone();
+                apply_selection_set_to_editor(&mut self.active_view_mut().editor, &selections);
+                self.lifecycle_notice = Some("Single cursor".to_owned());
+                InvalidationClass::TextOverlay
+            }
+            "clear-secondary-cursors" => return HostControl::Continue,
             "find" | "replace" => return self.open_find(),
             "find-next" if self.find.is_some() && !self.find_matches.is_empty() => {
                 self.select_find_match(1);
@@ -2904,6 +3217,7 @@ impl EditorDemoApplication {
                 self.active_view_mut()
                     .editor
                     .set_selection(TextRange::new(TextLocation::default(), end));
+                self.refresh_active_selection_set_from_editor();
                 self.reveal_caret_on_next_frame = true;
                 InvalidationClass::TextOverlay
             }
@@ -2930,7 +3244,7 @@ impl EditorDemoApplication {
             }
             "runtime-status" => {
                 self.lifecycle_notice = Some(format!(
-                    "M4 runtime: {} panes, {} views, {} documents",
+                    "M5 runtime: {} panes, {} views, {} documents",
                     self.pane_tree.leaves().len(),
                     self.pane_views.len(),
                     self.documents.len(),
@@ -2954,10 +3268,13 @@ impl EditorDemoApplication {
         let id = self
             .document_registry
             .create_untitled(editor.edit_revision());
+        let mut history = EditHistory::default();
+        history.mark_saved(&history_snapshot_from_editor(&editor));
         self.documents.push(DemoDocument {
             id,
             editor,
             scroll: TextScroll::default(),
+            history,
         });
         self.active_index = self.documents.len().saturating_sub(1);
         self.add_document_to_focused_pane(id);
@@ -3444,10 +3761,13 @@ impl EditorDemoApplication {
                     let replacement_id = self
                         .document_registry
                         .create_untitled(editor.edit_revision());
+                    let mut history = EditHistory::default();
+                    history.mark_saved(&history_snapshot_from_editor(&editor));
                     self.documents.push(DemoDocument {
                         id: replacement_id,
                         editor,
                         scroll: TextScroll::default(),
+                        history,
                     });
                     replacement_id
                 };
@@ -3738,10 +4058,13 @@ impl EditorDemoApplication {
             Some(storage_snapshot),
         ) {
             OpenFileOutcome::Opened(id) => {
+                let mut history = EditHistory::default();
+                history.mark_saved(&history_snapshot_from_editor(&editor));
                 self.documents.push(DemoDocument {
                     id,
                     editor,
                     scroll: TextScroll::default(),
+                    history,
                 });
                 self.active_index = self.documents.len().saturating_sub(1);
                 self.add_document_to_focused_pane_with_mode(id, as_preview);
@@ -3873,6 +4196,14 @@ impl EditorDemoApplication {
             self.lifecycle_notice = Some(format!("Save As registration failed: {error}"));
             return false;
         }
+        let saved_snapshot = self.active_history_snapshot();
+        if let Some(document) = self
+            .documents
+            .iter_mut()
+            .find(|document| document.id == document_id)
+        {
+            document.history.mark_saved(&saved_snapshot);
+        }
         self.recent_files
             .record(written.identity().clone(), title.clone());
         self.persist_session();
@@ -3903,6 +4234,14 @@ impl EditorDemoApplication {
             record.mark_saved(edit_revision, Some(written.snapshot()));
         }
         let title = file_title(written.identity());
+        let saved_snapshot = self.active_history_snapshot();
+        if let Some(document) = self
+            .documents
+            .iter_mut()
+            .find(|document| document.id == document_id)
+        {
+            document.history.mark_saved(&saved_snapshot);
+        }
         self.recent_files
             .record(written.identity().clone(), title.clone());
         self.persist_session();
@@ -4050,6 +4389,10 @@ impl EditorDemoApplication {
             let document = self.active_document_mut();
             document.editor = editor;
             document.scroll = TextScroll::default();
+            document.history.clear();
+            document
+                .history
+                .mark_saved(&history_snapshot_from_editor(&document.editor));
         }
         self.synchronize_document_views(document_id);
         for view in self
@@ -4302,6 +4645,7 @@ impl EditorDemoApplication {
         self.active_view_mut()
             .editor
             .set_selection(TextRange::new(anchor, focus));
+        self.refresh_active_selection_set_from_editor();
         self.reveal_caret_on_next_frame = true;
     }
 
@@ -4472,6 +4816,35 @@ impl EditorDemoApplication {
     }
 
     fn handle_editor_key(&mut self, key: NamedKey, modifiers: Modifiers) -> HostControl {
+        let multi_edit = match key {
+            NamedKey::Backspace => Some((EditGroup::Deletion, 0_u8)),
+            NamedKey::Delete => Some((EditGroup::Deletion, 1_u8)),
+            NamedKey::Enter => Some((EditGroup::Typing, 2_u8)),
+            _ => None,
+        };
+        if let Some((group, operation)) = multi_edit {
+            let changed = match operation {
+                0 => self.apply_multi_selection_edit(group, |text, selections| {
+                    selections.delete_backward(text)
+                }),
+                1 => self.apply_multi_selection_edit(group, |text, selections| {
+                    selections.delete_forward(text)
+                }),
+                _ => self.apply_multi_selection_edit(group, |text, selections| {
+                    selections.replace_all(text, "\n")
+                }),
+            };
+            return if changed {
+                HostControl::Invalidate(InvalidationClass::TextLayout)
+            } else {
+                HostControl::Continue
+            };
+        }
+        if self.active_view().selections.is_multiple() {
+            self.active_view_mut().selections.clear_secondary();
+            let selections = self.active_view().selections.clone();
+            apply_selection_set_to_editor(&mut self.active_view_mut().editor, &selections);
+        }
         let extending = modifiers.contains(Modifiers::SHIFT);
         let viewport_height = self.text_viewport_size(self.last_editor_bounds).height;
         let maximum_scroll_y = self
@@ -4507,17 +4880,8 @@ impl EditorDemoApplication {
                 self.active_view_mut().editor.move_to_line_end(extending);
                 InvalidationClass::TextOverlay
             }
-            NamedKey::Backspace => {
-                let _ = self.active_view_mut().editor.delete_backward();
-                InvalidationClass::TextLayout
-            }
-            NamedKey::Delete => {
-                let _ = self.active_view_mut().editor.delete_forward();
-                InvalidationClass::TextLayout
-            }
-            NamedKey::Enter => {
-                let _ = self.active_view_mut().editor.insert_newline();
-                InvalidationClass::TextLayout
+            NamedKey::Backspace | NamedKey::Delete | NamedKey::Enter => {
+                return HostControl::Continue;
             }
             NamedKey::PageUp => {
                 let amount = i32::try_from(viewport_height).unwrap_or(i32::MAX);
@@ -4550,6 +4914,9 @@ impl EditorDemoApplication {
         };
         if !changed {
             return HostControl::Continue;
+        }
+        if invalidation == InvalidationClass::TextOverlay {
+            self.refresh_active_selection_set_from_editor();
         }
         if invalidation == InvalidationClass::TextLayout {
             self.commit_active_view_to_buffer();
@@ -4698,6 +5065,9 @@ impl EditorDemoApplication {
             self.active_view_mut().editor.set_caret(location);
             self.drag_anchor = Some(location);
         }
+        let selections = selection_set_from_editor(&self.active_view().editor);
+        self.active_view_mut().selections = selections;
+        self.active_view_mut().ime.cancel();
         self.text_is_focused = true;
         self.reveal_caret_on_next_frame = true;
         previous_caret != self.active_view().editor.caret()
@@ -5207,6 +5577,25 @@ impl NativeApplication for EditorDemoApplication {
         }
     }
 
+    fn accepts_text_input(&self) -> bool {
+        self.text_is_focused
+            && self.palette.is_none()
+            && self.find.is_none()
+            && self.tab_context_menu.is_none()
+            && !self.menu.is_open()
+    }
+
+    fn ime_cursor_area(&self) -> Option<RectI> {
+        self.current_text_view()
+            .and_then(|view| view.caret_bounds())
+            .or(Some(RectI::new(
+                self.last_editor_bounds.x.saturating_add(48),
+                self.last_editor_bounds.y.saturating_add(24),
+                2,
+                22,
+            )))
+    }
+
     fn build_frame(&mut self, viewport: RectI) -> Result<UiFrame, ApplicationError> {
         self.viewport = viewport;
         let shell = self.create_shell()?;
@@ -5292,6 +5681,49 @@ impl NativeApplication for EditorDemoApplication {
         }
         self.append_shell_labels(&shell, &mut display_list)?;
         self.append_pane_labels(&pane_surface, &mut display_list)?;
+        let preedit = self
+            .active_view()
+            .ime
+            .is_active()
+            .then(|| self.active_view().ime.preedit().to_owned())
+            .filter(|text| !text.is_empty());
+        if let Some(preedit) = preedit {
+            let anchor = self.ime_cursor_area().unwrap_or(self.last_editor_bounds);
+            let estimated_width = u32::try_from(preedit.chars().count())
+                .unwrap_or(u32::MAX)
+                .saturating_mul(9)
+                .saturating_add(16)
+                .clamp(40, 360);
+            let bounds = RectI::new(
+                anchor.x,
+                anchor
+                    .y
+                    .saturating_add(i32::try_from(anchor.height).unwrap_or(i32::MAX)),
+                estimated_width,
+                26,
+            );
+            display_list.fill_rect(bounds, self.theme.panel);
+            display_list.fill_rect(
+                RectI::new(
+                    bounds.x,
+                    bounds
+                        .y
+                        .saturating_add(i32::try_from(bounds.height).unwrap_or(i32::MAX))
+                        .saturating_sub(2),
+                    bounds.width,
+                    2,
+                ),
+                self.theme.accent,
+            );
+            self.append_label(
+                &mut display_list,
+                "m5-ime-preedit",
+                &preedit,
+                bounds.inset(InsetsI::symmetric(8, 4)),
+                TextAlignment::Leading,
+                14.0,
+            )?;
+        }
         debug_assert!(self.transient_surface_count() <= 1);
 
         if let Some(state) = self.palette.clone() {
@@ -5506,6 +5938,23 @@ impl NativeApplication for EditorDemoApplication {
                         && !keyboard.modifiers.contains(Modifiers::ALT));
                 if command_modified {
                     let command = match &keyboard.key {
+                        Key::Character(value)
+                            if value.eq_ignore_ascii_case("z")
+                                && keyboard.modifiers.contains(Modifiers::SHIFT) =>
+                        {
+                            Some("redo")
+                        }
+                        Key::Character(value) if value.eq_ignore_ascii_case("z") => Some("undo"),
+                        Key::Named(NamedKey::ArrowUp)
+                            if keyboard.modifiers.contains(Modifiers::SHIFT) =>
+                        {
+                            Some("add-cursor-above")
+                        }
+                        Key::Named(NamedKey::ArrowDown)
+                            if keyboard.modifiers.contains(Modifiers::SHIFT) =>
+                        {
+                            Some("add-cursor-below")
+                        }
                         Key::Character(value) if value == " " => Some("show-completions"),
                         Key::Character(value) if value.eq_ignore_ascii_case("p") => {
                             Some("command-palette")
@@ -5574,6 +6023,9 @@ impl NativeApplication for EditorDemoApplication {
                     });
                 }
                 if keyboard.key == Key::Named(NamedKey::Escape) {
+                    if self.active_view().selections.is_multiple() {
+                        return self.execute_command("clear-secondary-cursors");
+                    }
                     return HostControl::Exit;
                 }
                 if let Key::Named(key) = &keyboard.key {
@@ -5587,11 +6039,9 @@ impl NativeApplication for EditorDemoApplication {
                     && !text.is_empty()
                     && !text.chars().all(char::is_control)
                 {
-                    let result = self.active_view_mut().editor.insert_text(text);
-                    if result.did_change {
-                        self.commit_active_view_to_buffer();
-                        self.lifecycle_notice = None;
-                        self.reveal_caret_on_next_frame = true;
+                    if self.apply_multi_selection_edit(EditGroup::Typing, |document, selections| {
+                        selections.replace_all(document, text)
+                    }) {
                         return HostControl::Invalidate(InvalidationClass::TextLayout);
                     }
                 }
@@ -5617,16 +6067,74 @@ impl NativeApplication for EditorDemoApplication {
                     self.refresh_find_matches();
                     InvalidationClass::TextOverlay
                 } else {
-                    let result = self.active_view_mut().editor.insert_text(&text);
-                    if !result.did_change {
+                    if !self
+                        .apply_multi_selection_edit(EditGroup::Typing, |document, selections| {
+                            selections.replace_all(document, &text)
+                        })
+                    {
                         return HostControl::Continue;
                     }
-                    self.commit_active_view_to_buffer();
-                    self.lifecycle_notice = None;
-                    self.reveal_caret_on_next_frame = true;
                     InvalidationClass::TextLayout
                 };
                 return HostControl::Invalidate(invalidation);
+            }
+            InputEvent::Ime(ImeEvent::Enabled) => {}
+            InputEvent::Ime(ImeEvent::Disabled) => {
+                if self.active_view().ime.is_active() {
+                    self.active_view_mut().ime.cancel();
+                    return HostControl::Invalidate(InvalidationClass::TextOverlay);
+                }
+            }
+            InputEvent::Ime(ImeEvent::Preedit {
+                text,
+                selected_range,
+            }) => {
+                if self.menu.is_open()
+                    || self.tab_context_menu.is_some()
+                    || self.palette.is_some()
+                    || self.find.is_some()
+                {
+                    return HostControl::Continue;
+                }
+                let replacement = self.active_view().selections.primary().normalized_range();
+                self.active_view_mut()
+                    .ime
+                    .update(replacement, text, selected_range);
+                return HostControl::Invalidate(InvalidationClass::TextOverlay);
+            }
+            InputEvent::Ime(ImeEvent::Commit(text)) => {
+                let commit = self.active_view_mut().ime.commit(text.clone());
+                let changed = if let Some(commit) = commit {
+                    let replacement = SelectionSet::new(
+                        self.active_view().editor.document().text(),
+                        [ByteSelection::new(
+                            commit.replacement.start,
+                            commit.replacement.end,
+                        )],
+                        0,
+                    );
+                    match replacement {
+                        Ok(replacement) => {
+                            self.active_view_mut().selections = replacement;
+                            self.apply_multi_selection_edit(
+                                EditGroup::Ime,
+                                |document, selections| {
+                                    selections.replace_all(document, &commit.text)
+                                },
+                            )
+                        }
+                        Err(_) => false,
+                    }
+                } else {
+                    self.apply_multi_selection_edit(EditGroup::Ime, |document, selections| {
+                        selections.replace_all(document, &text)
+                    })
+                };
+                return if changed {
+                    HostControl::Invalidate(InvalidationClass::TextLayout)
+                } else {
+                    HostControl::Continue
+                };
             }
             InputEvent::Pointer(pointer) => {
                 if pointer.kind == PointerEventKind::Pressed(PointerButton::Primary)
@@ -6265,7 +6773,45 @@ impl NativeApplication for EditorDemoApplication {
             self.dismiss_completion();
             self.find = None;
             self.text_is_focused = true;
-            return HostControl::Invalidate(InvalidationClass::Accessibility);
+            match (&request.kind, &request.data) {
+                (
+                    AccessibilityActionKind::ReplaceSelectedText,
+                    AccessibilityActionData::Value(value),
+                ) => {
+                    let changed = self
+                        .apply_multi_selection_edit(EditGroup::Command, |document, selections| {
+                            selections.replace_all(document, value)
+                        });
+                    return if changed {
+                        HostControl::Invalidate(InvalidationClass::TextLayout)
+                    } else {
+                        HostControl::Continue
+                    };
+                }
+                (AccessibilityActionKind::SetValue, AccessibilityActionData::Value(value)) => {
+                    let text_length = self.active_view().editor.document().text().len();
+                    if let Ok(selections) = SelectionSet::new(
+                        self.active_view().editor.document().text(),
+                        [ByteSelection::new(0, text_length)],
+                        0,
+                    ) {
+                        self.active_view_mut().selections = selections;
+                        let changed = self.apply_multi_selection_edit(
+                            EditGroup::Command,
+                            |document, selections| selections.replace_all(document, value),
+                        );
+                        return if changed {
+                            HostControl::Invalidate(InvalidationClass::TextLayout)
+                        } else {
+                            HostControl::Continue
+                        };
+                    }
+                    return HostControl::Continue;
+                }
+                _ => {
+                    return HostControl::Invalidate(InvalidationClass::Accessibility);
+                }
+            }
         }
 
         if let Ok(shell) = self.create_shell() {
@@ -6313,14 +6859,18 @@ impl NativeApplication for EditorDemoApplication {
 
 #[cfg(test)]
 mod tests {
-    use super::EditorDemoApplication;
+    use super::{EditorDemoApplication, apply_selection_set_to_editor};
     use luna_core::{PointI, RectI};
     use luna_document_services::{
         DirtyCloseChoice, MemoryTextFileService, SaveConflictChoice, ScriptedDialogService,
         TextFileService, WorkspaceDeleteChoice, WorkspaceDirtyDeleteChoice,
     };
     use luna_documents::{DocumentRecord, DocumentSource, ExternalState};
-    use luna_host_winit::{AccessibilityActionKind, AccessibilityActionRequest, NativeApplication};
+    use luna_editor::{ByteSelection, EditGroup, SelectionSet};
+    use luna_host_winit::{
+        AccessibilityActionData, AccessibilityActionKind, AccessibilityActionRequest,
+        NativeApplication,
+    };
     use luna_input::{InputEvent, Modifiers, PointerButton, PointerEvent, PointerEventKind};
     use luna_panes::PaneAxis;
     use luna_session::{MemorySessionStore, SessionRecentFile, SessionState, SessionWorkspace};
@@ -7110,6 +7660,7 @@ mod tests {
         let _ = application.handle_accessibility_action(AccessibilityActionRequest {
             target: Some(source_frame.node_id.clone()),
             kind: AccessibilityActionKind::Focus,
+            data: AccessibilityActionData::None,
         });
 
         assert_eq!(application.documents.len(), document_count);
@@ -7851,12 +8402,14 @@ mod tests {
         let _ = application.handle_accessibility_action(AccessibilityActionRequest {
             target: Some(tab_node),
             kind: AccessibilityActionKind::Click,
+            data: AccessibilityActionData::None,
         });
         assert_eq!(application.pane_tree.focused_view(), second_view);
 
         let _ = application.handle_accessibility_action(AccessibilityActionRequest {
             target: Some(close_node),
             kind: AccessibilityActionKind::Click,
+            data: AccessibilityActionData::None,
         });
         assert_eq!(application.pane_tree.leaves().len(), 1);
         Ok(())
@@ -8146,6 +8699,65 @@ mod tests {
             application.find.as_ref().map(|find| find.selected_match),
             Some(2)
         );
+        Ok(())
+    }
+
+    #[test]
+    fn multi_cursor_typing_and_history_round_trip() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let mut application = test_application(&files, &dialogs)?;
+        application.new_document();
+        {
+            let view = application.active_view_mut();
+            view.editor.synchronize_document("one\ntwo", 1);
+            view.selections = SelectionSet::new(
+                view.editor.document().text(),
+                [ByteSelection::caret(0), ByteSelection::caret(4)],
+                1,
+            )?;
+            apply_selection_set_to_editor(&mut view.editor, &view.selections);
+        }
+        application.commit_active_view_to_buffer();
+
+        assert!(
+            application
+                .apply_multi_selection_edit(EditGroup::Typing, |text, selections| selections
+                    .replace_all(text, "> "),)
+        );
+        assert_eq!(
+            application.active_view().editor.document().text(),
+            "> one\n> two"
+        );
+        assert_eq!(application.active_view().selections.len(), 2);
+
+        assert!(application.undo_active());
+        assert_eq!(
+            application.active_view().editor.document().text(),
+            "one\ntwo"
+        );
+        assert!(application.redo_active());
+        assert_eq!(
+            application.active_view().editor.document().text(),
+            "> one\n> two"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn accessibility_value_replacement_uses_transaction_history() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let mut application = test_application(&files, &dialogs)?;
+        let text_node = application.active_view().text_node_id.clone();
+        let _ = application.handle_accessibility_action(AccessibilityActionRequest {
+            target: Some(text_node),
+            kind: AccessibilityActionKind::SetValue,
+            data: AccessibilityActionData::Value("accessible text".to_owned()),
+        });
+        assert_eq!(
+            application.active_view().editor.document().text(),
+            "accessible text"
+        );
+        assert!(application.can_undo_active());
         Ok(())
     }
 }

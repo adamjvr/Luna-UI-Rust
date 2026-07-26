@@ -53,6 +53,27 @@ pub enum AccessibilityRole {
     Dialog,
 }
 
+/// Product-neutral assistive-technology action exposed by a semantic node.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum AccessibilityAction {
+    /// Activate the control's default behavior.
+    Click,
+    /// Move semantic and keyboard focus to the node.
+    Focus,
+    /// Replace the currently selected editable text.
+    ReplaceSelectedText,
+    /// Change the editable text selection.
+    SetTextSelection,
+    /// Replace the complete value exposed by the node.
+    SetValue,
+    /// Open the node's context menu.
+    ShowContextMenu,
+    /// Increment a range-like value.
+    Increment,
+    /// Decrement a range-like value.
+    Decrement,
+}
+
 /// UTF-8 byte range exposed by a text-bearing semantic node.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct AccessibilityTextRange {
@@ -102,6 +123,8 @@ pub struct AccessibilityNode {
     pub selected_range: Option<AccessibilityTextRange>,
     /// Portion of the complete text range currently visible.
     pub visible_range: Option<AccessibilityTextRange>,
+    /// Explicit actions native assistive technology may request.
+    pub actions: Vec<AccessibilityAction>,
 }
 
 impl AccessibilityNode {
@@ -122,6 +145,7 @@ impl AccessibilityNode {
             caret_range: None,
             selected_range: None,
             visible_range: None,
+            actions: Vec::new(),
         }
     }
 
@@ -164,6 +188,16 @@ impl AccessibilityNode {
     #[must_use]
     pub const fn with_editable(mut self, is_editable: bool) -> Self {
         self.is_editable = is_editable;
+        self
+    }
+
+    /// Sets the explicit assistive-technology actions supported by this node.
+    #[must_use]
+    pub fn with_actions(mut self, actions: impl IntoIterator<Item = AccessibilityAction>) -> Self {
+        let mut actions = actions.into_iter().collect::<Vec<_>>();
+        actions.sort_unstable();
+        actions.dedup();
+        self.actions = actions;
         self
     }
 
@@ -285,8 +319,25 @@ fn accessibility_fingerprint(root: &NodeId, nodes: &BTreeMap<NodeId, Accessibili
         fingerprint.write_optional_text_range(node.caret_range);
         fingerprint.write_optional_text_range(node.selected_range);
         fingerprint.write_optional_text_range(node.visible_range);
+        fingerprint.write_usize(node.actions.len());
+        for action in &node.actions {
+            fingerprint.write_u8(accessibility_action_tag(*action));
+        }
     }
     fingerprint.finish()
+}
+
+const fn accessibility_action_tag(action: AccessibilityAction) -> u8 {
+    match action {
+        AccessibilityAction::Click => 0,
+        AccessibilityAction::Focus => 1,
+        AccessibilityAction::ReplaceSelectedText => 2,
+        AccessibilityAction::SetTextSelection => 3,
+        AccessibilityAction::SetValue => 4,
+        AccessibilityAction::ShowContextMenu => 5,
+        AccessibilityAction::Increment => 6,
+        AccessibilityAction::Decrement => 7,
+    }
 }
 
 const fn accessibility_role_tag(role: AccessibilityRole) -> u8 {
@@ -459,7 +510,7 @@ impl Error for AccessibilityTreeError {}
 
 #[cfg(test)]
 mod tests {
-    use super::{AccessibilityNode, AccessibilityRole, AccessibilityTree};
+    use super::{AccessibilityAction, AccessibilityNode, AccessibilityRole, AccessibilityTree};
     use luna_core::{NodeId, RectI};
     use std::error::Error;
 
@@ -510,6 +561,31 @@ mod tests {
 
         assert_eq!(first.fingerprint(), second.fingerprint());
         assert_ne!(first.fingerprint(), changed.fingerprint());
+        Ok(())
+    }
+
+    #[test]
+    fn explicit_actions_participate_in_semantic_fingerprint() -> Result<(), Box<dyn Error>> {
+        let root = NodeId::new("root")?;
+        let without = AccessibilityTree::new(
+            root.clone(),
+            [AccessibilityNode::new(
+                root.clone(),
+                AccessibilityRole::TextArea,
+                RectI::default(),
+            )],
+        )?;
+        let with = AccessibilityTree::new(
+            root.clone(),
+            [
+                AccessibilityNode::new(root, AccessibilityRole::TextArea, RectI::default())
+                    .with_actions([
+                        AccessibilityAction::Focus,
+                        AccessibilityAction::ReplaceSelectedText,
+                    ]),
+            ],
+        )?;
+        assert_ne!(without.fingerprint(), with.fingerprint());
         Ok(())
     }
 }

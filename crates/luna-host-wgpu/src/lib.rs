@@ -7,14 +7,14 @@
 //! input, command, or accessibility code. Surface invalidation and device-loss callbacks rebuild
 //! GPU resources while retaining application state and stable semantic identities.
 
-use accesskit::Action;
+use accesskit::{Action, ActionData};
 use accesskit_winit::{Adapter as AccessKitAdapter, Event as AccessKitEvent};
 use luna_accessibility_accesskit::AccessKitBridge;
 use luna_core::{RectI, SizeI};
 use luna_host_core::{FrameRuntime, InvalidationReason};
 use luna_host_winit::{
-    AccessibilityActionKind, AccessibilityActionRequest, HostControl, NativeApplication,
-    WindowConfig, WinitInputTranslator,
+    AccessibilityActionData, AccessibilityActionKind, AccessibilityActionRequest, HostControl,
+    NativeApplication, WindowConfig, WinitInputTranslator,
 };
 use luna_render_wgpu::{WgpuRenderError, WgpuRenderStats, WgpuRenderer};
 use luna_ui::UiFrame;
@@ -24,7 +24,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
-use winit::dpi::LogicalSize;
+use winit::dpi::{LogicalPosition, LogicalSize};
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::window::{Window, WindowId};
@@ -320,7 +320,7 @@ impl<A: NativeApplication> WgpuHost<A> {
                 window.as_ref(),
                 self.proxy.clone(),
             );
-            window.set_ime_allowed(true);
+            window.set_ime_allowed(self.application.accepts_text_input());
             self.accesskit_adapter = Some(adapter);
             self.window = Some(window);
         }
@@ -432,6 +432,13 @@ impl<A: NativeApplication> WgpuHost<A> {
             WgpuHostError::from_display("application frame build failed", error)
         })?;
         let application_build = application_started.elapsed();
+        window.set_ime_allowed(self.application.accepts_text_input());
+        if let Some(area) = self.application.ime_cursor_area() {
+            window.set_ime_cursor_area(
+                LogicalPosition::new(f64::from(area.x), f64::from(area.y)),
+                LogicalSize::new(f64::from(area.width.max(1)), f64::from(area.height.max(1))),
+            );
+        }
 
         let size = SizeI::new(physical.width, physical.height);
         let acquire = {
@@ -595,11 +602,20 @@ impl<A: NativeApplication> WgpuHost<A> {
                 let kind = match request.action {
                     Action::Click => AccessibilityActionKind::Click,
                     Action::Focus => AccessibilityActionKind::Focus,
+                    Action::ReplaceSelectedText => AccessibilityActionKind::ReplaceSelectedText,
+                    Action::SetValue => AccessibilityActionKind::SetValue,
+                    Action::ShowContextMenu => AccessibilityActionKind::ShowContextMenu,
+                    Action::Increment => AccessibilityActionKind::Increment,
+                    Action::Decrement => AccessibilityActionKind::Decrement,
                     _ => AccessibilityActionKind::Other,
+                };
+                let data = match request.data {
+                    Some(ActionData::Value(value)) => AccessibilityActionData::Value(value.into()),
+                    _ => AccessibilityActionData::None,
                 };
                 let control = self
                     .application
-                    .handle_accessibility_action(AccessibilityActionRequest { target, kind });
+                    .handle_accessibility_action(AccessibilityActionRequest { target, kind, data });
                 self.apply_control(
                     control,
                     event_loop,

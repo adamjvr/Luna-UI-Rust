@@ -9,10 +9,10 @@
 
 use luna_core::{InsetsI, NodeId, PointI, RectI, SizeI};
 use luna_host_winit::{
-    AccessibilityActionKind, AccessibilityActionRequest, ApplicationError, HostControl,
-    NativeApplication, WindowConfig, run_native,
+    AccessibilityActionData, AccessibilityActionKind, AccessibilityActionRequest, ApplicationError,
+    HostControl, NativeApplication, WindowConfig, run_native,
 };
-use luna_input::{InputEvent, Key, Modifiers, NamedKey, PointerButton, PointerEventKind};
+use luna_input::{ImeEvent, InputEvent, Key, Modifiers, NamedKey, PointerButton, PointerEventKind};
 use luna_text::{EditableText, TextLocation, TextRange, TextScroll};
 use luna_text_cosmic::{TextEngine, TextLayoutRequest, TextLayoutSnapshot};
 use luna_theme::Theme;
@@ -162,6 +162,21 @@ impl NativeApplication for TextDemoApplication {
         }
     }
 
+    fn accepts_text_input(&self) -> bool {
+        self.is_focused
+    }
+
+    fn ime_cursor_area(&self) -> Option<RectI> {
+        self.current_view()
+            .and_then(|view| view.caret_bounds())
+            .or(Some(RectI::new(
+                self.editor_bounds().x.saturating_add(48),
+                self.editor_bounds().y.saturating_add(24),
+                2,
+                22,
+            )))
+    }
+
     fn build_frame(&mut self, viewport: RectI) -> Result<UiFrame, ApplicationError> {
         self.viewport = viewport;
         let layout = self.engine.shape(
@@ -219,6 +234,12 @@ impl NativeApplication for TextDemoApplication {
                 self.reveal_caret_on_next_frame = true;
                 return HostControl::Redraw;
             }
+            InputEvent::Ime(ImeEvent::Commit(text)) => {
+                let _ = self.editor.insert_text(&text);
+                self.reveal_caret_on_next_frame = true;
+                return HostControl::Redraw;
+            }
+            InputEvent::Ime(ImeEvent::Enabled | ImeEvent::Disabled | ImeEvent::Preedit { .. }) => {}
             InputEvent::Pointer(pointer) => match pointer.kind {
                 PointerEventKind::Pressed(PointerButton::Primary) => {
                     let extending = pointer.modifiers.contains(Modifiers::SHIFT);
@@ -287,9 +308,36 @@ impl NativeApplication for TextDemoApplication {
                 self.is_focused = true;
                 HostControl::Redraw
             }
-            AccessibilityActionKind::Click | AccessibilityActionKind::Other => {
-                HostControl::Continue
+            AccessibilityActionKind::ReplaceSelectedText => {
+                let AccessibilityActionData::Value(value) = request.data else {
+                    return HostControl::Continue;
+                };
+                let result = self.editor.insert_text(&value);
+                if result.did_change {
+                    HostControl::Redraw
+                } else {
+                    HostControl::Continue
+                }
             }
+            AccessibilityActionKind::SetValue => {
+                let AccessibilityActionData::Value(value) = request.data else {
+                    return HostControl::Continue;
+                };
+                let end = self.editor.document().end_location();
+                self.editor
+                    .set_selection(TextRange::new(TextLocation::default(), end));
+                let result = self.editor.insert_text(&value);
+                if result.did_change {
+                    HostControl::Redraw
+                } else {
+                    HostControl::Continue
+                }
+            }
+            AccessibilityActionKind::Click
+            | AccessibilityActionKind::ShowContextMenu
+            | AccessibilityActionKind::Increment
+            | AccessibilityActionKind::Decrement
+            | AccessibilityActionKind::Other => HostControl::Continue,
         }
     }
 }

@@ -1352,6 +1352,14 @@ name = "luna-documents"
 version = "0.1.0"
 
 [[package]]
+name = "luna-editor"
+version = "0.1.0"
+dependencies = [
+ "luna-theme",
+ "unicode-segmentation",
+]
+
+[[package]]
 name = "luna-host-core"
 version = "0.1.0"
 
@@ -1489,6 +1497,7 @@ dependencies = [
  "luna-core",
  "luna-document-services",
  "luna-documents",
+ "luna-editor",
  "luna-host-wgpu",
  "luna-host-winit",
  "luna-input",

@@ -2,7 +2,7 @@
 
 use luna_core::PointI;
 use luna_input::{
-    InputEvent, Key, KeyboardEvent, Modifiers, NamedKey, PointerButton, PointerEvent,
+    ImeEvent, InputEvent, Key, KeyboardEvent, Modifiers, NamedKey, PointerButton, PointerEvent,
     PointerEventKind, ScrollEvent,
 };
 use std::time::Instant;
@@ -108,8 +108,16 @@ impl WinitInputTranslator {
                 modifiers: self.modifiers,
                 timestamp_micros,
             })),
-            WindowEvent::Ime(Ime::Commit(text)) if !text.is_empty() => {
-                Some(InputEvent::Text(text.clone()))
+            WindowEvent::Ime(Ime::Enabled) => Some(InputEvent::Ime(ImeEvent::Enabled)),
+            WindowEvent::Ime(Ime::Disabled) => Some(InputEvent::Ime(ImeEvent::Disabled)),
+            WindowEvent::Ime(Ime::Preedit(text, selected_range)) => {
+                Some(InputEvent::Ime(ImeEvent::Preedit {
+                    text: text.clone(),
+                    selected_range: selected_range.map(|(start, end)| start..end),
+                }))
+            }
+            WindowEvent::Ime(Ime::Commit(text)) => {
+                Some(InputEvent::Ime(ImeEvent::Commit(text.clone())))
             }
             WindowEvent::Focused(true) => Some(InputEvent::FocusGained),
             WindowEvent::Focused(false) => Some(InputEvent::FocusLost),

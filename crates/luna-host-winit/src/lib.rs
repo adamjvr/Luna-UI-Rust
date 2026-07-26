@@ -10,8 +10,8 @@ mod host;
 mod input;
 
 pub use host::{
-    AccessibilityActionKind, AccessibilityActionRequest, ApplicationError, HostControl, HostError,
-    NativeApplication, WindowConfig, run_native,
+    AccessibilityActionData, AccessibilityActionKind, AccessibilityActionRequest, ApplicationError,
+    HostControl, HostError, NativeApplication, WindowConfig, run_native,
 };
 pub use input::WinitInputTranslator;
 pub use luna_host_core::InvalidationClass;

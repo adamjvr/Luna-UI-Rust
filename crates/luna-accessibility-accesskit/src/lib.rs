@@ -11,7 +11,9 @@ use accesskit::{
     Action, Node as AccessNode, NodeId as AccessNodeId, Rect as AccessRect, Role as AccessRole,
     Tree, TreeId, TreeUpdate,
 };
-use luna_accessibility::{AccessibilityNode, AccessibilityRole, AccessibilityTree};
+use luna_accessibility::{
+    AccessibilityAction, AccessibilityNode, AccessibilityRole, AccessibilityTree,
+};
 use luna_core::NodeId;
 use std::collections::BTreeMap;
 
@@ -123,33 +125,63 @@ impl AccessKitBridge {
 
         // Actions communicate what native assistive technology may request. Application behavior
         // still routes through the host and Luna command system; this adapter never executes it.
-        match source.role {
-            AccessibilityRole::Button
-            | AccessibilityRole::CheckBox
-            | AccessibilityRole::MenuItem
-            | AccessibilityRole::Tab
-            | AccessibilityRole::TreeItem => {
-                node.add_action(Action::Click);
-                node.add_action(Action::Focus);
-            }
-            AccessibilityRole::TextField | AccessibilityRole::TextArea => {
-                node.add_action(Action::Focus);
-            }
-            AccessibilityRole::Window
-            | AccessibilityRole::Group
-            | AccessibilityRole::Label
-            | AccessibilityRole::List
-            | AccessibilityRole::ListItem
-            | AccessibilityRole::ProgressIndicator
-            | AccessibilityRole::MenuBar
-            | AccessibilityRole::Menu
-            | AccessibilityRole::TabList
-            | AccessibilityRole::Tree
-            | AccessibilityRole::Status
-            | AccessibilityRole::Dialog => {}
+        let actions = if source.actions.is_empty() {
+            default_actions(source.role, source.is_editable)
+        } else {
+            source.actions.clone()
+        };
+        for action in actions {
+            node.add_action(map_action(action));
         }
 
         node
+    }
+}
+
+fn map_action(action: AccessibilityAction) -> Action {
+    match action {
+        AccessibilityAction::Click => Action::Click,
+        AccessibilityAction::Focus => Action::Focus,
+        AccessibilityAction::ReplaceSelectedText => Action::ReplaceSelectedText,
+        AccessibilityAction::SetTextSelection => Action::SetTextSelection,
+        AccessibilityAction::SetValue => Action::SetValue,
+        AccessibilityAction::ShowContextMenu => Action::ShowContextMenu,
+        AccessibilityAction::Increment => Action::Increment,
+        AccessibilityAction::Decrement => Action::Decrement,
+    }
+}
+
+fn default_actions(role: AccessibilityRole, is_editable: bool) -> Vec<AccessibilityAction> {
+    match role {
+        AccessibilityRole::Button
+        | AccessibilityRole::CheckBox
+        | AccessibilityRole::MenuItem
+        | AccessibilityRole::Tab
+        | AccessibilityRole::TreeItem => vec![
+            AccessibilityAction::Click,
+            AccessibilityAction::Focus,
+            AccessibilityAction::ShowContextMenu,
+        ],
+        AccessibilityRole::TextField | AccessibilityRole::TextArea if is_editable => vec![
+            AccessibilityAction::Focus,
+            AccessibilityAction::ReplaceSelectedText,
+            AccessibilityAction::SetValue,
+        ],
+        AccessibilityRole::TextField | AccessibilityRole::TextArea => {
+            vec![AccessibilityAction::Focus]
+        }
+        AccessibilityRole::Window
+        | AccessibilityRole::Group
+        | AccessibilityRole::Label
+        | AccessibilityRole::List
+        | AccessibilityRole::ListItem
+        | AccessibilityRole::ProgressIndicator
+        | AccessibilityRole::MenuBar
+        | AccessibilityRole::Menu
+        | AccessibilityRole::TabList
+        | AccessibilityRole::Tree
+        | AccessibilityRole::Status
+        | AccessibilityRole::Dialog => Vec::new(),
     }
 }
 
@@ -196,8 +228,10 @@ fn scale_bounds(bounds: luna_core::RectI, scale_factor: f64) -> AccessRect {
 #[cfg(test)]
 mod tests {
     use super::AccessKitBridge;
-    use accesskit::{Role, TreeId};
-    use luna_accessibility::{AccessibilityNode, AccessibilityRole, AccessibilityTree};
+    use accesskit::{Action, Role, TreeId};
+    use luna_accessibility::{
+        AccessibilityAction, AccessibilityNode, AccessibilityRole, AccessibilityTree,
+    };
     use luna_core::{NodeId, RectI};
     use std::error::Error;
 
@@ -240,6 +274,37 @@ mod tests {
             .ok_or_else(|| std::io::Error::other("translated button missing"))?;
         assert_eq!(button.bounds().map(|bounds| bounds.x0), Some(20.0));
         assert_eq!(button.bounds().map(|bounds| bounds.y1), Some(120.0));
+        assert!(button.supports_action(Action::Click));
+        assert!(button.supports_action(Action::ShowContextMenu));
+        Ok(())
+    }
+    #[test]
+    fn explicit_editable_actions_translate() -> Result<(), Box<dyn Error>> {
+        let root = NodeId::new("editor")?;
+        let tree =
+            AccessibilityTree::new(
+                root.clone(),
+                [AccessibilityNode::new(
+                    root,
+                    AccessibilityRole::TextArea,
+                    RectI::new(0, 0, 100, 80),
+                )
+                .with_editable(true)
+                .with_actions([
+                    AccessibilityAction::Focus,
+                    AccessibilityAction::ReplaceSelectedText,
+                    AccessibilityAction::SetValue,
+                ])],
+            )?;
+        let mut bridge = AccessKitBridge::new();
+        let update = bridge.full_update(&tree, 1.0);
+        let node = update
+            .nodes
+            .first()
+            .map(|(_, node)| node)
+            .ok_or_else(|| std::io::Error::other("translated editor missing"))?;
+        assert!(node.supports_action(Action::ReplaceSelectedText));
+        assert!(node.supports_action(Action::SetValue));
         Ok(())
     }
 }

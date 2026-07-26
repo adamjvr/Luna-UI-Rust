@@ -4,7 +4,7 @@
 //!
 //! The central invariant is deliberately explicit: a widget's paint, hit testing, and
 //! accessibility semantics derive from the same deterministic geometry. Product behavior remains
-//! in applications such as Moth Text; Luna supplies reusable UI anatomy and runtime contracts.
+//! in downstream applications; Luna supplies reusable UI anatomy and runtime contracts.
 
 mod cascading_menu;
 mod completion_provider;
@@ -53,6 +53,6 @@ pub use overlays::{
 pub use proof_gallery::{ProofCardFrame, ProofGallery, ProofGalleryLayout, ProofGalleryState};
 pub use search_history::SearchHistory;
 pub use text_label::{TextAlignment, TextLabel, TextLabelCache, TextLabelCacheStats};
-pub use text_view::{TextView, TextViewStyle, VerticalScrollbarAction};
+pub use text_view::{TextStyleDecoration, TextView, TextViewStyle, VerticalScrollbarAction};
 pub use widget::Widget;
 pub use workspace_demo::{WorkspaceDemo, WorkspaceDemoLayout, WorkspaceDemoState};

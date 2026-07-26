@@ -3,7 +3,7 @@
 ## Purpose
 
 Luna-UI-Rust preserves the Swift Luna UI contract while using Rust-native boundaries. Luna owns
-reusable UI anatomy and deterministic runtime behavior. Applications such as Moth Text own editor
+reusable UI anatomy and deterministic runtime behavior. Downstream applications own editor
 meaning, workflow, compatibility, settings policy, document storage policy, and product commands.
 
 ## Dependency direction
@@ -422,8 +422,10 @@ The architectural spine is near parity with Swift Luna UI, but feature breadth i
 has stronger retained editor-raster, concrete AccessKit, and optional cross-platform `wgpu` proof
 paths. M3.3c closes recursive popup, asynchronous provider, pane-session, and native-first watcher
 gaps. M4 adds backend-neutral clip commands, the GPU renderer/host leaf adapters, CPU/GPU comparison,
-and a four-preset theme matrix. Swift remains ahead in richer language services, platform breadth,
-docking/cross-window behavior, and paired Moth integration. [`SWIFT_PARITY.md`](SWIFT_PARITY.md) is
+and a four-preset theme matrix. M5 adds product-neutral syntax/theme import, transactional history,
+multiple selections, IME composition, dynamic command state, and actionable accessibility payloads.
+Swift remains ahead in richer language services, platform breadth, docking/cross-window behavior,
+and its existing downstream integrations. [`SWIFT_PARITY.md`](SWIFT_PARITY.md) is
 the governing inventory; rendering milestones must not be described as equivalent to editor-product
 feature parity.
 
@@ -461,3 +463,47 @@ completion request
 The persisted wire format remains isolated in `luna-session`; pane validity remains isolated in
 `luna-panes`; native watcher process and polling details remain isolated in `luna-workspaces`; and
 applications continue to own policy and all UI-thread mutation.
+
+## M5 editor-mechanics pipeline
+
+```text
+language or scanner adapter
+    -> validated SyntaxSnapshot(document revision, UTF-8 spans)
+    -> product-neutral SyntaxTheme imported from Sublime-compatible JSON
+    -> shaping foreground spans + widget background/underline decorations
+
+platform text / IME / accessibility action
+    -> SelectionSet pre-edit ranges
+    -> simultaneous right-to-left mutation
+    -> one HistorySnapshot before/after transaction
+    -> shared document revision synchronization
+    -> independent pane-view selections and presentation caches
+```
+
+`luna-editor` is deliberately between the UTF-8 document model and application policy. It does not
+open files, select parsers, decide language semantics, own project settings, or define product
+commands. It supplies reusable mechanics that can be tested without a renderer or native window.
+
+`luna-text-cosmic` receives style spans only after UTF-8 validation. `luna-ui::TextView` receives
+immutable logical decorations and multiple selections only after shaping. Consequently syntax,
+selection, caret, hit testing, accessibility ranges, CPU presentation, and GPU presentation continue
+to share one document and geometry snapshot.
+
+IME candidate-window placement is a host/application contract: the host asks whether text input is
+accepted and receives the current logical caret rectangle. Native pre-edit remains application state
+until commit, so canceled composition never appears in the document or undo history.
+
+Accessibility nodes now declare explicit actions. The AccessKit bridge translates capabilities and
+both hosts translate requests back to Luna IDs plus product-neutral payloads. Applications execute
+those requests through commands or editor transactions; the bridge never mutates application state.
+
+## Platform support boundary
+
+Linux/Pop!_OS is the primary development and blocking acceptance platform. macOS is the intended
+second native platform and has an advisory Apple-Silicon CI lane plus a real-hardware protocol for
+Retina, Metal/wgpu, IME, VoiceOver, dialogs, watchers, and packaging. M6 promotes macOS only after
+repeatable acceptance evidence.
+
+Windows is not an official support target. Shared dependencies may continue to compile there and
+non-disruptive community fixes are welcome, but Luna-UI-Rust does not promise Windows CI, packaging,
+release artifacts, graphical acceptance, or support response times.

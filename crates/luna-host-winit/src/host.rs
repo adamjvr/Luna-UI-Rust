@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use crate::WinitInputTranslator;
-use accesskit::Action;
+use accesskit::{Action, ActionData};
 use accesskit_winit::{Adapter as AccessKitAdapter, Event as AccessKitEvent};
 use luna_accessibility_accesskit::AccessKitBridge;
 use luna_core::{NodeId, RectI, SizeI};
@@ -17,7 +17,7 @@ use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
-use winit::dpi::LogicalSize;
+use winit::dpi::{LogicalPosition, LogicalSize};
 use winit::event::WindowEvent;
 use winit::event_loop::{
     ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy, OwnedDisplayHandle,
@@ -69,8 +69,27 @@ pub enum AccessibilityActionKind {
     Click,
     /// Move semantic/keyboard focus to a node.
     Focus,
-    /// An AccessKit action not yet represented by Luna's M1 host contract.
+    /// Replace the selected text with supplied UTF-8 content.
+    ReplaceSelectedText,
+    /// Replace a control's complete textual value.
+    SetValue,
+    /// Request the target's context menu.
+    ShowContextMenu,
+    /// Increment a range-like control.
+    Increment,
+    /// Decrement a range-like control.
+    Decrement,
+    /// An AccessKit action not yet represented by Luna's host contract.
     Other,
+}
+
+/// Optional data carried by a native accessibility request.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum AccessibilityActionData {
+    /// No supported payload was supplied.
+    None,
+    /// UTF-8 replacement or value text.
+    Value(String),
 }
 
 /// Accessibility action translated back to Luna's stable semantic identity.
@@ -80,6 +99,8 @@ pub struct AccessibilityActionRequest {
     pub target: Option<NodeId>,
     /// Product-neutral action category.
     pub kind: AccessibilityActionKind,
+    /// Product-neutral action payload.
+    pub data: AccessibilityActionData,
 }
 
 /// Application contract driven by [`run_native`].
@@ -95,6 +116,16 @@ pub trait NativeApplication {
 
     /// Builds one complete immutable frame for the supplied logical viewport.
     fn build_frame(&mut self, viewport: RectI) -> Result<UiFrame, ApplicationError>;
+
+    /// Returns whether the focused application surface accepts native text input.
+    fn accepts_text_input(&self) -> bool {
+        false
+    }
+
+    /// Returns the logical candidate-window anchor for native IME UI.
+    fn ime_cursor_area(&self) -> Option<RectI> {
+        None
+    }
 
     /// Handles one normalized input event.
     fn handle_input(&mut self, _event: InputEvent) -> HostControl {
@@ -376,7 +407,7 @@ impl<A: NativeApplication> WinitHost<A> {
                 window.as_ref(),
                 self.proxy.clone(),
             );
-            window.set_ime_allowed(true);
+            window.set_ime_allowed(self.application.accepts_text_input());
             self.accesskit_adapter = Some(adapter);
             self.window = Some(window);
         }
@@ -598,6 +629,13 @@ impl<A: NativeApplication> WinitHost<A> {
             .build_frame(viewport)
             .map_err(|error| HostError::from_display("application frame build failed", error))?;
         let application_build = application_started.elapsed();
+        window.set_ime_allowed(self.application.accepts_text_input());
+        if let Some(area) = self.application.ime_cursor_area() {
+            window.set_ime_cursor_area(
+                LogicalPosition::new(f64::from(area.x), f64::from(area.y)),
+                LogicalSize::new(f64::from(area.width.max(1)), f64::from(area.height.max(1))),
+            );
+        }
 
         let render_started = Instant::now();
         let framebuffer_size = SizeI::new(physical_size.width, physical_size.height);
@@ -681,11 +719,20 @@ impl<A: NativeApplication> WinitHost<A> {
                 let kind = match request.action {
                     Action::Click => AccessibilityActionKind::Click,
                     Action::Focus => AccessibilityActionKind::Focus,
+                    Action::ReplaceSelectedText => AccessibilityActionKind::ReplaceSelectedText,
+                    Action::SetValue => AccessibilityActionKind::SetValue,
+                    Action::ShowContextMenu => AccessibilityActionKind::ShowContextMenu,
+                    Action::Increment => AccessibilityActionKind::Increment,
+                    Action::Decrement => AccessibilityActionKind::Decrement,
                     _ => AccessibilityActionKind::Other,
+                };
+                let data = match request.data {
+                    Some(ActionData::Value(value)) => AccessibilityActionData::Value(value.into()),
+                    _ => AccessibilityActionData::None,
                 };
                 let control = self
                     .application
-                    .handle_accessibility_action(AccessibilityActionRequest { target, kind });
+                    .handle_accessibility_action(AccessibilityActionRequest { target, kind, data });
                 self.apply_control(
                     control,
                     event_loop,

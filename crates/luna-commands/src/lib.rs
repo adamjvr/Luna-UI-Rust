@@ -3,7 +3,7 @@
 //! Typed command registration, key binding, and dispatch requests.
 //!
 //! Luna commands describe reusable intent without embedding application behavior in widgets or
-//! native hosts. Moth Text may register product commands, while Luna widgets may emit requests
+//! native hosts. Downstream applications may register product commands, while Luna widgets emit requests
 //! against those IDs. The registry remains deterministic and contains no callbacks, which keeps
 //! command resolution testable and avoids hidden ownership or thread-affinity requirements.
 
@@ -148,6 +148,50 @@ impl KeyBinding {
     }
 }
 
+/// Dynamic command presentation resolved from current application state.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CommandState {
+    /// Whether dispatch is currently allowed.
+    pub enabled: bool,
+    /// Whether checked presentation is currently active.
+    pub checked: bool,
+}
+
+impl CommandState {
+    /// Enabled and unchecked command state.
+    pub const ENABLED: Self = Self {
+        enabled: true,
+        checked: false,
+    };
+
+    /// Disabled and unchecked command state.
+    pub const DISABLED: Self = Self {
+        enabled: false,
+        checked: false,
+    };
+
+    /// Returns an enabled state with the supplied check mark.
+    #[must_use]
+    pub const fn checked(checked: bool) -> Self {
+        Self {
+            enabled: true,
+            checked,
+        }
+    }
+}
+
+impl Default for CommandState {
+    fn default() -> Self {
+        Self::ENABLED
+    }
+}
+
+/// Application-owned dynamic command-state source.
+pub trait CommandStateProvider {
+    /// Resolves availability and checked presentation for one registered command.
+    fn command_state(&self, command: &CommandId) -> CommandState;
+}
+
 /// Origin of a command dispatch request.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CommandSource {
@@ -249,12 +293,25 @@ impl CommandRegistry {
     /// opts in. The registry does not execute behavior; it only produces immutable intent.
     #[must_use]
     pub fn resolve_keyboard(&self, event: &KeyboardEvent) -> Option<CommandRequest> {
+        self.resolve_keyboard_with(event, |_| CommandState::ENABLED)
+    }
+
+    /// Resolves a keyboard event while honoring application-supplied dynamic command state.
+    #[must_use]
+    pub fn resolve_keyboard_with(
+        &self,
+        event: &KeyboardEvent,
+        state: impl FnOnce(&CommandId) -> CommandState,
+    ) -> Option<CommandRequest> {
         if !event.is_pressed {
             return None;
         }
         let chord = KeyChord::new(event.key.clone(), event.modifiers);
         let binding = self.bindings.get(&chord)?;
         if event.is_repeat && !binding.allow_repeat {
+            return None;
+        }
+        if !state(&binding.command).enabled {
             return None;
         }
         Some(CommandRequest::new(
@@ -296,7 +353,9 @@ impl Error for CommandRegistryError {}
 
 #[cfg(test)]
 mod tests {
-    use super::{CommandDefinition, CommandId, CommandRegistry, KeyBinding, KeyChord};
+    use super::{
+        CommandDefinition, CommandId, CommandRegistry, CommandState, KeyBinding, KeyChord,
+    };
     use luna_input::{Key, KeyboardEvent, Modifiers};
     use std::error::Error;
 
@@ -341,6 +400,28 @@ mod tests {
                     modifiers: Modifiers::NONE,
                     timestamp_micros: 20,
                 })
+                .is_none()
+        );
+        Ok(())
+    }
+    #[test]
+    fn dynamic_disabled_state_blocks_keyboard_dispatch() -> Result<(), Box<dyn Error>> {
+        let command = CommandId::new("luna.demo.dynamic")?;
+        let chord = KeyChord::new(Key::Character("d".to_owned()), Modifiers::CONTROL);
+        let mut registry = CommandRegistry::new();
+        registry.register_command(CommandDefinition::new(command.clone(), "Dynamic"))?;
+        registry.register_binding(KeyBinding::new(chord, command))?;
+        let event = KeyboardEvent {
+            key: Key::Character("d".to_owned()),
+            text: Some("d".to_owned()),
+            is_pressed: true,
+            is_repeat: false,
+            modifiers: Modifiers::CONTROL,
+            timestamp_micros: 0,
+        };
+        assert!(
+            registry
+                .resolve_keyboard_with(&event, |_| CommandState::DISABLED)
                 .is_none()
         );
         Ok(())
