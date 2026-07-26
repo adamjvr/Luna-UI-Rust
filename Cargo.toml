@@ -16,6 +16,7 @@ members = [
     "crates/luna-host-winit",
     "crates/luna-host-wgpu",
     "crates/luna-input",
+    "crates/luna-integration",
     "crates/luna-layout",
     "crates/luna-panes",
     "crates/luna-render",
@@ -36,6 +37,7 @@ accesskit_winit = "=0.33.2"
 cosmic-text = "=0.19.0"
 softbuffer = "=0.4.8"
 pollster = "=0.4.0"
+notify = "=8.2.0"
 wgpu = "=29.0.3"
 unicode-segmentation = "=1.13.3"
 winit = "=0.30.13"

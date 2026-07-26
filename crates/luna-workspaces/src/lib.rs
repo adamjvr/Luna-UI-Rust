@@ -21,6 +21,9 @@ use std::sync::mpsc::{self, Receiver};
 use std::thread::{self, JoinHandle};
 use std::time::SystemTime;
 
+use notify::event::ModifyKind;
+use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+
 #[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
 
@@ -1113,6 +1116,173 @@ impl WorkspaceWatchService for LinuxWorkspaceWatchService {
     }
 }
 
+/// Native cross-platform watcher backed by `notify` and FSEvents on macOS.
+#[derive(Default)]
+pub struct NotifyWorkspaceWatchService {
+    root: Option<PathBuf>,
+    watcher: Option<RecommendedWatcher>,
+    receiver: Option<Receiver<notify::Result<notify::Event>>>,
+}
+
+impl std::fmt::Debug for NotifyWorkspaceWatchService {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("NotifyWorkspaceWatchService")
+            .field("root", &self.root)
+            .field("active", &self.watcher.is_some())
+            .finish()
+    }
+}
+
+impl WorkspaceWatchService for NotifyWorkspaceWatchService {
+    fn watch(&mut self, root: &Path) -> Result<(), WorkspaceError> {
+        let canonical = fs::canonicalize(root)
+            .map_err(|error| WorkspaceError::io("canonicalize watcher root", root, error))?;
+        validate_absolute_path(&canonical)?;
+        let (sender, receiver) = mpsc::channel::<notify::Result<notify::Event>>();
+        let mut watcher = notify::recommended_watcher(sender).map_err(|error| {
+            WorkspaceError::invalid_path(&canonical, format!("create native watcher: {error}"))
+        })?;
+        watcher
+            .watch(&canonical, RecursiveMode::Recursive)
+            .map_err(|error| {
+                WorkspaceError::invalid_path(&canonical, format!("watch workspace: {error}"))
+            })?;
+        self.root = Some(canonical);
+        self.watcher = Some(watcher);
+        self.receiver = Some(receiver);
+        Ok(())
+    }
+
+    fn drain_events(&mut self) -> Result<Vec<WorkspaceWatchEvent>, WorkspaceError> {
+        let root = self.root.clone().ok_or_else(|| {
+            WorkspaceError::invalid_path(Path::new("/"), "native watcher has no active root")
+        })?;
+        let receiver = self.receiver.as_ref().ok_or_else(|| {
+            WorkspaceError::invalid_path(&root, "native watcher response channel is unavailable")
+        })?;
+        let mut events = Vec::new();
+        for result in receiver.try_iter() {
+            let event = result.map_err(|error| {
+                WorkspaceError::invalid_path(
+                    &root,
+                    format!("native watcher delivery failed: {error}"),
+                )
+            })?;
+            let Some(kind) = notify_workspace_kind(&event.kind) else {
+                continue;
+            };
+            if event.paths.is_empty() {
+                events.push(WorkspaceWatchEvent {
+                    path: root.clone(),
+                    kind: WorkspaceWatchKind::RescanRequired,
+                });
+                continue;
+            }
+            events.extend(
+                event
+                    .paths
+                    .into_iter()
+                    .map(|path| WorkspaceWatchEvent { path, kind }),
+            );
+        }
+        coalesce_watch_events(&root, &events)
+    }
+}
+
+fn notify_workspace_kind(kind: &EventKind) -> Option<WorkspaceWatchKind> {
+    match kind {
+        EventKind::Create(_) => Some(WorkspaceWatchKind::Created),
+        EventKind::Remove(_) => Some(WorkspaceWatchKind::Removed),
+        EventKind::Modify(ModifyKind::Name(_)) => Some(WorkspaceWatchKind::Renamed),
+        EventKind::Modify(_) => Some(WorkspaceWatchKind::Modified),
+        EventKind::Any | EventKind::Other => Some(WorkspaceWatchKind::RescanRequired),
+        EventKind::Access(_) => None,
+    }
+}
+
+#[derive(Debug)]
+enum PlatformWatchBackend {
+    Linux(Box<LinuxWorkspaceWatchService>),
+    Native(Box<NotifyWorkspaceWatchService>),
+    Polling(Box<PollingWorkspaceWatchService>),
+}
+
+/// Desktop watcher that selects Linux native delivery, macOS FSEvents, or safe polling fallback.
+#[derive(Debug)]
+pub struct PlatformWorkspaceWatchService {
+    root: Option<PathBuf>,
+    backend: PlatformWatchBackend,
+}
+
+impl Default for PlatformWorkspaceWatchService {
+    fn default() -> Self {
+        Self {
+            root: None,
+            backend: PlatformWatchBackend::Polling(Box::default()),
+        }
+    }
+}
+
+impl WorkspaceWatchService for PlatformWorkspaceWatchService {
+    fn watch(&mut self, root: &Path) -> Result<(), WorkspaceError> {
+        let canonical = fs::canonicalize(root)
+            .map_err(|error| WorkspaceError::io("canonicalize watcher root", root, error))?;
+        validate_absolute_path(&canonical)?;
+        self.root = Some(canonical.clone());
+
+        if cfg!(target_os = "linux") {
+            let mut linux = LinuxWorkspaceWatchService::default();
+            if linux.watch(&canonical).is_ok() {
+                self.backend = PlatformWatchBackend::Linux(Box::new(linux));
+                return Ok(());
+            }
+        }
+
+        if cfg!(target_os = "macos") {
+            let mut native = NotifyWorkspaceWatchService::default();
+            if native.watch(&canonical).is_ok() {
+                self.backend = PlatformWatchBackend::Native(Box::new(native));
+                return Ok(());
+            }
+        }
+
+        let mut polling = PollingWorkspaceWatchService::default();
+        polling.watch(&canonical)?;
+        self.backend = PlatformWatchBackend::Polling(Box::new(polling));
+        Ok(())
+    }
+
+    fn drain_events(&mut self) -> Result<Vec<WorkspaceWatchEvent>, WorkspaceError> {
+        match &mut self.backend {
+            PlatformWatchBackend::Linux(watcher) => {
+                if let Ok(events) = watcher.drain_events() {
+                    return Ok(events);
+                }
+            }
+            PlatformWatchBackend::Native(watcher) => {
+                if let Ok(events) = watcher.drain_events() {
+                    return Ok(events);
+                }
+            }
+            PlatformWatchBackend::Polling(watcher) => return watcher.drain_events(),
+        }
+        let root = self.root.clone().ok_or_else(|| {
+            WorkspaceError::invalid_path(Path::new("/"), "platform watcher lost its root")
+        })?;
+        let mut polling = PollingWorkspaceWatchService::default();
+        polling.watch(&root)?;
+        self.backend = PlatformWatchBackend::Polling(Box::new(polling));
+        Ok(vec![WorkspaceWatchEvent {
+            path: root,
+            kind: WorkspaceWatchKind::RescanRequired,
+        }])
+    }
+}
+
+/// Compatibility name for the macOS platform watcher used by downstream adapters.
+pub type MacWorkspaceWatchService = PlatformWorkspaceWatchService;
+
 /// Scope requested for an incremental workspace rescan.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum WorkspaceRefreshScope {
@@ -2160,8 +2330,10 @@ mod tests {
         WorkspaceModel, WorkspaceMutationService, WorkspaceNodeId, WorkspaceNodeKind,
         WorkspaceNodeStatus, WorkspaceRefreshScope, WorkspaceScanOptions, WorkspaceService,
         WorkspaceWatchEvent, WorkspaceWatchKind, WorkspaceWatchService, coalesce_watch_events,
-        refresh_scope_for_events,
+        notify_workspace_kind, refresh_scope_for_events,
     };
+    use notify::EventKind;
+    use notify::event::{ModifyKind, RenameMode};
     use std::error::Error;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -2655,6 +2827,26 @@ mod tests {
         fs::remove_file(root.join("destination.txt"))?;
         fs::remove_dir_all(root)?;
         Ok(())
+    }
+
+    #[test]
+    fn notify_event_kinds_map_to_product_neutral_watcher_kinds() {
+        assert_eq!(
+            notify_workspace_kind(&EventKind::Create(notify::event::CreateKind::Any)),
+            Some(WorkspaceWatchKind::Created)
+        );
+        assert_eq!(
+            notify_workspace_kind(&EventKind::Modify(ModifyKind::Name(RenameMode::Both))),
+            Some(WorkspaceWatchKind::Renamed)
+        );
+        assert_eq!(
+            notify_workspace_kind(&EventKind::Access(notify::event::AccessKind::Any)),
+            None
+        );
+        assert_eq!(
+            notify_workspace_kind(&EventKind::Other),
+            Some(WorkspaceWatchKind::RescanRequired)
+        );
     }
 
     #[test]

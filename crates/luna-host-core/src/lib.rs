@@ -8,6 +8,57 @@
 
 use std::collections::BTreeSet;
 
+/// Native platform family used by Luna's documented support policy.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum NativePlatform {
+    /// Linux desktop environments are the primary development and release target.
+    Linux,
+    /// macOS is the supported secondary target undergoing real-hardware hardening.
+    MacOs,
+    /// Windows may compile through upstream crates but is not an official project target.
+    Windows,
+    /// Another platform not covered by Luna's desktop support policy.
+    Other,
+}
+
+/// Project commitment level for one native platform.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum PlatformSupportTier {
+    /// Blocking CI, primary graphical acceptance, packaging, and release support.
+    Primary,
+    /// Maintained native target with advisory CI until repeated hardware acceptance is recorded.
+    Secondary,
+    /// Community-compatible when practical, without CI, packaging, or release guarantees.
+    BestEffort,
+    /// Outside the current desktop project scope.
+    Unsupported,
+}
+
+/// Returns Luna's support tier for a platform without consulting runtime state.
+#[must_use]
+pub const fn platform_support_tier(platform: NativePlatform) -> PlatformSupportTier {
+    match platform {
+        NativePlatform::Linux => PlatformSupportTier::Primary,
+        NativePlatform::MacOs => PlatformSupportTier::Secondary,
+        NativePlatform::Windows => PlatformSupportTier::BestEffort,
+        NativePlatform::Other => PlatformSupportTier::Unsupported,
+    }
+}
+
+/// Returns the platform family compiled into the current binary.
+#[must_use]
+pub const fn current_native_platform() -> NativePlatform {
+    if cfg!(target_os = "linux") {
+        NativePlatform::Linux
+    } else if cfg!(target_os = "macos") {
+        NativePlatform::MacOs
+    } else if cfg!(target_os = "windows") {
+        NativePlatform::Windows
+    } else {
+        NativePlatform::Other
+    }
+}
+
 /// Stable high-level category describing why frame work is required.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum InvalidationClass {
@@ -199,7 +250,26 @@ impl FrameRuntime {
 
 #[cfg(test)]
 mod tests {
-    use super::{FrameRuntime, InvalidationClass, InvalidationReason};
+    use super::{
+        FrameRuntime, InvalidationClass, InvalidationReason, NativePlatform, PlatformSupportTier,
+        platform_support_tier,
+    };
+
+    #[test]
+    fn support_policy_keeps_windows_best_effort() {
+        assert_eq!(
+            platform_support_tier(NativePlatform::Linux),
+            PlatformSupportTier::Primary
+        );
+        assert_eq!(
+            platform_support_tier(NativePlatform::MacOs),
+            PlatformSupportTier::Secondary
+        );
+        assert_eq!(
+            platform_support_tier(NativePlatform::Windows),
+            PlatformSupportTier::BestEffort
+        );
+    }
 
     #[test]
     fn duplicate_invalidations_coalesce() -> Result<(), Box<dyn std::error::Error>> {

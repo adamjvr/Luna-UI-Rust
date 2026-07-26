@@ -20,11 +20,11 @@ jobs:
           rustup toolchain install 1.97.1 --profile minimal --component clippy,rustfmt
           rustup default 1.97.1
 
-      - name: Validate workspace
-        run: ./scripts/validate.sh
+      - name: Run M6 Linux gate
+        run: ./scripts/test-m6.sh
 
   macos-advisory:
-    name: macOS 15 Apple Silicon advisory
+    name: M6 macOS 15 Apple Silicon advisory
     runs-on: macos-15
     continue-on-error: true
     steps:

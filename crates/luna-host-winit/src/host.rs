@@ -62,6 +62,17 @@ pub enum HostControl {
     Exit,
 }
 
+/// Platform-neutral application lifecycle event delivered by native hosts.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NativeLifecycleEvent {
+    /// Native resources are available and the application is active.
+    Resumed,
+    /// Native presentation resources are being suspended or invalidated.
+    Suspended,
+    /// The operating system requested aggressive cache/resource release.
+    MemoryWarning,
+}
+
 /// Platform-neutral category of a native accessibility action.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AccessibilityActionKind {
@@ -125,6 +136,27 @@ pub trait NativeApplication {
     /// Returns the logical candidate-window anchor for native IME UI.
     fn ime_cursor_area(&self) -> Option<RectI> {
         None
+    }
+
+    /// Reports whether application state contains unsaved document changes.
+    ///
+    /// On macOS the native host mirrors this into the window's document-edited indicator. Other
+    /// hosts may use it for diagnostics without changing close policy.
+    fn has_unsaved_changes(&self) -> bool {
+        false
+    }
+
+    /// Handles a native application lifecycle transition.
+    fn handle_lifecycle(&mut self, _event: NativeLifecycleEvent) -> HostControl {
+        HostControl::Continue
+    }
+
+    /// Resolves an operating-system window-close request.
+    ///
+    /// Applications may persist session state, show dirty-document policy, return `Continue` to
+    /// veto closing, or return `Exit` to terminate the native loop.
+    fn request_close(&mut self) -> HostControl {
+        HostControl::Exit
     }
 
     /// Handles one normalized input event.
@@ -407,6 +439,7 @@ impl<A: NativeApplication> WinitHost<A> {
                 window.as_ref(),
                 self.proxy.clone(),
             );
+            update_macos_document_edited(window.as_ref(), self.application.has_unsaved_changes());
             window.set_ime_allowed(self.application.accepts_text_input());
             self.accesskit_adapter = Some(adapter);
             self.window = Some(window);
@@ -629,6 +662,7 @@ impl<A: NativeApplication> WinitHost<A> {
             .build_frame(viewport)
             .map_err(|error| HostError::from_display("application frame build failed", error))?;
         let application_build = application_started.elapsed();
+        update_macos_document_edited(window.as_ref(), self.application.has_unsaved_changes());
         window.set_ime_allowed(self.application.accepts_text_input());
         if let Some(area) = self.application.ime_cursor_area() {
             window.set_ime_cursor_area(
@@ -786,16 +820,34 @@ impl<A: NativeApplication> ApplicationHandler<HostEvent> for WinitHost<A> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if let Err(error) = self.create_native_resources(event_loop) {
             self.fail(event_loop, error);
+            return;
         }
+        let control = self
+            .application
+            .handle_lifecycle(NativeLifecycleEvent::Resumed);
+        self.apply_control(control, event_loop, InvalidationReason::SurfaceExposed);
     }
 
-    fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
+    fn suspended(&mut self, event_loop: &ActiveEventLoop) {
+        let control = self
+            .application
+            .handle_lifecycle(NativeLifecycleEvent::Suspended);
+        self.apply_control(control, event_loop, InvalidationReason::SurfaceExposed);
         // On mobile platforms a graphics surface may become invalid while suspended. The Arc-held
         // window identity is retained, but the presentation surface is recreated on resume.
         self.surface = None;
         self.surface_size = None;
         self.retained_framebuffer = None;
         self.retained_working_signature = None;
+    }
+
+    fn memory_warning(&mut self, event_loop: &ActiveEventLoop) {
+        self.retained_framebuffer = None;
+        self.retained_working_signature = None;
+        let control = self
+            .application
+            .handle_lifecycle(NativeLifecycleEvent::MemoryWarning);
+        self.apply_control(control, event_loop, InvalidationReason::FullFrame);
     }
 
     fn window_event(
@@ -816,7 +868,8 @@ impl<A: NativeApplication> ApplicationHandler<HostEvent> for WinitHost<A> {
 
         match &event {
             WindowEvent::CloseRequested => {
-                event_loop.exit();
+                let control = self.application.request_close();
+                self.apply_control(control, event_loop, InvalidationReason::StateChanged);
                 return;
             }
             WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
@@ -847,6 +900,15 @@ impl<A: NativeApplication> ApplicationHandler<HostEvent> for WinitHost<A> {
         self.schedule_application_update(event_loop);
     }
 }
+
+#[cfg(target_os = "macos")]
+fn update_macos_document_edited(window: &Window, edited: bool) {
+    use winit::platform::macos::WindowExtMacOS;
+    window.set_document_edited(edited);
+}
+
+#[cfg(not(target_os = "macos"))]
+fn update_macos_document_edited(_window: &Window, _edited: bool) {}
 
 fn average_millis(duration: Duration, frames: u64) -> f64 {
     if frames == 0 {

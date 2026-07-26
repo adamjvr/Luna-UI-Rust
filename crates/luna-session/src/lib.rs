@@ -199,12 +199,9 @@ impl StdSessionStore {
     ///
     /// # Errors
     ///
-    /// Returns [`SessionError`] when neither `XDG_STATE_HOME` nor `HOME` is available.
+    /// Returns [`SessionError`] when the current platform has no usable per-user state directory.
     pub fn for_application(application: &str) -> Result<Self, SessionError> {
-        let base = env::var_os("XDG_STATE_HOME")
-            .map(PathBuf::from)
-            .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/state")))
-            .ok_or_else(|| SessionError::invalid_path("no user state directory is available"))?;
+        let base = platform_state_directory()?;
         Ok(Self::new(
             base.join(application).join("editor-session-v2.txt"),
         ))
@@ -214,6 +211,35 @@ impl StdSessionStore {
     #[must_use]
     pub fn path(&self) -> &Path {
         &self.path
+    }
+}
+
+fn platform_state_directory() -> Result<PathBuf, SessionError> {
+    #[cfg(target_os = "macos")]
+    {
+        return env::var_os("HOME")
+            .map(PathBuf::from)
+            .map(|home| home.join("Library/Application Support"))
+            .ok_or_else(|| {
+                SessionError::invalid_path("HOME is required for macOS application state")
+            });
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        return env::var_os("LOCALAPPDATA")
+            .map(PathBuf::from)
+            .ok_or_else(|| {
+                SessionError::invalid_path("LOCALAPPDATA is required for Windows state")
+            });
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        env::var_os("XDG_STATE_HOME")
+            .map(PathBuf::from)
+            .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/state")))
+            .ok_or_else(|| SessionError::invalid_path("no user state directory is available"))
     }
 }
 

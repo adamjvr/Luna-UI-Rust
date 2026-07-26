@@ -28,7 +28,11 @@ Before submitting changes:
     completion-provider, and search policy.
 14. Deliver watcher events and filesystem snapshots onto the application UI thread before mutating
     editor state.
-15. Run `./scripts/validate.sh` and the current milestone-specific test script.
+15. Keep operating-system lifecycle, dialogs, watchers, state paths, and packaging in leaf adapters;
+    Linux is primary, macOS is secondary, and Windows is best-effort only.
+16. Keep downstream service composition application-owned; do not turn `luna-integration` into a
+    service locator or product-policy crate.
+17. Run `./scripts/validate.sh` and the current milestone-specific test script.
 
 Add dependencies only in the narrowest adapter crate that needs them. A window backend does not
 belong in `luna-core`; a shaping cache does not belong in `luna-text`; a GPU backend does not belong

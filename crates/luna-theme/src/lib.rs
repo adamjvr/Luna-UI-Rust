@@ -84,15 +84,18 @@ pub enum ThemePreset {
     AmberMonitor,
     /// Bright green phosphor on black, inspired by classic terminal displays.
     GreenTerminal,
+    /// Milky graphite and translucent blue inspired by late-1990s/early-2000s desktop hardware.
+    Different,
 }
 
 impl ThemePreset {
     /// Every built-in preset in stable menu/gallery order.
-    pub const ALL: [Self; 4] = [
+    pub const ALL: [Self; 5] = [
         Self::LunaDark,
         Self::LunaLight,
         Self::AmberMonitor,
         Self::GreenTerminal,
+        Self::Different,
     ];
 
     /// Stable command/session identifier.
@@ -103,6 +106,7 @@ impl ThemePreset {
             Self::LunaLight => "luna-light",
             Self::AmberMonitor => "amber-monitor",
             Self::GreenTerminal => "green-terminal",
+            Self::Different => "different",
         }
     }
 
@@ -114,6 +118,7 @@ impl ThemePreset {
             Self::LunaLight => "Luna Light",
             Self::AmberMonitor => "Amber Monitor",
             Self::GreenTerminal => "Green Terminal",
+            Self::Different => "Different",
         }
     }
 
@@ -125,6 +130,7 @@ impl ThemePreset {
             Self::LunaLight => Theme::luna_light(),
             Self::AmberMonitor => Theme::amber_monitor(),
             Self::GreenTerminal => Theme::green_terminal(),
+            Self::Different => Theme::different(),
         }
     }
 
@@ -135,7 +141,8 @@ impl ThemePreset {
             Self::LunaDark => Self::LunaLight,
             Self::LunaLight => Self::AmberMonitor,
             Self::AmberMonitor => Self::GreenTerminal,
-            Self::GreenTerminal => Self::LunaDark,
+            Self::GreenTerminal => Self::Different,
+            Self::Different => Self::LunaDark,
         }
     }
 
@@ -210,6 +217,22 @@ impl Theme {
         }
     }
 
+    /// Milky graphite, translucent blueberry, and candy-aqua desktop palette.
+    ///
+    /// The preset intentionally uses only Luna's semantic tokens. Its nostalgic character comes
+    /// from cool translucent surfaces, dark graphite text, and one saturated focus color rather
+    /// than product-specific assets or platform widgets.
+    #[must_use]
+    pub const fn different() -> Self {
+        Self {
+            background: Rgba8::opaque(222, 232, 239),
+            panel: Rgba8::opaque(247, 250, 252),
+            panel_header: Rgba8::opaque(166, 205, 225),
+            accent: Rgba8::opaque(0, 122, 184),
+            foreground: Rgba8::opaque(31, 45, 55),
+        }
+    }
+
     /// Muted foreground derived from the current panel and foreground tokens.
     #[must_use]
     pub fn muted_foreground(self) -> Rgba8 {
@@ -257,11 +280,24 @@ mod tests {
     fn terminal_presets_are_distinct_and_cycle_stably() {
         assert_ne!(Theme::amber_monitor(), Theme::green_terminal());
         assert_eq!(ThemePreset::LunaDark.next(), ThemePreset::LunaLight);
-        assert_eq!(ThemePreset::GreenTerminal.next(), ThemePreset::LunaDark);
+        assert_eq!(ThemePreset::GreenTerminal.next(), ThemePreset::Different);
+        assert_eq!(ThemePreset::Different.next(), ThemePreset::LunaDark);
         assert_eq!(
             ThemePreset::from_id("amber-monitor"),
             Some(ThemePreset::AmberMonitor)
         );
+        assert_eq!(
+            ThemePreset::from_id("different"),
+            Some(ThemePreset::Different)
+        );
+    }
+
+    #[test]
+    fn different_preset_is_light_but_not_the_reference_light_palette() {
+        let different = Theme::different();
+        assert_ne!(different, Theme::luna_light());
+        assert!(different.background.red > 200);
+        assert!(different.accent.blue > different.accent.red);
     }
 
     #[test]

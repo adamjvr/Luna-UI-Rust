@@ -14,7 +14,7 @@ use luna_core::{RectI, SizeI};
 use luna_host_core::{FrameRuntime, InvalidationReason};
 use luna_host_winit::{
     AccessibilityActionData, AccessibilityActionKind, AccessibilityActionRequest, HostControl,
-    NativeApplication, WindowConfig, WinitInputTranslator,
+    NativeApplication, NativeLifecycleEvent, WindowConfig, WinitInputTranslator,
 };
 use luna_render_wgpu::{WgpuRenderError, WgpuRenderStats, WgpuRenderer};
 use luna_ui::UiFrame;
@@ -320,6 +320,7 @@ impl<A: NativeApplication> WgpuHost<A> {
                 window.as_ref(),
                 self.proxy.clone(),
             );
+            update_macos_document_edited(window.as_ref(), self.application.has_unsaved_changes());
             window.set_ime_allowed(self.application.accepts_text_input());
             self.accesskit_adapter = Some(adapter);
             self.window = Some(window);
@@ -432,6 +433,7 @@ impl<A: NativeApplication> WgpuHost<A> {
             WgpuHostError::from_display("application frame build failed", error)
         })?;
         let application_build = application_started.elapsed();
+        update_macos_document_edited(window.as_ref(), self.application.has_unsaved_changes());
         window.set_ime_allowed(self.application.accepts_text_input());
         if let Some(area) = self.application.ime_cursor_area() {
             window.set_ime_cursor_area(
@@ -669,11 +671,28 @@ impl<A: NativeApplication> ApplicationHandler<HostEvent> for WgpuHost<A> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if let Err(error) = self.create_native_resources(event_loop) {
             self.fail(event_loop, error);
+            return;
         }
+        let control = self
+            .application
+            .handle_lifecycle(NativeLifecycleEvent::Resumed);
+        self.apply_control(control, event_loop, InvalidationReason::SurfaceExposed);
     }
 
-    fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
+    fn suspended(&mut self, event_loop: &ActiveEventLoop) {
+        let control = self
+            .application
+            .handle_lifecycle(NativeLifecycleEvent::Suspended);
+        self.apply_control(control, event_loop, InvalidationReason::SurfaceExposed);
         self.gpu = None;
+    }
+
+    fn memory_warning(&mut self, event_loop: &ActiveEventLoop) {
+        self.last_frame = None;
+        let control = self
+            .application
+            .handle_lifecycle(NativeLifecycleEvent::MemoryWarning);
+        self.apply_control(control, event_loop, InvalidationReason::FullFrame);
     }
 
     fn window_event(
@@ -693,7 +712,8 @@ impl<A: NativeApplication> ApplicationHandler<HostEvent> for WgpuHost<A> {
         }
         match &event {
             WindowEvent::CloseRequested => {
-                event_loop.exit();
+                let control = self.application.request_close();
+                self.apply_control(control, event_loop, InvalidationReason::StateChanged);
                 return;
             }
             WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
@@ -724,6 +744,15 @@ impl<A: NativeApplication> ApplicationHandler<HostEvent> for WgpuHost<A> {
         self.schedule_application_update(event_loop);
     }
 }
+
+#[cfg(target_os = "macos")]
+fn update_macos_document_edited(window: &Window, edited: bool) {
+    use winit::platform::macos::WindowExtMacOS;
+    window.set_document_edited(edited);
+}
+
+#[cfg(not(target_os = "macos"))]
+fn update_macos_document_edited(_window: &Window, _edited: bool) {}
 
 fn window_attributes(config: WindowConfig) -> winit::window::WindowAttributes {
     let mut attributes = Window::default_attributes()

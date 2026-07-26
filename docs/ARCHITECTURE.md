@@ -101,7 +101,7 @@ The Swift Luna test application deliberately separates an animated proof gallery
 editor harness. M3 established that split, and M4 runs the same proof application through either
 native renderer:
 
-- the proof gallery continuously exercises reusable controls, responsive geometry, four theme
+- the proof gallery continuously exercises reusable controls, responsive geometry, five theme
   presets, shaping, animation, clipping, DPI, hit testing, and accessibility through CPU or GPU
   presentation;
 - the editor demo remains event-driven and exercises realistic shell composition, text editing,
@@ -424,8 +424,10 @@ paths. M3.3c closes recursive popup, asynchronous provider, pane-session, and na
 gaps. M4 adds backend-neutral clip commands, the GPU renderer/host leaf adapters, CPU/GPU comparison,
 and a four-preset theme matrix. M5 adds product-neutral syntax/theme import, transactional history,
 multiple selections, IME composition, dynamic command state, and actionable accessibility payloads.
-Swift remains ahead in richer language services, platform breadth, docking/cross-window behavior,
-and its existing downstream integrations. [`SWIFT_PARITY.md`](SWIFT_PARITY.md) is
+M6 adds macOS lifecycle, dirty-document, dialog, state-directory, FSEvents, packaging, and downstream
+composition boundaries plus the fifth `Different` preset. Swift remains ahead in richer language
+services, docking/cross-window behavior, mature macOS product integration, and existing downstream
+products. [`SWIFT_PARITY.md`](SWIFT_PARITY.md) is
 the governing inventory; rendering milestones must not be described as equivalent to editor-product
 feature parity.
 
@@ -497,12 +499,51 @@ Accessibility nodes now declare explicit actions. The AccessKit bridge translate
 both hosts translate requests back to Luna IDs plus product-neutral payloads. Applications execute
 those requests through commands or editor transactions; the bridge never mutates application state.
 
+## M6 macOS and downstream-composition pipeline
+
+```text
+winit resumed / suspended / memory warning / close request
+    -> NativeLifecycleEvent or request_close
+    -> application-owned persistence, cache release, and exit policy
+    -> CPU or wgpu host resource recreation without replacing application state
+
+macOS desktop service request
+    -> SystemDialogService AppleScript adapter
+    -> application-owned document/workspace decision
+    -> platform-neutral file, workspace, and session contracts
+
+workspace root
+    -> Linux native watcher, macOS notify/FSEvents watcher, or polling fallback
+    -> coalesced WorkspaceWatchEvent values
+    -> UI-thread incremental reconciliation
+
+downstream application
+    -> IntegrationDescriptor + independently owned adapters
+    -> DownstreamServices composition value
+    -> Luna mechanisms without product workflow or a global service locator
+```
+
+The `NativeApplication` lifecycle contract is deliberately smaller than AppKit or winit. It reports
+only the semantic events Luna applications need to preserve state and release caches. Native hosts
+continue to own windows, surfaces, AccessKit adapters, and platform extensions. Applications own
+whether a close request is accepted and whether unsaved state should be represented by the native
+window.
+
+`luna-integration` is an example composition boundary, not a product framework. It stores concrete
+adapters selected by a downstream application and reports Luna's documented platform support tier.
+It does not choose parsers, commands, file formats, project policy, or release identity.
+
+The `Different` preset remains ordinary semantic theme data. Its translucent aqua, blueberry,
+graphite, and milky-surface character exercises light-theme contrast without embedding native
+widgets, copyrighted assets, or product-specific rendering branches.
+
 ## Platform support boundary
 
 Linux/Pop!_OS is the primary development and blocking acceptance platform. macOS is the intended
 second native platform and has an advisory Apple-Silicon CI lane plus a real-hardware protocol for
-Retina, Metal/wgpu, IME, VoiceOver, dialogs, watchers, and packaging. M6 promotes macOS only after
-repeatable acceptance evidence.
+Retina, Metal/wgpu, IME, VoiceOver, dialogs, FSEvents, lifecycle, and packaging. M6 implements
+those boundaries and retains advisory CI until repeated real-hardware acceptance evidence permits a
+future promotion to blocking status.
 
 Windows is not an official support target. Shared dependencies may continue to compile there and
 non-disruptive community fixes are welcome, but Luna-UI-Rust does not promise Windows CI, packaging,

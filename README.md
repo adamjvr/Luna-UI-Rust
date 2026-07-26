@@ -8,30 +8,31 @@ This is not a mechanical Swift-to-Rust translation. The rewrite preserves Luna's
 contracts while expressing them through Rust ownership, explicit errors, immutable frame snapshots,
 small workspace crates, strict compiler tooling, and platform-specific leaf adapters.
 
-## M5 status
+## M6 status
 
 M0 established the deterministic core, M1 added the native host, M2 added editor-grade text, M3
 added the twin proof-gallery/editor applications, M3.1 made the CPU path incremental, M3.2 completed
 real file/workspace/session behavior, M3.3 completed durable recursive panes and hardened desktop
-interaction, and M4 added the optional `wgpu` backend plus four shared theme presets.
+interaction, M4 added the optional `wgpu` backend, and M5 completed the first broad editor-mechanics
+parity pass. M5 has been locally accepted on Pop!_OS.
 
-M5 broadens product-neutral editor component parity:
+M6 hardens macOS and demonstrates downstream composition without assigning Luna to a particular
+product rewrite:
 
-- `luna-editor` owns validated syntax snapshots, Sublime color-scheme import, edit history, multiple
-  selections, IME composition, and deterministic parity fixtures;
-- `luna-text-cosmic` shapes retained foreground spans while `TextView` paints syntax backgrounds and
-  underlines from the same immutable geometry;
-- typing, deletion, completion, find/replace, IME commit, and editable accessibility actions share
-  one transactional undo/redo path;
-- secondary carets and selections support simultaneous insertion, replacement, and grapheme-safe
-  deletion;
-- both native hosts forward IME pre-edit/commit events and candidate-window caret geometry;
-- command projection can query dynamic enabled/checked state;
-- AccessKit actions carry UTF-8 replacement/value payloads back to applications;
-- macOS now has an advisory Apple-Silicon CI lane and real-hardware acceptance protocol;
-- Windows is explicitly best-effort and is not an official support, CI, packaging, or release target.
+- CPU and GPU hosts expose resume, suspend, memory-warning, close-veto, dirty-document, IME, and
+  accessibility contracts through the same `NativeApplication` boundary;
+- macOS receives native document-edited indication, Application Support session paths, AppleScript
+  file/folder/confirmation dialogs, and FSEvents-backed workspace delivery with safe polling fallback;
+- `scripts/package-macos.sh` produces an ad-hoc signed `.app` bundle for Apple-Silicon acceptance;
+- `luna-integration` demonstrates application-owned composition of file, dialog, workspace, watcher,
+  session, syntax, and completion adapters without creating a global service locator;
+- the shared preset catalog now contains Luna Dark, Luna Light, Amber Monitor, Green Terminal, and
+  **Different**, a cool translucent fruit-era desktop palette inspired by late-1990s and early-2000s
+  personal-computer interfaces;
+- Linux remains the primary blocking platform, macOS is the supported secondary target under
+  real-hardware hardening, and Windows remains unofficial and best-effort.
 
-See `docs/M5_EDITOR_COMPONENT_PARITY.md`, `docs/MACOS_TESTING.md`, `docs/ROADMAP.md`, and
+See `docs/M6_MACOS_INTEGRATION.md`, `docs/MACOS_TESTING.md`, `docs/ROADMAP.md`, and
 `docs/SWIFT_PARITY.md`.
 
 ## Build and validate
@@ -43,16 +44,17 @@ cargo fmt --all
 ./scripts/validate.sh
 ```
 
-M5 includes the focused automated gate and editor-mechanics runtime checklist:
+M6 includes the focused platform/integration gate and runtime checklist:
 
 ```bash
-./scripts/test-m5.sh
+./scripts/test-m6.sh
 ```
 
-On macOS, run the separate advisory gate:
+On macOS, run the secondary-platform gate and optionally package the editor proof:
 
 ```bash
 ./scripts/test-macos.sh
+./scripts/package-macos.sh
 ```
 
 Run the proof gallery with the deterministic CPU backend:
@@ -133,7 +135,7 @@ Current document, workspace, pane, popup, and rendering behavior:
 - Open Folder restores a real workspace tree with stable expansion and selection;
 - workspace create, folder create, rename, and delete use explicit product-neutral mutation policy;
 - dirty files affected by deletion may remain open as Untitled, close after discard, or cancel;
-- recent files and workspace tree state persist across launches in the XDG state directory;
+- recent files and workspace tree state persist in XDG state storage on Linux and Application Support on macOS;
 - edits in one pane synchronize the shared document text into sibling views;
 - caret, selection, scroll, focus, and text-layout caches remain pane-local;
 - closing a pane-local shared view does not close the shared document;
@@ -178,6 +180,7 @@ native event / AccessKit action / scheduled logical update
     -> workspace scan/mutation policy + persistent session state
     -> recursive pane topology + shared document/view projection
     -> syntax/theme + transaction history + multiple-selection + IME mechanics
+    -> platform-neutral lifecycle + downstream adapter composition
     -> platform-neutral Luna application state
     -> retained styled text/layout/chrome or retained static scene
     -> dynamic display list + shared validated semantic snapshot
@@ -195,7 +198,7 @@ Moth-specific product policy. See `docs/ARCHITECTURE.md`, `docs/PORTING_MAP.md`,
 `docs/M3_2E_WORKSPACE_OPERATIONS_SESSION.md`, `docs/M3_3A_SPLIT_PANES.md`,
 `docs/M3_3B_ADVANCED_TABS_POPUPS.md`, `docs/M3_3C_DESKTOP_HARDENING.md`,
 `docs/M4_GPU_RENDERING.md`, `docs/M5_EDITOR_COMPONENT_PARITY.md`,
-`docs/MACOS_TESTING.md`, and `docs/SWIFT_PARITY.md`.
+`docs/M6_MACOS_INTEGRATION.md`, `docs/MACOS_TESTING.md`, and `docs/SWIFT_PARITY.md`.
 
 ## License
 

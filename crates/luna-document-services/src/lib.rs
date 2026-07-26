@@ -8,9 +8,9 @@
 //! into Luna's document identity model.
 //!
 //! [`StdTextFileService`] provides UTF-8 reads, deterministic content revisions, optimistic write
-//! preconditions, and same-directory atomic replacement. [`SystemDialogService`] uses an installed
-//! Linux desktop dialog helper (`zenity` first, then `kdialog`) without adding toolkit dependencies
-//! to the Luna workspace. [`MemoryTextFileService`] and [`ScriptedDialogService`] provide fully
+//! preconditions, and same-directory atomic replacement. [`SystemDialogService`] uses AppleScript
+//! dialogs on macOS or an installed Linux helper (`zenity` first, then `kdialog`) without moving
+//! toolkit policy into Luna UI. [`MemoryTextFileService`] and [`ScriptedDialogService`] provide fully
 //! deterministic adapters for unit tests. The dialog boundary also includes workspace-folder
 //! selection so products can compose document and project lifecycles without toolkit coupling.
 
@@ -637,7 +637,7 @@ impl DialogError {
     fn unavailable() -> Self {
         Self {
             kind: DialogErrorKind::Unavailable,
-            message: "install zenity or kdialog to enable native document dialogs".to_owned(),
+            message: "no supported native document dialog backend is available".to_owned(),
         }
     }
 
@@ -671,11 +671,13 @@ pub enum SystemDialogBackend {
     Zenity,
     /// KDE KDialog helper.
     KDialog,
+    /// macOS Standard Additions dialogs through `/usr/bin/osascript`.
+    AppleScript,
     /// No supported helper was detected.
     Unavailable,
 }
 
-/// Linux desktop dialog adapter backed by Zenity or KDialog.
+/// Native desktop dialog adapter backed by AppleScript, Zenity, or KDialog.
 #[derive(Clone, Copy, Debug)]
 pub struct SystemDialogService {
     backend: SystemDialogBackend,
@@ -688,9 +690,17 @@ impl Default for SystemDialogService {
 }
 
 impl SystemDialogService {
-    /// Detects an installed dialog helper, preferring Zenity.
+    /// Detects the native macOS adapter or an installed Linux dialog helper.
     #[must_use]
     pub fn detect() -> Self {
+        #[cfg(target_os = "macos")]
+        let backend = if Path::new("/usr/bin/osascript").is_file() {
+            SystemDialogBackend::AppleScript
+        } else {
+            SystemDialogBackend::Unavailable
+        };
+
+        #[cfg(not(target_os = "macos"))]
         let backend = if command_exists("zenity") {
             SystemDialogBackend::Zenity
         } else if command_exists("kdialog") {
@@ -698,6 +708,7 @@ impl SystemDialogService {
         } else {
             SystemDialogBackend::Unavailable
         };
+
         Self { backend }
     }
 
@@ -712,6 +723,63 @@ impl SystemDialogService {
             .args(args)
             .output()
             .map_err(|error| DialogError::io("failed to launch native dialog", error))
+    }
+
+    fn run_applescript(&self, script: &str, args: &[OsString]) -> Result<Output, DialogError> {
+        let mut command = Command::new("/usr/bin/osascript");
+        command.arg("-e").arg(script).arg("--").args(args);
+        command
+            .output()
+            .map_err(|error| DialogError::io("failed to launch macOS dialog", error))
+    }
+
+    fn applescript_question(
+        &self,
+        title: &str,
+        text: &str,
+        ok_label: &str,
+        extra_label: &str,
+    ) -> Result<QuestionResult, DialogError> {
+        const SCRIPT: &str = r#"on run argv
+set dialogTitle to item 1 of argv
+set dialogText to item 2 of argv
+set primaryLabel to item 3 of argv
+set secondaryLabel to item 4 of argv
+try
+    if secondaryLabel is "Cancel" then
+        set answer to display dialog dialogText with title dialogTitle buttons {"Cancel", primaryLabel} default button primaryLabel cancel button "Cancel"
+    else
+        set answer to display dialog dialogText with title dialogTitle buttons {"Cancel", secondaryLabel, primaryLabel} default button primaryLabel cancel button "Cancel"
+    end if
+    return button returned of answer
+on error number -128
+    return "Cancel"
+end try
+end run"#;
+        let output = self.run_applescript(
+            SCRIPT,
+            &[
+                OsString::from(title),
+                OsString::from(text),
+                OsString::from(ok_label),
+                OsString::from(extra_label),
+            ],
+        )?;
+        if !output.status.success() {
+            return Err(dialog_output_error(output));
+        }
+        let response = String::from_utf8(output.stdout)
+            .map_err(|error| DialogError::invalid_response(error.to_string()))?;
+        Ok(match response.trim() {
+            value if value == ok_label => QuestionResult::Primary,
+            "Cancel" => QuestionResult::Cancel,
+            value if value == extra_label => QuestionResult::Secondary,
+            value => {
+                return Err(DialogError::invalid_response(format!(
+                    "unsupported macOS dialog response: {value}"
+                )));
+            }
+        })
     }
 
     fn selected_path(output: Output) -> Result<Option<PathBuf>, DialogError> {
@@ -797,6 +865,15 @@ impl DocumentDialogService for SystemDialogService {
                     OsString::from("Text files (*.txt *.md *.rs *.toml *.json);;All files (*)"),
                 ],
             )?),
+            SystemDialogBackend::AppleScript => Self::selected_path(self.run_applescript(
+                r#"try
+set chosenFile to choose file with prompt "Open Text File"
+return POSIX path of chosenFile
+on error number -128
+return ""
+end try"#,
+                &[],
+            )?),
             SystemDialogBackend::Unavailable => Err(DialogError::unavailable()),
         }
     }
@@ -819,6 +896,15 @@ impl DocumentDialogService for SystemDialogService {
                     OsString::from("--getexistingdirectory"),
                     OsString::from("."),
                 ],
+            )?),
+            SystemDialogBackend::AppleScript => Self::selected_path(self.run_applescript(
+                r#"try
+set chosenFolder to choose folder with prompt "Open Workspace Folder"
+return POSIX path of chosenFolder
+on error number -128
+return ""
+end try"#,
+                &[],
             )?),
             SystemDialogBackend::Unavailable => Err(DialogError::unavailable()),
         }
@@ -848,10 +934,29 @@ impl DocumentDialogService for SystemDialogService {
                     OsString::from("--title"),
                     OsString::from("Save Text File"),
                     OsString::from("--getsavefilename"),
-                    suggested.into_os_string(),
+                    suggested.clone().into_os_string(),
                     OsString::from("Text files (*.txt *.md *.rs *.toml *.json);;All files (*)"),
                 ],
             )?),
+            SystemDialogBackend::AppleScript => {
+                let directory = suggested.parent().unwrap_or_else(|| Path::new("."));
+                let name = suggested
+                    .file_name()
+                    .unwrap_or_else(|| std::ffi::OsStr::new(suggested_name));
+                Self::selected_path(self.run_applescript(
+                    r#"on run argv
+set defaultFolder to POSIX file (item 1 of argv)
+set defaultName to item 2 of argv
+try
+    set chosenFile to choose file name with prompt "Save Text File" default location defaultFolder default name defaultName
+    return POSIX path of chosenFile
+on error number -128
+    return ""
+end try
+end run"#,
+                    &[directory.as_os_str().to_owned(), name.to_owned()],
+                )?)
+            }
             SystemDialogBackend::Unavailable => Err(DialogError::unavailable()),
         }
     }
@@ -863,6 +968,9 @@ impl DocumentDialogService for SystemDialogService {
                 self.zenity_question("Unsaved Changes", &text, "Save", "Discard")?
             }
             SystemDialogBackend::KDialog => self.kdialog_question("Unsaved Changes", &text)?,
+            SystemDialogBackend::AppleScript => {
+                self.applescript_question("Unsaved Changes", &text, "Save", "Discard")?
+            }
             SystemDialogBackend::Unavailable => return Err(DialogError::unavailable()),
         };
         Ok(match result {
@@ -886,6 +994,9 @@ impl DocumentDialogService for SystemDialogService {
                 self.zenity_question(title, &text, "Overwrite", "Reload")?
             }
             SystemDialogBackend::KDialog => self.kdialog_question(title, &text)?,
+            SystemDialogBackend::AppleScript => {
+                self.applescript_question(title, &text, "Overwrite", "Reload")?
+            }
             SystemDialogBackend::Unavailable => return Err(DialogError::unavailable()),
         };
         Ok(match result {
@@ -921,6 +1032,21 @@ impl DocumentDialogService for SystemDialogService {
                     OsString::from(initial_name),
                 ],
             )?,
+            SystemDialogBackend::AppleScript => self.run_applescript(
+                r#"on run argv
+try
+    set answer to display dialog (item 2 of argv) with title (item 1 of argv) default answer (item 3 of argv) buttons {"Cancel", "OK"} default button "OK" cancel button "Cancel"
+    return text returned of answer
+on error number -128
+    return "__LUNA_CANCEL__"
+end try
+end run"#,
+                &[
+                    OsString::from(title),
+                    OsString::from(prompt),
+                    OsString::from(initial_name),
+                ],
+            )?,
             SystemDialogBackend::Unavailable => return Err(DialogError::unavailable()),
         };
         if output.status.success() {
@@ -930,7 +1056,11 @@ impl DocumentDialogService for SystemDialogService {
                 .strip_suffix("\r\n")
                 .or_else(|| value.strip_suffix('\n'))
                 .unwrap_or(&value);
-            Ok(Some(value.to_owned()))
+            if value == "__LUNA_CANCEL__" {
+                Ok(None)
+            } else {
+                Ok(Some(value.to_owned()))
+            }
         } else if is_cancel_status(output.status) {
             Ok(None)
         } else {
@@ -949,6 +1079,9 @@ impl DocumentDialogService for SystemDialogService {
             }
             SystemDialogBackend::KDialog => {
                 self.kdialog_question("Replace Existing File", &text)?
+            }
+            SystemDialogBackend::AppleScript => {
+                self.applescript_question("Replace Existing File", &text, "Replace", "Cancel")?
             }
             SystemDialogBackend::Unavailable => return Err(DialogError::unavailable()),
         };
@@ -976,6 +1109,9 @@ impl DocumentDialogService for SystemDialogService {
             }
             SystemDialogBackend::KDialog => {
                 self.kdialog_question("Delete Workspace Entry", &text)?
+            }
+            SystemDialogBackend::AppleScript => {
+                self.applescript_question("Delete Workspace Entry", &text, "Delete", "Cancel")?
             }
             SystemDialogBackend::Unavailable => return Err(DialogError::unavailable()),
         };
@@ -1005,6 +1141,12 @@ impl DocumentDialogService for SystemDialogService {
             SystemDialogBackend::KDialog => {
                 self.kdialog_question("Unsaved Workspace Document", &text)?
             }
+            SystemDialogBackend::AppleScript => self.applescript_question(
+                "Unsaved Workspace Document",
+                &text,
+                "Keep Open",
+                "Discard & Close",
+            )?,
             SystemDialogBackend::Unavailable => return Err(DialogError::unavailable()),
         };
         Ok(match result {
@@ -1037,10 +1179,9 @@ fn path_from_dialog_stdout(stdout: Vec<u8>) -> Result<Option<PathBuf>, DialogErr
 }
 
 fn command_exists(program: &str) -> bool {
-    Command::new(program)
-        .arg("--version")
-        .output()
-        .is_ok_and(|output| output.status.success())
+    std::env::var_os("PATH").is_some_and(|paths| {
+        std::env::split_paths(&paths).any(|directory| directory.join(program).is_file())
+    })
 }
 
 fn is_cancel_status(status: ExitStatus) -> bool {

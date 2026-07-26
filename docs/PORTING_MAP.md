@@ -4,11 +4,11 @@
 |---|---|---|
 | `LunaCore` | `luna-core` | IDs, geometry, and diagnostics implemented |
 | `LunaInput` | `luna-input` | Platform-neutral keyboard, pointer, scroll, text, focus, and IME enable/pre-edit/commit model plus winit translation implemented |
-| `LunaTheme` | `luna-theme` | Luna Dark/Light plus Amber Monitor and Green Terminal presets with derived UI colors implemented |
+| `LunaTheme` | `luna-theme` | Luna Dark/Light, Amber Monitor, Green Terminal, and Different presets with derived UI colors implemented |
 | `LunaRender` | `luna-render` plus `luna-render-wgpu` | Display lists, nested clips, CPU oracle, DPI scaling, raster images, alpha composition, ordered GPU quad batches, and BGRA atlas upload implemented |
 | `LunaAccessibility` | `luna-accessibility` | Validated tree, text ranges, explicit actions, editor-control roles, and deterministic semantic fingerprints implemented |
 | Native accessibility bridge | `luna-accessibility-accesskit` | Stable-ID AccessKit bridge, explicit action translation, UTF-8 value payload delivery, and activation-aware unchanged-tree suppression implemented |
-| `LunaHostCore` | `luna-host-core` | Frame invalidation/runtime implemented |
+| `LunaHostCore` | `luna-host-core` | Frame invalidation/runtime plus explicit platform support and lifecycle contracts implemented |
 | `LunaLayout` | `luna-layout` | Row/column/stack/split snapshots implemented |
 | `LunaCommands` | `luna-commands` | Typed registry, key bindings, and dynamic enabled/checked state providers implemented |
 | Swift document/session identity and lifecycle | `luna-documents` | Stable buffer IDs, independent view IDs, file identity, duplicate prevention, dirty/save/close decisions, storage snapshots, relocation, and detachment implemented |
@@ -25,14 +25,15 @@
 | find/replace panel | `luna-ui::FindPanel` | Query/replacement fields, case/whole-word options, current/all actions, geometry, and accessibility implemented |
 | general proof controls | `Button`, `Toggle`, `ProgressBar`, `TextLabel` | Reusable primitives plus stable-slot label cache implemented |
 | `LunaUITestApp --proof-gallery` | `luna-ui-rust-proof-gallery` | Retained layout/static paint/semantics with isolated animation-lane rendering implemented |
-| Swift file/dialog service boundary | `luna-document-services` | UTF-8 reads, atomic writes, file/folder dialogs, workspace mutation choices, storage observation, and deterministic mocks implemented |
-| Swift workspace/project adapters | `luna-workspaces` | Stable recursive snapshots, mutations, native-first Linux watching, polling fallback, coalescing, incremental subtree reconciliation, refresh preservation, and deterministic adapters implemented |
-| Swift persistent editor session | `luna-session` | Versioned atomic recent-file and workspace-tree restoration with standard and memory stores implemented |
+| Swift file/dialog service boundary | `luna-document-services` | UTF-8 reads, atomic writes, Linux helper and macOS AppleScript dialogs, workspace mutation choices, storage observation, and deterministic mocks implemented |
+| Swift workspace/project adapters | `luna-workspaces` | Stable recursive snapshots, mutations, Linux native and macOS FSEvents watching, polling fallback, coalescing, incremental subtree reconciliation, refresh preservation, and deterministic adapters implemented |
+| Swift persistent editor session | `luna-session` | Versioned atomic recent-file and workspace-tree restoration with XDG Linux, Application Support macOS, standard, and memory stores implemented |
 | default `LunaUITestApp` editor mode | `luna-ui-rust-editor-demo` | Real files/workspaces, durable panes, advanced tabs/menus, async completion, syntax styling, undo/redo, multiple cursors, IME, search history/options, native watchers, and accessibility integrated |
-| `LunaHostSDL` / `LunaHostMetal` | `luna-host-winit` and `luna-host-wgpu` | CPU/softbuffer and GPU/wgpu hosts share input, IME, candidate geometry, application, invalidation, and AccessKit contracts; GPU surface/device recovery implemented |
+| `LunaHostSDL` / `LunaHostMetal` | `luna-host-winit` and `luna-host-wgpu` | CPU/softbuffer and GPU/wgpu hosts share input, lifecycle, close, dirty-document, IME, candidate geometry, invalidation, and AccessKit contracts; GPU surface/device recovery implemented |
 | incremental gallery/accessibility pipeline | existing host/gallery/accessibility crates | M3.1c retained static layer, dirty-region restore, input coalescing, and semantic fingerprints implemented |
 | Swift Phase 4C first-level menu behavior | `luna-ui::DropdownMenu` plus editor demo routing | M3.1d complete for first-level menus; submenus/mnemonics remain M3.3 |
 | GPU rendering | `luna-render-wgpu` plus `luna-host-wgpu` | M4 optional native backend, batching, scissor clips, atlas upload, metrics, and proof-gallery comparison implemented |
+| downstream adapter composition | `luna-integration` | Application-owned file/dialog/workspace/watcher/session/syntax/completion composition and support reporting implemented |
 
 ## Porting rule
 
@@ -48,6 +49,6 @@ coverage is near parity. First-level dropdown menus, document lifecycle state, U
 atomic Save, Save As, native dialogs, recent files, continuous external-change delivery, and one
 real recursive workspace tree, controlled workspace mutations, and persistent recent/workspace
 restoration now exist. Recursive live panes, durable tab/view sessions, deep popups, async completion,
-and native-first watcher delivery now exist. M5 adds syntax/theme, transaction, multiple-selection,
-IME, command-state, and accessibility-action mechanics. M6 is macOS hardening and optional downstream
-adapter work; Windows is not an official target.
+and native-first watcher delivery now exist. M5 adds syntax/theme, transaction, multiple-selection, IME, command-state, and accessibility-action
+mechanics. M6 adds macOS lifecycle/dialog/session/watcher/packaging boundaries, downstream adapter
+composition, and the Different preset; Windows is not an official target.

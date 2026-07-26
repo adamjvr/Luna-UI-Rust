@@ -184,7 +184,7 @@
 - Proof-gallery and editor CPU/GPU runtime selection with a comparison checklist.
 - Stable Luna Dark, Luna Light, Amber Monitor, and Green Terminal theme presets.
 
-## M5 — broader editor component parity — implemented; local validation pending
+## M5 — broader editor component parity — complete after local validation
 
 - Product-neutral `luna-editor` crate for syntax snapshots, themes, history, selections, IME, and
   behavior fixtures.
@@ -199,13 +199,28 @@
 - Rendering-independent parity fixtures suitable for matching Swift or other implementations.
 - Advisory macOS build/test lane and documented Apple-Silicon graphical acceptance protocol.
 
-## M6 — macOS hardening and downstream integration
+## M6 — macOS hardening and downstream integration — implemented; validation pending
 
-- Close macOS-specific host, Metal/wgpu, IME, VoiceOver, dialog, watcher, and packaging gaps.
-- Promote macOS CI from advisory to blocking only after repeated real-hardware acceptance.
-- Add downstream adapter examples without committing Luna-UI-Rust to any particular product rewrite.
-- Expand replay fixtures, accessibility audits, performance gates, and integration hardening.
-- Windows remains best-effort and non-blocking: no official CI, packaging, release, or support target.
+- Explicit Resumed, Suspended, MemoryWarning, close-request, and unsaved-state application contracts.
+- Native macOS document-edited indication without moving dirty-document policy into the host.
+- macOS Application Support session paths and AppleScript document/workspace dialogs.
+- FSEvents workspace delivery through pinned `notify`, with deterministic polling fallback.
+- Product-neutral downstream adapter composition through `luna-integration`.
+- Development `.app` bundle generation with plist validation and ad-hoc signing.
+- Stable Linux-primary, macOS-secondary, Windows-best-effort support tiers.
+- Fifth built-in palette: **Different**, with translucent late-1990s/early-2000s desktop character.
+- macOS CI remains advisory until repeated real-hardware CPU/Metal, IME, VoiceOver, watcher, dialog,
+  lifecycle, and packaged-launch acceptance exists.
+
+## M7 — public API stabilization and release qualification
+
+- Audit public crate surfaces, naming, error contracts, and semver commitments.
+- Add replay/performance thresholds for text, panes, menus, workspaces, CPU, and GPU paths.
+- Harden retained GPU resources and long-session memory behavior.
+- Produce Linux development packages and downstream resource-loading examples.
+- Record repeated macOS real-hardware acceptance and decide whether advisory CI becomes blocking.
+- Expand API documentation, integration examples, accessibility audits, and release checklists.
+- Windows remains unofficial, best-effort, and non-blocking.
 
 ## Swift parity checkpoints
 
@@ -215,5 +230,6 @@ M3.3a supplies the first live recursive pane runtime. M3.3b adds advanced tabs, 
 scrollbars. M3.3c adds durable pane sessions, recursive popup routing, asynchronous providers, and
 native-first incremental workspace delivery. M4 adds the optional `wgpu` renderer/host and
 four-palette comparison matrix. M5 adds reusable syntax/theme, history, multiple-selection, IME,
-command-state, and accessibility-action mechanics. M6 concentrates on macOS hardening; Windows is
-not an official project target.
+command-state, and accessibility-action mechanics. M6 adds lifecycle/dirty-state host seams, native
+macOS dialogs/session paths/FSEvents/package tooling, downstream composition, and the fifth
+**Different** theme. M7 is public-API and release qualification. Windows is not an official target.

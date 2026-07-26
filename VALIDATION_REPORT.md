@@ -1,39 +1,36 @@
-# M5 Validation Report
+# M6 Validation Report
 
 ## Baseline
 
-M5 is developed from committed and locally validated M4 at
-`517480db511a209c3a365511763bc0db099f2619`.
+M6 is developed from committed and locally validated M5 at
+`b52685b7e528466b6257f1f48521746132764352`.
 
 ## Change set
 
-- added `luna-editor` with syntax snapshots, Sublime color-scheme import, transaction history,
-  multiple selections, IME composition, and behavior-parity fixtures;
-- added style-revision-aware rich shaping and syntax decorations;
-- integrated undo/redo, secondary cursors, simultaneous editing, completion/find transactions, and
-  visible IME pre-edit into the editor harness;
-- added dynamic command state and explicit accessibility action/value delivery;
-- added native IME translation and candidate-window positioning to CPU and GPU hosts;
-- added `docs/M5_EDITOR_COMPONENT_PARITY.md`, `docs/MACOS_TESTING.md`, `scripts/test-m5.sh`, and
-  `scripts/test-macos.sh`;
-- added a non-blocking macOS 15 Apple-Silicon GitHub Actions job;
-- updated README, architecture, current status, roadmap, porting map, Swift parity, Rust practices,
-  and platform support policy.
+- added native lifecycle, close-request, and unsaved-state host contracts;
+- mirrored dirty state into the macOS document-edited indicator;
+- persisted editor sessions on suspend, memory warning, and native close;
+- added macOS Application Support session paths and AppleScript dialogs;
+- added `notify` 8.2.0 FSEvents delivery with polling fallback;
+- added `luna-integration` for product-neutral downstream adapter composition;
+- added stable platform-support tiers while retaining Windows as best-effort;
+- added the **Different** late-1990s/early-2000s translucent desktop theme;
+- added macOS application-bundle creation, plist validation, ad-hoc signing, and verification;
+- added `docs/M6_MACOS_INTEGRATION.md`, `scripts/test-m6.sh`, and expanded macOS validation;
+- updated README, architecture, current status, roadmap, porting map, Swift parity, and practices.
 
 ## Implemented invariants
 
-- syntax ranges are valid UTF-8 boundaries, sorted, and non-overlapping before shaping;
-- syntax/language providers remain outside text shaping and widgets;
-- simultaneous edits calculate pre-edit ranges and apply from right to left;
-- undo/redo restores complete text and directional selection sets;
-- caret-only movement does not change the saved checkpoint;
-- pre-edit text does not mutate document history before IME commit;
-- IME candidate geometry derives from the same shaped caret used for paint and hit testing;
-- completion, find replacement, accessibility replacement, and normal typing share transactions;
-- explicit semantic actions are translated by the AccessKit leaf adapter, not executed there;
-- CPU and GPU hosts deliver identical input, IME, command, and accessibility application contracts;
-- macOS is advisory until real-hardware acceptance exists;
-- Windows is not a blocking target or release promise.
+- lifecycle events are delivered identically by CPU and GPU hosts;
+- native close policy remains application-owned and can veto or accept termination;
+- the macOS edited indicator reflects application state without owning document policy;
+- reconstructible caches may be dropped on memory warning while durable state is persisted;
+- AppleScript, Linux helper, scripted, and memory dialogs implement the same neutral trait;
+- native watcher callbacks cross a channel and never mutate UI state;
+- watcher failures fall back to polling and request a safe rescan;
+- downstream adapters remain concrete application-owned values rather than globals;
+- `Different` is selected by stable ID and participates in normal theme/session/command projection;
+- Linux is primary, macOS secondary/advisory, and Windows best-effort/non-blocking.
 
 ## Static validation performed in the delivery environment
 
@@ -42,22 +39,23 @@ M5 is developed from committed and locally validated M4 at
 - Rust lexical delimiter and duplicate-splice scans pass;
 - shell scripts pass `bash -n`;
 - `git diff --check` reports no malformed whitespace;
-- changed Rust, shell, and workflow files retain required licensing/documentation conventions;
+- changed Rust and shell files retain SPDX identifiers;
 - local Markdown links resolve;
-- generated archives are tested with `unzip -t`;
-- the repo-root overlay is reconstructed over the exact M4 baseline and compared byte-for-byte;
+- generated archives pass `unzip -t`;
+- the repo-root overlay is reconstructed over the exact M5 full-source baseline and compared byte-for-byte;
 - SHA-256 manifests are generated after final archive creation.
 
 ## Compiler and runtime boundary
 
 Rust 1.97.1 is unavailable in the artifact-building container. This report therefore does **not**
-claim Cargo resolution, rustfmt, rustc, strict Clippy, tests, rustdoc, native IME, AccessKit actions,
-VoiceOver, GPU startup, or graphical presentation were executed there.
+claim Cargo resolution, lockfile refresh for `notify`, rustfmt, rustc, strict Clippy, tests, rustdoc,
+AppleScript dialogs, FSEvents, VoiceOver, Metal startup, graphical presentation, plist validation, or
+codesign were executed there.
 
 Authoritative Linux/Pop!_OS validation:
 
 ```bash
-./scripts/test-m5.sh
+./scripts/test-m6.sh
 ```
 
 Advisory macOS validation:
@@ -66,6 +64,6 @@ Advisory macOS validation:
 ./scripts/test-macos.sh
 ```
 
-Any formatting, compiler, Clippy, test, rustdoc, syntax, history, multi-selection, IME, accessibility,
-CPU/GPU, or runtime regression blocks M5 acceptance on Linux. macOS failures remain advisory during
-M5 but must be recorded for M6.
+Any Linux formatting, compilation, Clippy, test, rustdoc, CPU/GPU, theme, lifecycle, dialog, watcher,
+session, or integration regression blocks M6 acceptance. macOS failures remain advisory but must be
+recorded for M7 release qualification.

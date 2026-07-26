@@ -43,7 +43,8 @@ use luna_editor::{
 use luna_host_wgpu::run_native_wgpu;
 use luna_host_winit::{
     AccessibilityActionData, AccessibilityActionKind, AccessibilityActionRequest, ApplicationError,
-    HostControl, InvalidationClass, NativeApplication, WindowConfig, run_native,
+    HostControl, InvalidationClass, NativeApplication, NativeLifecycleEvent, WindowConfig,
+    run_native,
 };
 use luna_input::{
     ImeEvent, InputEvent, Key, Modifiers, NamedKey, PointerButton, PointerEvent, PointerEventKind,
@@ -79,9 +80,9 @@ use luna_ui::{
     UiFrame, VerticalScrollbarAction, Widget,
 };
 use luna_workspaces::{
-    LinuxWorkspaceWatchService, StdWorkspaceService, WorkspaceCollisionPolicy, WorkspaceErrorKind,
-    WorkspaceModel, WorkspaceNodeKind, WorkspaceNodeStatus, WorkspaceRuntimeService,
-    WorkspaceScanOptions, WorkspaceWatchService,
+    PlatformWorkspaceWatchService, StdWorkspaceService, WorkspaceCollisionPolicy,
+    WorkspaceErrorKind, WorkspaceModel, WorkspaceNodeKind, WorkspaceNodeStatus,
+    WorkspaceRuntimeService, WorkspaceScanOptions, WorkspaceWatchService,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::error::Error;
@@ -653,7 +654,7 @@ impl EditorDemoApplication {
             file_service,
             dialog_service,
             workspace_service,
-            workspace_watcher: Box::new(LinuxWorkspaceWatchService::default()),
+            workspace_watcher: Box::new(PlatformWorkspaceWatchService::default()),
             workspace_watcher_active: false,
             session_store,
             workspace: None,
@@ -5577,6 +5578,34 @@ impl NativeApplication for EditorDemoApplication {
         }
     }
 
+    fn has_unsaved_changes(&self) -> bool {
+        self.documents
+            .iter()
+            .any(|document| document.is_dirty(&self.document_registry))
+    }
+
+    fn handle_lifecycle(&mut self, event: NativeLifecycleEvent) -> HostControl {
+        match event {
+            NativeLifecycleEvent::Resumed => HostControl::Invalidate(InvalidationClass::Surface),
+            NativeLifecycleEvent::Suspended => {
+                self.persist_session();
+                HostControl::Continue
+            }
+            NativeLifecycleEvent::MemoryWarning => {
+                self.text_layouts.clear();
+                self.label_cache.clear();
+                self.persist_session();
+                HostControl::Invalidate(InvalidationClass::FullFrame)
+            }
+        }
+    }
+
+    fn request_close(&mut self) -> HostControl {
+        self.commit_active_view_to_buffer();
+        self.persist_session();
+        HostControl::Exit
+    }
+
     fn accepts_text_input(&self) -> bool {
         self.text_is_focused
             && self.palette.is_none()
@@ -8548,7 +8577,7 @@ mod tests {
     }
 
     #[test]
-    fn color_scheme_commands_select_terminal_presets() -> TestResult {
+    fn color_scheme_commands_select_terminal_and_different_presets() -> TestResult {
         let (files, dialogs) = test_services()?;
         let mut application = test_application(&files, &dialogs)?;
 
@@ -8559,9 +8588,12 @@ mod tests {
         let _ = application.execute_command("theme:green-terminal");
         assert_eq!(application.theme_preset, ThemePreset::GreenTerminal);
         assert_eq!(application.theme, ThemePreset::GreenTerminal.theme());
+        let _ = application.execute_command("theme:different");
+        assert_eq!(application.theme_preset, ThemePreset::Different);
+        assert_eq!(application.theme, ThemePreset::Different.theme());
         assert_eq!(
             application.lifecycle_notice.as_deref(),
-            Some("Color scheme: Green Terminal")
+            Some("Color scheme: Different")
         );
         Ok(())
     }
