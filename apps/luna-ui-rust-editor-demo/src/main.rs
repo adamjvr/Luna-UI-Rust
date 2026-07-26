@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-//! Native M3.3b editor integration harness for Luna UI Rust.
+//! Native M3.3c editor integration harness for Luna UI Rust.
 //!
 //! This application mirrors the purpose of Swift LunaUITestApp's default editor mode: reusable
 //! shell anatomy and editor text are exercised together without embedding Moth Text product
@@ -18,7 +18,9 @@
 //! Control-S save, Control-Shift-S Save As, Control-Shift-O Open Folder, Control-Shift-R refresh
 //! workspace, Control-N new document, Control-B sidebar, Control-W close pane-local tab,
 //! Control-\ split right, Control-Shift-\ split down, Control-Alt-Left/Right focus panes,
-//! Control-Shift-W close pane, Control-Space completion popup, Control-A select all, and Escape
+//! Control-Shift-W close pane, Control-Shift-Left/Right reorder tabs,
+//! Control-Alt-Shift-Left/Right move tabs across panes, Control-Space completion popup,
+//! Control-A select all, and Escape
 //! closes the active menu/overlay or exits when no transient surface is open.
 
 use luna_accessibility::{AccessibilityNode, AccessibilityRole};
@@ -32,7 +34,7 @@ use luna_document_services::{
 use luna_documents::{
     CloseRequirement, DocumentId, DocumentRecord, DocumentRegistry, DocumentSource, DocumentViewId,
     DocumentViewRegistry, ExternalState, FileIdentity, OpenFileOutcome, RecentFileList,
-    SaveRequirement,
+    SaveRequirement, StorageInstance, StorageRevision, StorageSnapshot,
 };
 use luna_host_winit::{
     AccessibilityActionKind, AccessibilityActionRequest, ApplicationError, HostControl,
@@ -41,34 +43,46 @@ use luna_host_winit::{
 use luna_input::{
     InputEvent, Key, Modifiers, NamedKey, PointerButton, PointerEvent, PointerEventKind,
 };
-use luna_panes::{PaneAxis, PaneId, PaneLayoutMetrics, PaneTree};
+use luna_panes::{
+    PaneAxis, PaneId, PaneLayoutMetrics, PaneLeafSnapshot, PaneNodeSnapshot, PaneSplitSnapshot,
+    PaneTree, PaneTreeSnapshot,
+};
 use luna_render::DisplayList;
 #[cfg(test)]
 use luna_session::MemorySessionStore;
 use luna_session::{
-    SessionRecentFile, SessionState, SessionStore, SessionWorkspace, StdSessionStore,
+    SessionDocument, SessionDocumentSource, SessionDocumentView, SessionPaneAxis, SessionPaneNode,
+    SessionPaneTab, SessionPaneTree, SessionRecentFile, SessionState, SessionStorageSnapshot,
+    SessionStore, SessionWorkspace, StdSessionStore,
 };
 use luna_text::{EditableText, SnapBias, TextLocation, TextRange, TextScroll};
 use luna_text_cosmic::{
     TextEngine, TextLayoutCache, TextLayoutCacheStats, TextLayoutRequest, TextLayoutSnapshot,
 };
 use luna_theme::{Rgba8, Theme};
+use luna_ui::DropdownMenuState;
 use luna_ui::{
-    CommandPalette, CommandPaletteState, CompletionItem, CompletionPopup, CompletionPopupState,
-    DropdownMenu, DropdownMenuState, EditorPaneSurface, EditorPaneSurfaceHit,
+    CommandPalette, CommandPaletteState, CompletionCandidate, CompletionCoordinator,
+    CompletionItem, CompletionPopup, CompletionPopupState, CompletionProvider,
+    CompletionReplacementRange, CompletionRequest, CompletionRequestId, CompletionResponse,
+    CompletionResponseSender, DropdownMenu, EditorPaneSurface, EditorPaneSurfaceHit,
     EditorPaneSurfaceState, EditorShell, EditorShellHit, EditorShellMetrics, EditorShellState,
     FindField, FindPanel, FindPanelState, MenuCommand, MenuDefinition, MenuItem, PaletteItem,
-    PanePresentation, PaneTab, ShellMenu, SidebarItem, TabScrollDirection, TextAlignment,
-    TextLabel, TextLabelCache, TextView, TextViewStyle, UiFrame, Widget,
+    PanePresentation, PaneTab, SearchHistory, ShellMenu, SidebarItem, TabScrollDirection,
+    TextAlignment, TextLabel, TextLabelCache, TextView, TextViewStyle, UiFrame,
+    VerticalScrollbarAction, Widget,
 };
 use luna_workspaces::{
-    StdWorkspaceService, WorkspaceCollisionPolicy, WorkspaceErrorKind, WorkspaceModel,
-    WorkspaceNodeKind, WorkspaceNodeStatus, WorkspaceRuntimeService, WorkspaceScanOptions,
+    LinuxWorkspaceWatchService, StdWorkspaceService, WorkspaceCollisionPolicy, WorkspaceErrorKind,
+    WorkspaceModel, WorkspaceNodeKind, WorkspaceNodeStatus, WorkspaceRuntimeService,
+    WorkspaceScanOptions, WorkspaceWatchService,
 };
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::error::Error;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use std::thread;
 use std::time::Duration;
 
 const ROOT_ID: &str = "m3-editor-window";
@@ -86,7 +100,7 @@ const RECENT_FILE_LIMIT: usize = 8;
 
 const README_TEXT: &str = concat!(
     "# Luna UI Rust\n\n",
-    "M3.3b adds advanced desktop tabs and popup interaction.\n\n",
+    "M3.3c adds durable desktop sessions and asynchronous delivery.\n\n",
     "- Deterministic shell geometry\n",
     "- Revision-keyed document shaping\n",
     "- Viewport-band glyph rasterization\n",
@@ -100,15 +114,16 @@ const README_TEXT: &str = concat!(
     "- Open Folder and recursive workspace sidebar rows\n",
     "- Stable expansion and refresh state\n",
     "- Create, rename, and delete workspace entries\n",
-    "- Persistent recent files and workspace tree restoration\n",
+    "- Persistent recent files, workspace trees, panes, tabs, and independent view state\n",
     "- Recursive horizontal and vertical editor panes\n",
     "- Pane-local tabs and independent caret, selection, and scroll\n",
     "- Shared document buffers across multiple views\n",
     "- Pinned, preview, reordered, and cross-pane tabs\n",
     "- Tab overflow controls and active-tab visibility\n",
-    "- Nested menus, tab context menus, and mnemonics\n",
-    "- Completion popup and richer find/replace controls\n",
-    "- Interactive vertical scrollbars\n\n",
+    "- Arbitrary-depth menus, pointer intent, tab context menus, and mnemonics\n",
+    "- Asynchronous completion popup and richer find/history controls\n",
+    "- Interactive vertical scrollbars and track paging\n",
+    "- Native-first workspace watcher delivery and incremental subtree refresh\n\n",
     "Click File/Edit/Find/View/Help, or press Control-P for the palette.\n",
 );
 const EDITOR_TEXT: &str = concat!(
@@ -164,6 +179,212 @@ fn file_title(identity: &FileIdentity) -> String {
         || identity.path().display().to_string(),
         |name| name.to_string_lossy().into_owned(),
     )
+}
+
+fn session_pane_tree_from_snapshot(snapshot: PaneTreeSnapshot) -> SessionPaneTree {
+    SessionPaneTree {
+        focused_pane_key: snapshot.focused_pane_key,
+        root: session_pane_node_from_snapshot(snapshot.root),
+    }
+}
+
+fn session_pane_node_from_snapshot(snapshot: PaneNodeSnapshot) -> SessionPaneNode {
+    match snapshot {
+        PaneNodeSnapshot::Leaf(leaf) => SessionPaneNode::Leaf {
+            pane_key: leaf.pane_key,
+            tabs: leaf
+                .view_keys
+                .iter()
+                .map(|view_key| SessionPaneTab {
+                    view_key: *view_key,
+                    is_pinned: leaf.pinned_view_keys.contains(view_key),
+                    is_preview: leaf.preview_view_key == Some(*view_key),
+                })
+                .collect(),
+            active_view_key: leaf.active_view_key,
+            tab_scroll_offset: leaf.tab_scroll_offset,
+        },
+        PaneNodeSnapshot::Split(split) => SessionPaneNode::Split {
+            split_key: split.split_key,
+            axis: match split.axis {
+                PaneAxis::Horizontal => SessionPaneAxis::Horizontal,
+                PaneAxis::Vertical => SessionPaneAxis::Vertical,
+            },
+            ratio_milli: split.ratio_milli,
+            first: Box::new(session_pane_node_from_snapshot(*split.first)),
+            second: Box::new(session_pane_node_from_snapshot(*split.second)),
+        },
+    }
+}
+
+fn normalize_session_previews(node: &mut SessionPaneNode, previewable_view_keys: &BTreeSet<u64>) {
+    match node {
+        SessionPaneNode::Leaf { tabs, .. } => {
+            for tab in tabs {
+                if tab.is_preview && !previewable_view_keys.contains(&tab.view_key) {
+                    tab.is_preview = false;
+                }
+            }
+        }
+        SessionPaneNode::Split { first, second, .. } => {
+            normalize_session_previews(first, previewable_view_keys);
+            normalize_session_previews(second, previewable_view_keys);
+        }
+    }
+}
+
+fn pane_snapshot_from_session(tree: SessionPaneTree) -> PaneTreeSnapshot {
+    PaneTreeSnapshot {
+        focused_pane_key: tree.focused_pane_key,
+        root: pane_node_snapshot_from_session(tree.root),
+    }
+}
+
+fn pane_node_snapshot_from_session(node: SessionPaneNode) -> PaneNodeSnapshot {
+    match node {
+        SessionPaneNode::Leaf {
+            pane_key,
+            tabs,
+            active_view_key,
+            tab_scroll_offset,
+        } => PaneNodeSnapshot::Leaf(PaneLeafSnapshot {
+            pane_key,
+            view_keys: tabs.iter().map(|tab| tab.view_key).collect(),
+            active_view_key,
+            pinned_view_keys: tabs
+                .iter()
+                .filter(|tab| tab.is_pinned)
+                .map(|tab| tab.view_key)
+                .collect(),
+            preview_view_key: tabs
+                .iter()
+                .find(|tab| tab.is_preview)
+                .map(|tab| tab.view_key),
+            tab_scroll_offset,
+        }),
+        SessionPaneNode::Split {
+            split_key,
+            axis,
+            ratio_milli,
+            first,
+            second,
+        } => PaneNodeSnapshot::Split(PaneSplitSnapshot {
+            split_key,
+            axis: match axis {
+                SessionPaneAxis::Horizontal => PaneAxis::Horizontal,
+                SessionPaneAxis::Vertical => PaneAxis::Vertical,
+            },
+            ratio_milli,
+            first: Box::new(pane_node_snapshot_from_session(*first)),
+            second: Box::new(pane_node_snapshot_from_session(*second)),
+        }),
+    }
+}
+
+#[derive(Clone, Debug)]
+struct DemoCompletionProvider {
+    delay: Duration,
+    canceled: Arc<Mutex<BTreeSet<CompletionRequestId>>>,
+}
+
+impl Default for DemoCompletionProvider {
+    fn default() -> Self {
+        Self {
+            delay: if cfg!(test) {
+                Duration::ZERO
+            } else {
+                Duration::from_millis(75)
+            },
+            canceled: Arc::new(Mutex::new(BTreeSet::new())),
+        }
+    }
+}
+
+impl DemoCompletionProvider {
+    fn response_for(request: &CompletionRequest) -> CompletionResponse {
+        let candidates = [
+            ("struct", "Rust keyword"),
+            ("enum", "Rust keyword"),
+            ("impl", "Rust keyword"),
+            ("match", "Rust keyword"),
+            ("DocumentViewId", "Luna document view"),
+            ("PaneTree", "Luna pane topology"),
+            ("EditorPaneSurface", "Luna pane widget"),
+            ("CompletionPopup", "Luna popup widget"),
+        ]
+        .into_iter()
+        .filter(|(label, _)| {
+            request.prefix.is_empty()
+                || label
+                    .to_ascii_lowercase()
+                    .starts_with(&request.prefix.to_ascii_lowercase())
+        })
+        .map(|(label, detail)| {
+            let start = request.caret_byte.saturating_sub(request.prefix.len());
+            CompletionCandidate {
+                id: label.to_owned(),
+                label: label.to_owned(),
+                detail: detail.to_owned(),
+                documentation: Some(format!(
+                    "Completion supplied by the Luna demo provider for {label}."
+                )),
+                insert_text: label.to_owned(),
+                replacement: CompletionReplacementRange {
+                    start_byte: start,
+                    end_byte: request.caret_byte,
+                },
+            }
+        })
+        .collect();
+        CompletionResponse {
+            request_id: request.id,
+            document_revision: request.document_revision,
+            candidates,
+        }
+    }
+
+    fn is_canceled(
+        canceled: &Mutex<BTreeSet<CompletionRequestId>>,
+        request_id: CompletionRequestId,
+    ) -> bool {
+        match canceled.lock() {
+            Ok(guard) => guard.contains(&request_id),
+            Err(poisoned) => poisoned.into_inner().contains(&request_id),
+        }
+    }
+}
+
+impl CompletionProvider for DemoCompletionProvider {
+    fn request(&mut self, request: CompletionRequest, responses: CompletionResponseSender) {
+        let response = Self::response_for(&request);
+        if self.delay.is_zero() {
+            if !Self::is_canceled(&self.canceled, request.id) {
+                let _ = responses.send(response);
+            }
+            return;
+        }
+        let delay = self.delay;
+        let canceled = Arc::clone(&self.canceled);
+        let _ = thread::Builder::new()
+            .name("luna-completion-provider".to_owned())
+            .spawn(move || {
+                thread::sleep(delay);
+                if !Self::is_canceled(&canceled, request.id) {
+                    let _ = responses.send(response);
+                }
+            });
+    }
+
+    fn cancel(&mut self, request_id: CompletionRequestId) {
+        match self.canceled.lock() {
+            Ok(mut guard) => {
+                let _ = guard.insert(request_id);
+            }
+            Err(poisoned) => {
+                let _ = poisoned.into_inner().insert(request_id);
+            }
+        }
+    }
 }
 
 impl DemoDocument {
@@ -223,6 +444,8 @@ struct EditorDemoApplication {
     file_service: Box<dyn TextFileService>,
     dialog_service: Box<dyn DocumentDialogService>,
     workspace_service: Box<dyn WorkspaceRuntimeService>,
+    workspace_watcher: Box<dyn WorkspaceWatchService>,
+    workspace_watcher_active: bool,
     session_store: Box<dyn SessionStore>,
     workspace: Option<WorkspaceModel>,
     workspace_options: WorkspaceScanOptions,
@@ -239,9 +462,14 @@ struct EditorDemoApplication {
     selected_sidebar_id: Option<String>,
     palette: Option<CommandPaletteState>,
     completion: Option<CompletionPopupState>,
+    completion_replacements: BTreeMap<String, Range<usize>>,
+    completion_coordinator: CompletionCoordinator,
+    completion_provider: Box<dyn CompletionProvider>,
     menu: DropdownMenuState,
     tab_context_menu: Option<TabContextMenuState>,
     find: Option<FindPanelState>,
+    find_history: SearchHistory,
+    find_selection_scope: Option<Range<usize>>,
     find_matches: Vec<Range<usize>>,
     drag_anchor: Option<TextLocation>,
     dragged_splitter: Option<PaneId>,
@@ -340,6 +568,8 @@ impl EditorDemoApplication {
             file_service,
             dialog_service,
             workspace_service,
+            workspace_watcher: Box::new(LinuxWorkspaceWatchService::default()),
+            workspace_watcher_active: false,
             session_store,
             workspace: None,
             workspace_options: WorkspaceScanOptions::default(),
@@ -356,9 +586,14 @@ impl EditorDemoApplication {
             selected_sidebar_id: Some(editor_id.stable_key()),
             palette: None,
             completion: None,
+            completion_replacements: BTreeMap::new(),
+            completion_coordinator: CompletionCoordinator::new(),
+            completion_provider: Box::new(DemoCompletionProvider::default()),
             menu: DropdownMenuState::default(),
             tab_context_menu: None,
             find: None,
+            find_history: SearchHistory::new(32),
+            find_selection_scope: None,
             find_matches: Vec::new(),
             drag_anchor: None,
             dragged_splitter: None,
@@ -395,6 +630,7 @@ impl EditorDemoApplication {
                 .scan(&session_workspace.root, self.workspace_options)
             {
                 Ok(snapshot) => {
+                    let root = snapshot.root().to_path_buf();
                     let mut workspace = WorkspaceModel::new(snapshot);
                     let _ = workspace.restore_tree_state(
                         &session_workspace.expanded_paths,
@@ -402,14 +638,32 @@ impl EditorDemoApplication {
                     );
                     self.workspace = Some(workspace);
                     self.sidebar_is_visible = true;
+                    let watcher_result = self.workspace_watcher.watch(&root);
+                    self.workspace_watcher_active = watcher_result.is_ok();
+                    let watcher_notice = watcher_result
+                        .err()
+                        .map(|error| format!("; watcher unavailable: {error}"))
+                        .unwrap_or_default();
                     self.lifecycle_notice = Some(format!(
-                        "Restored workspace {}",
+                        "Restored workspace {}{watcher_notice}",
                         session_workspace.root.display()
                     ));
                 }
                 Err(error) => {
                     self.lifecycle_notice =
                         Some(format!("Saved workspace could not be restored: {error}"));
+                }
+            }
+        }
+        if let Some(session_tree) = state.pane_tree {
+            match self.restore_editor_session(state.documents, state.views, session_tree) {
+                Ok(true) => {
+                    self.lifecycle_notice = Some("Restored editor panes and tabs".to_owned());
+                }
+                Ok(false) => {}
+                Err(error) => {
+                    self.lifecycle_notice =
+                        Some(format!("Saved editor panes could not be restored: {error}"));
                 }
             }
         }
@@ -421,6 +675,179 @@ impl EditorDemoApplication {
         } else {
             self.select_active_in_sidebar();
         }
+    }
+
+    fn restore_editor_session(
+        &mut self,
+        session_documents: Vec<SessionDocument>,
+        session_views: Vec<SessionDocumentView>,
+        session_tree: SessionPaneTree,
+    ) -> Result<bool, ApplicationError> {
+        if session_documents.is_empty() || session_views.is_empty() {
+            return Ok(false);
+        }
+        let previewable_document_keys = session_documents
+            .iter()
+            .filter(|document| {
+                matches!(&document.source, SessionDocumentSource::File(_)) && !document.is_dirty
+            })
+            .map(|document| document.document_key)
+            .collect::<BTreeSet<_>>();
+        let previewable_view_keys = session_views
+            .iter()
+            .filter(|view| previewable_document_keys.contains(&view.document_key))
+            .map(|view| view.view_key)
+            .collect::<BTreeSet<_>>();
+        let mut session_tree = session_tree;
+        normalize_session_previews(&mut session_tree.root, &previewable_view_keys);
+
+        let mut document_registry = DocumentRegistry::new();
+        let mut documents = Vec::new();
+        let mut document_map = BTreeMap::<u64, DocumentId>::new();
+        for saved in session_documents {
+            if document_map.contains_key(&saved.document_key) {
+                return Err(std::io::Error::other("duplicate persisted document key").into());
+            }
+            let SessionDocument {
+                document_key,
+                source,
+                title,
+                text,
+                is_dirty,
+                storage_snapshot,
+            } = saved;
+            let mut editor = EditableText::new(text);
+            let persisted_storage = storage_snapshot.map(|snapshot| {
+                StorageSnapshot::new(
+                    StorageRevision::new(snapshot.revision),
+                    StorageInstance::new(snapshot.instance),
+                )
+            });
+            let document_id = match source {
+                SessionDocumentSource::File(path) => {
+                    let loaded = match self.file_service.load_utf8(&path) {
+                        Ok(file) => Some(file),
+                        Err(error) if error.kind() == FileServiceErrorKind::NotFound => None,
+                        Err(error) => return Err(error.into()),
+                    };
+                    if persisted_storage.is_none() && !is_dirty {
+                        if let Some(file) = &loaded {
+                            editor = EditableText::new(file.text());
+                        }
+                    }
+                    let saved_edit_revision = if is_dirty {
+                        u64::MAX
+                    } else {
+                        editor.edit_revision()
+                    };
+                    let identity = loaded
+                        .as_ref()
+                        .map(|file| file.identity().clone())
+                        .or_else(|| FileIdentity::from_canonical_path(path).ok())
+                        .ok_or_else(|| std::io::Error::other("invalid persisted file identity"))?;
+                    let baseline = persisted_storage.or_else(|| {
+                        if is_dirty {
+                            None
+                        } else {
+                            loaded.as_ref().map(|file| file.snapshot())
+                        }
+                    });
+                    let document_id = match document_registry.register_file(
+                        identity,
+                        title,
+                        saved_edit_revision,
+                        baseline,
+                    ) {
+                        OpenFileOutcome::Opened(id) | OpenFileOutcome::AlreadyOpen(id) => id,
+                    };
+                    if let Some(record) = document_registry.get_mut(document_id) {
+                        match loaded {
+                            Some(file) => record.observe_storage_snapshot(file.snapshot()),
+                            None => record.observe_missing_file(),
+                        }
+                    }
+                    document_id
+                }
+                SessionDocumentSource::Untitled(sequence) => {
+                    let saved_edit_revision = if is_dirty {
+                        u64::MAX
+                    } else {
+                        editor.edit_revision()
+                    };
+                    document_registry.restore_untitled(sequence, title, saved_edit_revision)?
+                }
+                SessionDocumentSource::Virtual(key) => {
+                    let saved_edit_revision = if is_dirty {
+                        u64::MAX
+                    } else {
+                        editor.edit_revision()
+                    };
+                    document_registry.register_virtual(key, title, saved_edit_revision)?
+                }
+            };
+            let _ = document_map.insert(document_key, document_id);
+            documents.push(DemoDocument {
+                id: document_id,
+                editor,
+                scroll: TextScroll::default(),
+            });
+        }
+
+        let mut view_registry = DocumentViewRegistry::new();
+        let mut pane_views = Vec::new();
+        let mut view_map = BTreeMap::<u64, DocumentViewId>::new();
+        for saved in session_views {
+            if view_map.contains_key(&saved.view_key) {
+                return Err(std::io::Error::other("duplicate persisted view key").into());
+            }
+            let document_id = document_map
+                .get(&saved.document_key)
+                .copied()
+                .ok_or_else(|| {
+                    std::io::Error::other("persisted view references missing document")
+                })?;
+            let view_id = view_registry.create_view(document_id);
+            let document = documents
+                .iter()
+                .find(|document| document.id == document_id)
+                .ok_or_else(|| std::io::Error::other("restored document buffer is missing"))?;
+            let mut view = PaneViewState::new(view_id, document)?;
+            let caret = view
+                .editor
+                .document()
+                .location_for_offset(saved.caret_byte, SnapBias::Backward);
+            let selection = match (saved.selection_anchor_byte, saved.selection_focus_byte) {
+                (Some(anchor), Some(focus)) => Some(TextRange::new(
+                    view.editor
+                        .document()
+                        .location_for_offset(anchor, SnapBias::Backward),
+                    view.editor
+                        .document()
+                        .location_for_offset(focus, SnapBias::Forward),
+                )),
+                _ => None,
+            };
+            if let Some(selection) = selection {
+                view.editor.set_selection(selection);
+            } else {
+                view.editor.set_caret(caret);
+            }
+            view.scroll = TextScroll::new(saved.scroll_x, saved.scroll_y);
+            pane_views.push(view);
+            let _ = view_map.insert(saved.view_key, view_id);
+        }
+
+        let snapshot = pane_snapshot_from_session(session_tree);
+        let pane_tree = PaneTree::restore_with(&snapshot, |key| view_map.get(&key).copied())?;
+        self.document_registry = document_registry;
+        self.view_registry = view_registry;
+        self.documents = documents;
+        self.pane_views = pane_views;
+        self.pane_tree = pane_tree;
+        self.text_layouts.clear();
+        self.sync_active_index_from_view();
+        self.refresh_find_matches();
+        Ok(true)
     }
 
     fn session_state(&self) -> SessionState {
@@ -444,9 +871,78 @@ impl EditorDemoApplication {
                 selected_path,
             }
         });
+        let documents: Vec<SessionDocument> = self
+            .documents
+            .iter()
+            .filter_map(|document| {
+                let record = self.document_registry.get(document.id)?;
+                let source = match record.source() {
+                    DocumentSource::File(identity) => {
+                        SessionDocumentSource::File(identity.path().to_path_buf())
+                    }
+                    DocumentSource::Untitled { sequence } => {
+                        SessionDocumentSource::Untitled(*sequence)
+                    }
+                    DocumentSource::Virtual { key } => SessionDocumentSource::Virtual(key.clone()),
+                };
+                Some(SessionDocument {
+                    document_key: document.id.value(),
+                    source,
+                    title: record.title().to_owned(),
+                    text: document.editor.document().text().to_owned(),
+                    is_dirty: record.is_dirty(document.editor.edit_revision()),
+                    storage_snapshot: record.storage_snapshot().map(|snapshot| {
+                        SessionStorageSnapshot {
+                            revision: snapshot.revision().value(),
+                            instance: snapshot.instance().value(),
+                        }
+                    }),
+                })
+            })
+            .collect();
+        let views: Vec<SessionDocumentView> = self
+            .pane_views
+            .iter()
+            .map(|view| {
+                let document = view.editor.document();
+                let selection = view.editor.selection();
+                SessionDocumentView {
+                    view_key: view.id.value(),
+                    document_key: view.document_id.value(),
+                    caret_byte: document.absolute_offset(view.editor.caret(), SnapBias::Backward),
+                    selection_anchor_byte: selection
+                        .map(|range| document.absolute_offset(range.anchor, SnapBias::Backward)),
+                    selection_focus_byte: selection
+                        .map(|range| document.absolute_offset(range.focus, SnapBias::Forward)),
+                    scroll_x: view.scroll.x,
+                    scroll_y: view.scroll.y,
+                }
+            })
+            .collect();
+        let previewable_document_keys = documents
+            .iter()
+            .filter(|document| {
+                matches!(&document.source, SessionDocumentSource::File(_)) && !document.is_dirty
+            })
+            .map(|document| document.document_key)
+            .collect::<BTreeSet<_>>();
+        let previewable_view_keys = views
+            .iter()
+            .filter(|view| previewable_document_keys.contains(&view.document_key))
+            .map(|view| view.view_key)
+            .collect::<BTreeSet<_>>();
+        let mut pane_tree = session_pane_tree_from_snapshot(
+            self.pane_tree
+                .snapshot_with(luna_documents::DocumentViewId::value),
+        );
+        normalize_session_previews(&mut pane_tree.root, &previewable_view_keys);
+        let pane_tree = Some(pane_tree);
         SessionState {
             recent_files,
             workspace,
+            documents,
+            views,
+            pane_tree,
         }
     }
 
@@ -572,6 +1068,7 @@ impl EditorDemoApplication {
             self.reveal_caret_on_next_frame = true;
             self.select_active_in_sidebar();
             self.refresh_find_matches();
+            self.persist_session();
         }
     }
 
@@ -695,6 +1192,7 @@ impl EditorDemoApplication {
                 } else {
                     "Unpinned active tab".to_owned()
                 });
+                self.persist_session();
             }
             Err(error) => self.lifecycle_notice = Some(error.to_string()),
         }
@@ -704,7 +1202,29 @@ impl EditorDemoApplication {
         let pane_id = self.pane_tree.focused_pane();
         let view_id = self.pane_tree.focused_view();
         match self.pane_tree.promote_preview(pane_id, view_id) {
-            Ok(()) => self.lifecycle_notice = Some("Promoted preview tab".to_owned()),
+            Ok(()) => {
+                self.lifecycle_notice = Some("Promoted preview tab".to_owned());
+                self.persist_session();
+            }
+            Err(error) => self.lifecycle_notice = Some(error.to_string()),
+        }
+    }
+
+    fn reorder_active_tab(&mut self, delta: i32) {
+        let result = if delta < 0 {
+            self.pane_tree.move_active_tab_left()
+        } else {
+            self.pane_tree.move_active_tab_right()
+        };
+        match result {
+            Ok(()) => {
+                self.lifecycle_notice = Some(if delta < 0 {
+                    "Moved active tab left".to_owned()
+                } else {
+                    "Moved active tab right".to_owned()
+                });
+                self.persist_session();
+            }
             Err(error) => self.lifecycle_notice = Some(error.to_string()),
         }
     }
@@ -743,6 +1263,7 @@ impl EditorDemoApplication {
             Ok(pane_id) => {
                 self.activate_pane_view(pane_id, view_id);
                 self.lifecycle_notice = Some(format!("Moved tab to pane {}", pane_id.value()));
+                self.persist_session();
             }
             Err(error) => self.lifecycle_notice = Some(error.to_string()),
         }
@@ -777,6 +1298,8 @@ impl EditorDemoApplication {
         };
         if let Some(view_id) = regular.get(activation_index).copied() {
             self.activate_pane_view(pane_id, view_id);
+        } else {
+            self.persist_session();
         }
     }
 
@@ -792,6 +1315,7 @@ impl EditorDemoApplication {
                     PaneAxis::Horizontal => "Split editor right".to_owned(),
                     PaneAxis::Vertical => "Split editor down".to_owned(),
                 });
+                self.persist_session();
             }
             Err(error) => {
                 self.lifecycle_notice = Some(format!("Could not split editor: {error}"));
@@ -814,6 +1338,7 @@ impl EditorDemoApplication {
             "Focused pane {}",
             self.pane_tree.focused_pane().value()
         ));
+        self.persist_session();
     }
 
     fn close_focused_pane(&mut self) {
@@ -855,6 +1380,7 @@ impl EditorDemoApplication {
         self.select_active_in_sidebar();
         self.refresh_find_matches();
         self.lifecycle_notice = Some("Closed editor pane".to_owned());
+        self.persist_session();
     }
 
     fn close_active_view(&mut self) {
@@ -880,6 +1406,7 @@ impl EditorDemoApplication {
                 self.select_active_in_sidebar();
                 self.refresh_find_matches();
                 self.lifecycle_notice = Some("Closed pane-local document view".to_owned());
+                self.persist_session();
             }
             Err(error) => {
                 self.lifecycle_notice = Some(error.to_string());
@@ -1015,6 +1542,16 @@ impl EditorDemoApplication {
                     .with_mnemonic('k'),
             ),
         ];
+        tab_items.extend([
+            MenuItem::command(
+                MenuCommand::new("move-tab-left", "Move Tab Left", "Ctrl+Shift+PageUp")
+                    .with_mnemonic('l'),
+            ),
+            MenuItem::command(
+                MenuCommand::new("move-tab-right", "Move Tab Right", "Ctrl+Shift+PageDown")
+                    .with_mnemonic('r'),
+            ),
+        ]);
         if self.pane_tree.leaves().len() > 1 {
             tab_items.extend([
                 MenuItem::command(
@@ -1147,9 +1684,28 @@ impl EditorDemoApplication {
             MenuDefinition::new(
                 "help",
                 "Help",
-                vec![MenuItem::command(
-                    MenuCommand::new("about", "About Luna UI Rust", "").with_enabled(false),
-                )],
+                vec![
+                    MenuItem::submenu(MenuDefinition::new(
+                        "diagnostics",
+                        "Diagnostics",
+                        vec![MenuItem::submenu(MenuDefinition::new(
+                            "runtime-diagnostics",
+                            "Runtime",
+                            vec![MenuItem::submenu(MenuDefinition::new(
+                                "session-diagnostics",
+                                "Session",
+                                vec![MenuItem::command(
+                                    MenuCommand::new("runtime-status", "Show Runtime Status", "")
+                                        .with_mnemonic('s'),
+                                )],
+                            ))],
+                        ))],
+                    )),
+                    MenuItem::Separator,
+                    MenuItem::command(
+                        MenuCommand::new("about", "About Luna UI Rust", "").with_enabled(false),
+                    ),
+                ],
             )
             .with_mnemonic('h'),
         ]
@@ -1675,7 +2231,7 @@ impl EditorDemoApplication {
         menu.open(&definition);
         self.menu.close();
         self.palette = None;
-        self.completion = None;
+        self.dismiss_completion();
         self.find = None;
         self.tab_context_menu = Some(TabContextMenuState {
             pane_id,
@@ -1715,7 +2271,7 @@ impl EditorDemoApplication {
             return HostControl::Continue;
         };
         self.palette = None;
-        self.completion = None;
+        self.dismiss_completion();
         self.find = None;
         self.tab_context_menu = None;
         self.menu.open(&definition);
@@ -1903,7 +2459,7 @@ impl EditorDemoApplication {
     fn open_palette(&mut self) -> HostControl {
         self.menu.close();
         self.tab_context_menu = None;
-        self.completion = None;
+        self.dismiss_completion();
         self.find = None;
         let items = self.palette_items();
         self.palette = Some(CommandPaletteState {
@@ -1922,9 +2478,10 @@ impl EditorDemoApplication {
             ..FindPanelState::default()
         });
         self.palette = None;
-        self.completion = None;
+        self.dismiss_completion();
         self.tab_context_menu = None;
         self.menu.close();
+        self.find_selection_scope = None;
         self.text_is_focused = false;
         self.refresh_find_matches();
         debug_assert_eq!(self.transient_surface_count(), 1);
@@ -1933,28 +2490,61 @@ impl EditorDemoApplication {
 
     fn open_completion(&mut self) -> HostControl {
         let prefix = self.active_word_prefix();
-        let candidates = [
-            ("struct", "struct", "Rust keyword"),
-            ("enum", "enum", "Rust keyword"),
-            ("impl", "impl", "Rust keyword"),
-            ("match", "match", "Rust keyword"),
-            ("DocumentViewId", "DocumentViewId", "Luna document view"),
-            ("PaneTree", "PaneTree", "Luna pane topology"),
-            ("EditorPaneSurface", "EditorPaneSurface", "Luna pane widget"),
-            ("CompletionPopup", "CompletionPopup", "Luna popup widget"),
-        ];
-        let mut items = candidates
-            .into_iter()
-            .filter(|(label, _, _)| {
-                prefix.is_empty()
-                    || label
-                        .to_ascii_lowercase()
-                        .starts_with(&prefix.to_ascii_lowercase())
-            })
-            .map(|(label, insert_text, detail)| {
-                CompletionItem::new(label, label, detail, insert_text)
-            })
-            .collect::<Vec<_>>();
+        let view = self.active_view();
+        let document = view.editor.document();
+        let caret_byte = document.absolute_offset(view.editor.caret(), SnapBias::Backward);
+        let revision = view.editor.edit_revision();
+        let view_key = view.id.value();
+        let _ = self.completion_coordinator.begin(
+            self.completion_provider.as_mut(),
+            view_key,
+            revision,
+            caret_byte,
+            prefix,
+        );
+        self.menu.close();
+        self.tab_context_menu = None;
+        self.palette = None;
+        self.find = None;
+        self.completion_replacements.clear();
+        self.completion = Some(CompletionPopupState {
+            items: vec![CompletionItem::new(
+                "loading",
+                "Loading suggestions…",
+                "Asynchronous completion provider",
+                "",
+            )],
+            selected_index: 0,
+        });
+        let _ = self.apply_latest_completion_response();
+        self.text_is_focused = true;
+        HostControl::Invalidate(InvalidationClass::TextOverlay)
+    }
+
+    fn apply_latest_completion_response(&mut self) -> bool {
+        if self.completion_coordinator.active_request().is_none() {
+            return false;
+        }
+        let view = self.active_view();
+        let view_key = view.id.value();
+        let revision = view.editor.edit_revision();
+        let Some(response) = self.completion_coordinator.drain_latest(view_key, revision) else {
+            return false;
+        };
+        let mut replacements = BTreeMap::new();
+        let mut items = Vec::with_capacity(response.candidates.len().max(1));
+        for candidate in response.candidates {
+            replacements.insert(
+                candidate.id.clone(),
+                candidate.replacement.start_byte..candidate.replacement.end_byte,
+            );
+            items.push(CompletionItem::new(
+                candidate.id,
+                candidate.label,
+                candidate.detail,
+                candidate.insert_text,
+            ));
+        }
         if items.is_empty() {
             items.push(CompletionItem::new(
                 "no-suggestions",
@@ -1963,16 +2553,19 @@ impl EditorDemoApplication {
                 "",
             ));
         }
-        self.menu.close();
-        self.tab_context_menu = None;
-        self.palette = None;
-        self.find = None;
+        self.completion_replacements = replacements;
         self.completion = Some(CompletionPopupState {
             items,
             selected_index: 0,
         });
-        self.text_is_focused = true;
-        HostControl::Invalidate(InvalidationClass::TextOverlay)
+        true
+    }
+
+    fn dismiss_completion(&mut self) {
+        self.completion_coordinator
+            .cancel(self.completion_provider.as_mut());
+        self.completion = None;
+        self.completion_replacements.clear();
     }
 
     fn active_word_prefix(&self) -> String {
@@ -1996,23 +2589,24 @@ impl EditorDemoApplication {
             .as_ref()
             .and_then(CompletionPopupState::selected_item)
             .cloned();
-        self.completion = None;
+        let replacement = item
+            .as_ref()
+            .and_then(|item| self.completion_replacements.get(&item.id))
+            .cloned();
+        self.dismiss_completion();
         let Some(item) = item else {
             return HostControl::Invalidate(InvalidationClass::TextOverlay);
         };
         if item.insert_text.is_empty() {
             return HostControl::Invalidate(InvalidationClass::TextOverlay);
         }
-        let prefix = self.active_word_prefix();
-        if !prefix.is_empty() {
-            let caret = self.active_view().editor.caret();
+        if let Some(replacement) = replacement {
             let document = self.active_view().editor.document().clone();
-            let caret_offset = document.absolute_offset(caret, SnapBias::Backward);
-            let start_offset = caret_offset.saturating_sub(prefix.len());
-            let anchor = document.location_for_offset(start_offset, SnapBias::Backward);
+            let anchor = document.location_for_offset(replacement.start, SnapBias::Backward);
+            let focus = document.location_for_offset(replacement.end, SnapBias::Forward);
             self.active_view_mut()
                 .editor
-                .set_selection(TextRange::new(anchor, caret));
+                .set_selection(TextRange::new(anchor, focus));
         }
         let result = self.active_view_mut().editor.insert_text(&item.insert_text);
         if result.did_change {
@@ -2028,7 +2622,7 @@ impl EditorDemoApplication {
     fn handle_completion_key(&mut self, key: NamedKey) -> HostControl {
         match key {
             NamedKey::Escape => {
-                self.completion = None;
+                self.dismiss_completion();
                 HostControl::Invalidate(InvalidationClass::TextOverlay)
             }
             NamedKey::ArrowDown => {
@@ -2052,7 +2646,7 @@ impl EditorDemoApplication {
             | NamedKey::End
             | NamedKey::PageUp
             | NamedKey::PageDown => {
-                self.completion = None;
+                self.dismiss_completion();
                 HostControl::Invalidate(InvalidationClass::TextOverlay)
             }
         }
@@ -2119,7 +2713,7 @@ impl EditorDemoApplication {
 
     fn execute_command(&mut self, command: &str) -> HostControl {
         self.palette = None;
-        self.completion = None;
+        self.dismiss_completion();
         self.tab_context_menu = None;
         self.menu.close();
         if let Some(index) = command
@@ -2218,6 +2812,14 @@ impl EditorDemoApplication {
                 self.promote_active_preview();
                 InvalidationClass::WidgetLayout
             }
+            "move-tab-left" => {
+                self.reorder_active_tab(-1);
+                InvalidationClass::WidgetLayout
+            }
+            "move-tab-right" => {
+                self.reorder_active_tab(1);
+                InvalidationClass::WidgetLayout
+            }
             "move-tab-next-pane" => {
                 self.move_active_tab_to_relative_pane(1);
                 InvalidationClass::WidgetLayout
@@ -2289,6 +2891,15 @@ impl EditorDemoApplication {
                     cache.invalidate_raster();
                 }
                 InvalidationClass::FullFrame
+            }
+            "runtime-status" => {
+                self.lifecycle_notice = Some(format!(
+                    "M3.3c runtime: {} panes, {} views, {} documents",
+                    self.pane_tree.leaves().len(),
+                    self.pane_views.len(),
+                    self.documents.len(),
+                ));
+                InvalidationClass::TextOverlay
             }
             "command-palette" => return self.open_palette(),
             "exit" => return HostControl::Exit,
@@ -2845,7 +3456,9 @@ impl EditorDemoApplication {
                 let root_key = root_id.stable_key().to_owned();
                 let mut workspace = WorkspaceModel::new(snapshot);
                 let _ = workspace.select(Some(root_id));
+                let watch_root = workspace.snapshot().root().to_path_buf();
                 self.workspace = Some(workspace);
+                self.workspace_watcher_active = self.workspace_watcher.watch(&watch_root).is_ok();
                 self.sidebar_is_visible = true;
                 self.selected_sidebar_id = Some(root_key);
                 self.lifecycle_notice = Some(format!("Opened workspace {root_title}"));
@@ -2860,9 +3473,61 @@ impl EditorDemoApplication {
 
     fn close_workspace(&mut self) {
         if self.workspace.take().is_some() {
+            self.workspace_watcher_active = false;
             self.select_active_in_sidebar();
             self.lifecycle_notice = Some("Workspace closed".to_owned());
             self.persist_session();
+        }
+    }
+
+    fn refresh_workspace_from_watcher(&mut self) -> bool {
+        if !self.workspace_watcher_active {
+            return self.refresh_workspace(false);
+        }
+        let events = match self.workspace_watcher.drain_events() {
+            Ok(events) => events,
+            Err(error) => {
+                self.workspace_watcher_active = false;
+                self.lifecycle_notice = Some(format!(
+                    "Workspace watcher failed; using full refresh fallback: {error}"
+                ));
+                return self.refresh_workspace(false);
+            }
+        };
+        if events.is_empty() {
+            return false;
+        }
+        let changed = match self.workspace.as_mut() {
+            Some(workspace) => workspace.refresh_from_events(
+                self.workspace_service.as_ref(),
+                &events,
+                self.workspace_options,
+            ),
+            None => return false,
+        };
+        match changed {
+            Ok(true) => {
+                self.selected_sidebar_id = self
+                    .workspace
+                    .as_ref()
+                    .and_then(|workspace| workspace.selected())
+                    .map(|id| id.stable_key().to_owned());
+                if self.selected_sidebar_id.is_none() {
+                    self.select_active_in_sidebar();
+                }
+                self.lifecycle_notice = Some(format!(
+                    "Workspace updated from {} coalesced filesystem event(s)",
+                    events.len()
+                ));
+                self.persist_session();
+                true
+            }
+            Ok(false) => false,
+            Err(error) => {
+                self.lifecycle_notice =
+                    Some(format!("Incremental workspace refresh failed: {error}"));
+                false
+            }
         }
     }
 
@@ -3525,9 +4190,16 @@ impl EditorDemoApplication {
     }
 
     fn refresh_find_matches(&mut self) {
-        let (query, case_sensitive, whole_word) = self.find.as_ref().map_or_else(
-            || (String::new(), false, false),
-            |state| (state.query.clone(), state.case_sensitive, state.whole_word),
+        let (query, case_sensitive, whole_word, selection_only) = self.find.as_ref().map_or_else(
+            || (String::new(), false, false, false),
+            |state| {
+                (
+                    state.query.clone(),
+                    state.case_sensitive,
+                    state.whole_word,
+                    state.selection_only,
+                )
+            },
         );
         self.find_matches = Self::find_match_ranges(
             self.active_view().editor.document().text(),
@@ -3535,6 +4207,14 @@ impl EditorDemoApplication {
             case_sensitive,
             whole_word,
         );
+        if selection_only {
+            if let Some(scope) = &self.find_selection_scope {
+                self.find_matches
+                    .retain(|range| range.start >= scope.start && range.end <= scope.end);
+            } else {
+                self.find_matches.clear();
+            }
+        }
         if let Some(find) = self.find.as_mut() {
             find.match_count = self.find_matches.len();
             find.selected_match = if self.find_matches.is_empty() {
@@ -3556,14 +4236,23 @@ impl EditorDemoApplication {
             .as_ref()
             .map_or(0, |state| state.selected_match.saturating_sub(1))
             .min(count.saturating_sub(1));
+        let wrap_around = self.find.as_ref().is_none_or(|state| state.wrap_around);
         let next = if delta < 0 {
             if current == 0 {
-                count.saturating_sub(1)
+                if wrap_around {
+                    count.saturating_sub(1)
+                } else {
+                    0
+                }
             } else {
                 current.saturating_sub(1)
             }
         } else if delta > 0 {
-            current.saturating_add(1) % count
+            if current.saturating_add(1) >= count {
+                if wrap_around { 0 } else { current }
+            } else {
+                current.saturating_add(1)
+            }
         } else {
             current
         };
@@ -3578,6 +4267,37 @@ impl EditorDemoApplication {
             .editor
             .set_selection(TextRange::new(anchor, focus));
         self.reveal_caret_on_next_frame = true;
+    }
+
+    fn toggle_find_selection_only(&mut self) {
+        let enabling = self
+            .find
+            .as_ref()
+            .is_some_and(|state| !state.selection_only);
+        if !enabling {
+            if let Some(find) = self.find.as_mut() {
+                find.selection_only = false;
+            }
+            self.find_selection_scope = None;
+            self.refresh_find_matches();
+            return;
+        }
+        let scope = self.active_view().editor.selection().map(|selection| {
+            let selection = selection.normalized();
+            let document = self.active_view().editor.document();
+            document.absolute_offset(selection.anchor, SnapBias::Backward)
+                ..document.absolute_offset(selection.focus, SnapBias::Forward)
+        });
+        if let Some(scope) = scope {
+            self.find_selection_scope = Some(scope);
+            if let Some(find) = self.find.as_mut() {
+                find.selection_only = true;
+            }
+            self.refresh_find_matches();
+        } else {
+            self.lifecycle_notice =
+                Some("Select text before enabling Find in Selection".to_owned());
+        }
     }
 
     fn handle_palette_key(&mut self, key: NamedKey) -> HostControl {
@@ -3661,6 +4381,9 @@ impl EditorDemoApplication {
                 InvalidationClass::TextOverlay
             }
             NamedKey::Enter => {
+                if let Some(query) = self.find.as_ref().map(|find| find.query.clone()) {
+                    let _ = self.find_history.record(query);
+                }
                 if self
                     .find
                     .as_ref()
@@ -3681,13 +4404,33 @@ impl EditorDemoApplication {
                 self.select_find_match(-1);
                 InvalidationClass::TextOverlay
             }
+            NamedKey::PageUp => {
+                let query = self.find_history.previous().map(str::to_owned);
+                if let Some(query) = query
+                    && let Some(find) = self.find.as_mut()
+                {
+                    find.query = query;
+                    find.active_field = FindField::Query;
+                    self.refresh_find_matches();
+                }
+                InvalidationClass::TextOverlay
+            }
+            NamedKey::PageDown => {
+                let query = self.find_history.next().map(str::to_owned);
+                if let Some(query) = query
+                    && let Some(find) = self.find.as_mut()
+                {
+                    find.query = query;
+                    find.active_field = FindField::Query;
+                    self.refresh_find_matches();
+                }
+                InvalidationClass::TextOverlay
+            }
             NamedKey::Delete
             | NamedKey::ArrowLeft
             | NamedKey::ArrowRight
             | NamedKey::Home
-            | NamedKey::End
-            | NamedKey::PageUp
-            | NamedKey::PageDown => return HostControl::Continue,
+            | NamedKey::End => return HostControl::Continue,
         };
         HostControl::Invalidate(invalidation)
     }
@@ -3808,6 +4551,9 @@ impl EditorDemoApplication {
                 let Some((menu_depth, item_index)) = dropdown.menu_item_at(pointer.position) else {
                     return HostControl::Continue;
                 };
+                if dropdown.preserves_submenu_pointer_intent(menu_depth, pointer.position, 8) {
+                    return HostControl::Continue;
+                }
                 let definition = dropdown.definition().clone();
                 if self
                     .menu
@@ -3856,6 +4602,9 @@ impl EditorDemoApplication {
                 let Some((menu_depth, item_index)) = menu.menu_item_at(pointer.position) else {
                     return HostControl::Continue;
                 };
+                if menu.preserves_submenu_pointer_intent(menu_depth, pointer.position, 8) {
+                    return HostControl::Continue;
+                }
                 let definition = menu.definition().clone();
                 let changed = self.tab_context_menu.as_mut().is_some_and(|context| {
                     context
@@ -4358,6 +5107,22 @@ impl EditorDemoApplication {
             TextAlignment::Center,
             11.0,
         )?;
+        self.append_label(
+            display_list,
+            "m3-editor-find-wrap-label",
+            "↻",
+            panel.layout().wrap_around,
+            TextAlignment::Center,
+            12.0,
+        )?;
+        self.append_label(
+            display_list,
+            "m3-editor-find-selection-label",
+            "Sel",
+            panel.layout().selection_only,
+            TextAlignment::Center,
+            10.0,
+        )?;
         if state.replacement_is_visible {
             self.append_label(
                 display_list,
@@ -4547,6 +5312,9 @@ impl NativeApplication for EditorDemoApplication {
         self.observation_elapsed = self.observation_elapsed.saturating_add(elapsed);
         self.workspace_refresh_elapsed = self.workspace_refresh_elapsed.saturating_add(elapsed);
         let mut invalidation = None;
+        if self.apply_latest_completion_response() {
+            invalidation = Some(InvalidationClass::TextOverlay);
+        }
         if self.observation_elapsed >= EXTERNAL_POLL_INTERVAL {
             self.observation_elapsed = Duration::ZERO;
             if self.poll_external_changes() {
@@ -4555,7 +5323,7 @@ impl NativeApplication for EditorDemoApplication {
         }
         if self.workspace_refresh_elapsed >= WORKSPACE_REFRESH_INTERVAL {
             self.workspace_refresh_elapsed = Duration::ZERO;
-            if self.refresh_workspace(false) {
+            if self.refresh_workspace_from_watcher() {
                 invalidation = Some(InvalidationClass::WidgetLayout);
             }
         }
@@ -4652,11 +5420,11 @@ impl NativeApplication for EditorDemoApplication {
                             | NamedKey::End
                             | NamedKey::PageUp
                             | NamedKey::PageDown => {
-                                self.completion = None;
+                                self.dismiss_completion();
                             }
                         }
                     } else {
-                        self.completion = None;
+                        self.dismiss_completion();
                     }
                 }
 
@@ -4680,7 +5448,14 @@ impl NativeApplication for EditorDemoApplication {
                     && keyboard.modifiers.contains(Modifiers::ALT)
                     && let Key::Named(key) = &keyboard.key
                 {
+                    let moving_tab = keyboard.modifiers.contains(Modifiers::SHIFT);
                     let command = match key {
+                        NamedKey::ArrowRight | NamedKey::ArrowDown if moving_tab => {
+                            Some("move-tab-next-pane")
+                        }
+                        NamedKey::ArrowLeft | NamedKey::ArrowUp if moving_tab => {
+                            Some("move-tab-previous-pane")
+                        }
                         NamedKey::ArrowRight | NamedKey::ArrowDown => Some("focus-next-pane"),
                         NamedKey::ArrowLeft | NamedKey::ArrowUp => Some("focus-previous-pane"),
                         _ => None,
@@ -4743,6 +5518,16 @@ impl NativeApplication for EditorDemoApplication {
                             Some("split-down")
                         }
                         Key::Character(value) if value == "\\" => Some("split-right"),
+                        Key::Named(NamedKey::PageUp)
+                            if keyboard.modifiers.contains(Modifiers::SHIFT) =>
+                        {
+                            Some("move-tab-left")
+                        }
+                        Key::Named(NamedKey::PageDown)
+                            if keyboard.modifiers.contains(Modifiers::SHIFT) =>
+                        {
+                            Some("move-tab-right")
+                        }
                         Key::Character(value) if value.eq_ignore_ascii_case("a") => {
                             Some("select-all")
                         }
@@ -4780,7 +5565,7 @@ impl NativeApplication for EditorDemoApplication {
                     return HostControl::Continue;
                 }
                 if self.completion.is_some() {
-                    self.completion = None;
+                    self.dismiss_completion();
                 }
                 let invalidation = if let Some(state) = self.palette.as_mut() {
                     state.query.push_str(&text);
@@ -4845,7 +5630,7 @@ impl NativeApplication for EditorDemoApplication {
                             | None => {}
                         }
                     }
-                    self.completion = None;
+                    self.dismiss_completion();
                     return HostControl::Invalidate(InvalidationClass::TextOverlay);
                 }
 
@@ -4883,7 +5668,7 @@ impl NativeApplication for EditorDemoApplication {
                         if popup.layout().panel.contains(pointer.position) {
                             return HostControl::Continue;
                         }
-                        self.completion = None;
+                        self.dismiss_completion();
                     }
                     if let Some(state) = self.find.clone() {
                         if let Ok(panel) =
@@ -4915,6 +5700,16 @@ impl NativeApplication for EditorDemoApplication {
                                     find.whole_word = !find.whole_word;
                                 }
                                 self.refresh_find_matches();
+                                return HostControl::Invalidate(InvalidationClass::TextOverlay);
+                            }
+                            if layout.wrap_around.contains(pointer.position) {
+                                if let Some(find) = self.find.as_mut() {
+                                    find.wrap_around = !find.wrap_around;
+                                }
+                                return HostControl::Invalidate(InvalidationClass::TextOverlay);
+                            }
+                            if layout.selection_only.contains(pointer.position) {
+                                self.toggle_find_selection_only();
                                 return HostControl::Invalidate(InvalidationClass::TextOverlay);
                             }
                             if layout.replace_one.contains(pointer.position) {
@@ -5015,17 +5810,44 @@ impl NativeApplication for EditorDemoApplication {
                                                         pointer.position,
                                                     )
                                                 {
+                                                    let action = view.vertical_scrollbar_action(
+                                                        pointer.position,
+                                                    );
                                                     let scroll_y = view
                                                         .scroll_y_for_scrollbar_point(
                                                             pointer.position,
                                                         );
+                                                    let page_delta = view.vertical_page_delta();
+                                                    let maximum_scroll_y = view.maximum_scroll().y;
                                                     let active_view = self.pane_tree.focused_view();
                                                     if let Some(state) =
                                                         self.view_state_mut(active_view)
                                                     {
-                                                        state.scroll.y = scroll_y;
+                                                        state.scroll.y = match action {
+                                                            VerticalScrollbarAction::PageUp => {
+                                                                state
+                                                                    .scroll
+                                                                    .y
+                                                                    .saturating_sub(page_delta)
+                                                            }
+                                                            VerticalScrollbarAction::DragThumb => {
+                                                                scroll_y
+                                                            }
+                                                            VerticalScrollbarAction::PageDown => {
+                                                                state
+                                                                    .scroll
+                                                                    .y
+                                                                    .saturating_add(page_delta)
+                                                                    .min(maximum_scroll_y)
+                                                            }
+                                                            VerticalScrollbarAction::None => {
+                                                                state.scroll.y
+                                                            }
+                                                        };
                                                     }
-                                                    self.dragged_scrollbar = Some(active_view);
+                                                    self.dragged_scrollbar = (action
+                                                        == VerticalScrollbarAction::DragThumb)
+                                                        .then_some(active_view);
                                                     self.drag_anchor = None;
                                                     self.reveal_caret_on_next_frame = false;
                                                     return HostControl::Invalidate(
@@ -5201,7 +6023,7 @@ impl NativeApplication for EditorDemoApplication {
                 self.dragged_splitter = None;
                 self.dragged_tab = None;
                 self.dragged_scrollbar = None;
-                self.completion = None;
+                self.dismiss_completion();
                 self.tab_context_menu = None;
                 self.menu.close();
                 return HostControl::Invalidate(InvalidationClass::TextOverlay);
@@ -5305,6 +6127,16 @@ impl NativeApplication for EditorDemoApplication {
                     self.refresh_find_matches();
                     return HostControl::Invalidate(InvalidationClass::TextOverlay);
                 }
+                if &target == panel.wrap_around_node_id() {
+                    if let Some(find) = self.find.as_mut() {
+                        find.wrap_around = !find.wrap_around;
+                    }
+                    return HostControl::Invalidate(InvalidationClass::TextOverlay);
+                }
+                if &target == panel.selection_only_node_id() {
+                    self.toggle_find_selection_only();
+                    return HostControl::Invalidate(InvalidationClass::TextOverlay);
+                }
                 if &target == panel.replace_one_node_id() {
                     self.replace_current_match();
                     return HostControl::Invalidate(InvalidationClass::TextLayout);
@@ -5336,7 +6168,7 @@ impl NativeApplication for EditorDemoApplication {
                         self.menu.close();
                         self.tab_context_menu = None;
                         self.palette = None;
-                        self.completion = None;
+                        self.dismiss_completion();
                         self.find = None;
                         self.text_is_focused = true;
                         self.select_active_in_sidebar();
@@ -5394,7 +6226,7 @@ impl NativeApplication for EditorDemoApplication {
             self.menu.close();
             self.tab_context_menu = None;
             self.palette = None;
-            self.completion = None;
+            self.dismiss_completion();
             self.find = None;
             self.text_is_focused = true;
             return HostControl::Invalidate(InvalidationClass::Accessibility);
@@ -5430,7 +6262,7 @@ impl NativeApplication for EditorDemoApplication {
                     self.menu.close();
                     self.tab_context_menu = None;
                     self.palette = None;
-                    self.completion = None;
+                    self.dismiss_completion();
                     self.find = None;
                     self.text_is_focused = true;
                     return HostControl::Invalidate(InvalidationClass::Accessibility);
@@ -5456,7 +6288,8 @@ mod tests {
     use luna_input::{InputEvent, Modifiers, PointerButton, PointerEvent, PointerEventKind};
     use luna_panes::PaneAxis;
     use luna_session::{MemorySessionStore, SessionRecentFile, SessionState, SessionWorkspace};
-    use luna_text::{TextLocation, TextScroll};
+    use luna_text::{TextLocation, TextRange, TextScroll};
+    use luna_ui::DropdownMenuState;
     use luna_workspaces::{MemoryWorkspaceService, WorkspaceNodeKind};
     use std::error::Error;
     use std::path::{Path, PathBuf};
@@ -6519,6 +7352,7 @@ mod tests {
                 expanded_paths: vec![PathBuf::from("/luna-editor-tests/src")],
                 selected_path: Some(PathBuf::from("/luna-editor-tests/src/main.rs")),
             }),
+            ..SessionState::default()
         });
         let application = EditorDemoApplication::with_runtime_services(
             Box::new(files),
@@ -6727,6 +7561,166 @@ mod tests {
         assert_eq!(source.editor.caret(), TextLocation::new(0, 4));
         assert_eq!(source.scroll, TextScroll::new(0, 11));
         assert_eq!(sibling.scroll, TextScroll::new(0, 44));
+        Ok(())
+    }
+
+    #[test]
+    fn session_restart_restores_recursive_panes_pins_shared_views_and_dirty_buffers() -> TestResult
+    {
+        let (files, dialogs) = test_services()?;
+        let workspace = test_workspace_service()?;
+        let session = MemorySessionStore::default();
+        let mut application = EditorDemoApplication::with_runtime_services(
+            Box::new(files.clone()),
+            Box::new(dialogs.clone()),
+            Box::new(workspace.clone()),
+            Box::new(session.clone()),
+        )?;
+        let shared_document = application.active_document().id;
+        let first_pane = application.pane_tree.focused_pane();
+        let first_view = application.pane_tree.focused_view();
+        application.toggle_active_tab_pin(true);
+        application.split_focused_pane(PaneAxis::Horizontal);
+        let second_pane = application.pane_tree.focused_pane();
+        let second_view = application.pane_tree.focused_view();
+        let edit = application
+            .active_view_mut()
+            .editor
+            .insert_text("// unsaved restart edit\n");
+        assert!(edit.did_change);
+        application.commit_active_view_to_buffer();
+        if let Some(view) = application.view_state_mut(first_view) {
+            view.editor.set_caret(TextLocation::new(0, 2));
+            view.scroll = TextScroll::new(7, 19);
+        }
+        let active_document = application.active_view().editor.document().clone();
+        let selection = TextRange::new(
+            active_document.location_for_offset(1, luna_text::SnapBias::Backward),
+            active_document.location_for_offset(9, luna_text::SnapBias::Forward),
+        );
+        application
+            .active_view_mut()
+            .editor
+            .set_selection(selection);
+        application.active_view_mut().scroll = TextScroll::new(13, 57);
+        let _ = application
+            .pane_tree
+            .set_preview_view(second_pane, second_view)?;
+        application.persist_session();
+
+        let persisted = session.state();
+        assert!(persisted.pane_tree.is_some());
+        assert!(persisted.documents.iter().any(|document| {
+            document.document_key == shared_document.value() && document.is_dirty
+        }));
+
+        let restored = EditorDemoApplication::with_runtime_services(
+            Box::new(files),
+            Box::new(dialogs),
+            Box::new(workspace),
+            Box::new(session),
+        )?;
+        assert_eq!(restored.pane_tree.leaves().len(), 2);
+        assert_eq!(
+            restored.pane_tree.focused_pane().value(),
+            second_pane.value()
+        );
+        let restored_document = restored.active_document().id;
+        assert_eq!(
+            restored
+                .view_registry
+                .views_for_document(restored_document)
+                .count(),
+            2
+        );
+        assert!(
+            restored
+                .active_document()
+                .is_dirty(&restored.document_registry)
+        );
+        assert!(
+            restored
+                .active_view()
+                .editor
+                .document()
+                .text()
+                .contains("unsaved restart edit")
+        );
+        let restored_first = restored
+            .pane_tree
+            .leaves()
+            .into_iter()
+            .find(|leaf| leaf.id().value() == first_pane.value())
+            .ok_or_else(|| std::io::Error::other("restored first pane missing"))?;
+        assert_eq!(restored_first.views().len(), 3);
+        assert_eq!(restored_first.pinned_views().len(), 1);
+        assert_eq!(restored_first.pinned_views()[0].value(), first_view.value());
+        let restored_first_view = restored
+            .pane_views
+            .iter()
+            .find(|view| view.id.value() == first_view.value())
+            .ok_or_else(|| std::io::Error::other("restored first view missing"))?;
+        assert_eq!(restored_first_view.editor.caret(), TextLocation::new(0, 2));
+        assert_eq!(restored_first_view.scroll, TextScroll::new(7, 19));
+        let restored_second_view = restored
+            .pane_views
+            .iter()
+            .find(|view| view.id.value() == second_view.value())
+            .ok_or_else(|| std::io::Error::other("restored second view missing"))?;
+        assert!(restored_second_view.editor.selection().is_some());
+        assert_eq!(restored_second_view.scroll, TextScroll::new(13, 57));
+        assert_eq!(
+            restored
+                .pane_tree
+                .leaf(restored.pane_tree.focused_pane())
+                .map(|leaf| leaf.active_view().value()),
+            Some(second_view.value())
+        );
+        assert_eq!(
+            restored
+                .pane_tree
+                .leaf(restored.pane_tree.focused_pane())
+                .and_then(|leaf| leaf.preview_view()),
+            None
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn session_restart_detects_file_changes_against_persisted_storage_baseline() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let workspace = test_workspace_service()?;
+        let session = MemorySessionStore::default();
+        let path = Path::new("/luna-editor-tests/restart-baseline.txt");
+        files.insert_utf8(path, "before restart")?;
+        let mut application = EditorDemoApplication::with_runtime_services(
+            Box::new(files.clone()),
+            Box::new(dialogs.clone()),
+            Box::new(workspace.clone()),
+            Box::new(session.clone()),
+        )?;
+        application.open_path(path);
+        application.persist_session();
+        files.modify_utf8_in_place(path, "changed while closed")?;
+
+        let restored = EditorDemoApplication::with_runtime_services(
+            Box::new(files),
+            Box::new(dialogs),
+            Box::new(workspace),
+            Box::new(session),
+        )?;
+        let record = restored
+            .document_registry
+            .get(restored.active_document().id)
+            .ok_or_else(|| std::io::Error::other("restored file record missing"))?;
+        assert!(matches!(
+            record.external_state(),
+            ExternalState::Modified { .. }
+        ));
+        assert_eq!(
+            restored.active_document().editor.document().text(),
+            "before restart"
+        );
         Ok(())
     }
 
@@ -6964,6 +7958,25 @@ mod tests {
     }
 
     #[test]
+    fn help_menu_reaches_four_panel_runtime_command() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let application = test_application(&files, &dialogs)?;
+        let help = application
+            .menu_definitions()
+            .into_iter()
+            .find(|menu| menu.id == "help")
+            .ok_or_else(|| std::io::Error::other("Help menu missing"))?;
+        let mut state = DropdownMenuState::default();
+        state.open(&help);
+        assert!(state.open_selected_submenu(&help));
+        assert!(state.open_selected_submenu(&help));
+        assert!(state.open_selected_submenu(&help));
+        assert_eq!(state.selected_path(), &[0, 0, 0, 0]);
+        assert_eq!(state.selected_command(&help), Some("runtime-status"));
+        Ok(())
+    }
+
+    #[test]
     fn completion_replaces_the_active_prefix() -> TestResult {
         let (files, dialogs) = test_services()?;
         let mut application = test_application(&files, &dialogs)?;
@@ -7046,6 +8059,36 @@ mod tests {
         assert_eq!(
             application.lifecycle_notice.as_deref(),
             Some("Replaced 3 matches")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn selection_only_search_uses_frozen_scope_and_can_disable_wrap() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let mut application = test_application(&files, &dialogs)?;
+        application.new_document();
+        let edit = application
+            .active_view_mut()
+            .editor
+            .insert_text("cat cat cat");
+        assert!(edit.did_change);
+        application.commit_active_view_to_buffer();
+        application.find = Some(luna_ui::FindPanelState {
+            query: "cat".to_owned(),
+            selected_match: 2,
+            selection_only: true,
+            wrap_around: false,
+            ..luna_ui::FindPanelState::default()
+        });
+        application.find_selection_scope = Some(0..7);
+        application.refresh_find_matches();
+        assert_eq!(application.find_matches, vec![0..3, 4..7]);
+
+        application.select_find_match(1);
+        assert_eq!(
+            application.find.as_ref().map(|find| find.selected_match),
+            Some(2)
         );
         Ok(())
     }

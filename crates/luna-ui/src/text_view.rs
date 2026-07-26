@@ -8,6 +8,19 @@ use luna_text::{SnapBias, TextDocument, TextLocation, TextRange, TextScroll};
 use luna_text_cosmic::TextLayoutSnapshot;
 use luna_theme::{Rgba8, Theme};
 
+/// Pointer action implied by one vertical-scrollbar location.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum VerticalScrollbarAction {
+    /// Pointer is outside the scrollbar.
+    None,
+    /// Pointer is above the thumb and should page upward.
+    PageUp,
+    /// Pointer is on the thumb and may begin dragging.
+    DragThumb,
+    /// Pointer is below the thumb and should page downward.
+    PageDown,
+}
+
 /// Visual metrics and colors for Luna's editor text surface.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct TextViewStyle {
@@ -195,6 +208,33 @@ impl TextView {
     #[must_use]
     pub fn vertical_scrollbar_contains(&self, point: PointI) -> bool {
         self.vertical_scrollbar_bounds().contains(point)
+    }
+
+    /// Classifies a scrollbar press into page-up, thumb-drag, or page-down behavior.
+    #[must_use]
+    pub fn vertical_scrollbar_action(&self, point: PointI) -> VerticalScrollbarAction {
+        let track = self.vertical_scrollbar_bounds();
+        if !track.contains(point) {
+            return VerticalScrollbarAction::None;
+        }
+        let thumb = self.vertical_scrollbar_thumb();
+        if thumb.contains(point) {
+            VerticalScrollbarAction::DragThumb
+        } else if point.y < thumb.y {
+            VerticalScrollbarAction::PageUp
+        } else {
+            VerticalScrollbarAction::PageDown
+        }
+    }
+
+    /// Returns one viewport-height page delta with a one-line overlap.
+    #[must_use]
+    pub fn vertical_page_delta(&self) -> i32 {
+        let line_height = i32::try_from(self.layout.line_height()).unwrap_or(1).max(1);
+        i32::try_from(self.text_viewport().height)
+            .unwrap_or(i32::MAX)
+            .saturating_sub(line_height)
+            .max(line_height)
     }
 
     /// Returns gutter geometry.
@@ -438,7 +478,7 @@ impl Widget for TextView {
 
 #[cfg(test)]
 mod tests {
-    use super::{TextView, TextViewStyle};
+    use super::{TextView, TextViewStyle, VerticalScrollbarAction};
     use crate::{UiFrame, Widget};
     use luna_core::{NodeId, PointI, RectI};
     use luna_text::{TextDocument, TextLocation, TextRange, TextScroll};
@@ -484,6 +524,51 @@ mod tests {
             Some(8)
         );
         assert!(frame.display_list.commands().len() >= 5);
+        Ok(())
+    }
+
+    #[test]
+    fn scrollbar_track_classifies_page_and_drag_actions() -> Result<(), Box<dyn Error>> {
+        let document = TextDocument::new(
+            (0..120)
+                .map(|index| format!("line {index}\n"))
+                .collect::<String>(),
+        );
+        let mut engine = TextEngine::new();
+        let layout = engine.shape(
+            &document,
+            TextLayoutRequest::new(400, 15.0, 22.0, Theme::luna_dark().foreground),
+        )?;
+        let view = TextView::new(
+            NodeId::new("scroll-actions")?,
+            RectI::new(0, 0, 500, 180),
+            document,
+            layout,
+            TextLocation::default(),
+            None,
+            TextScroll::new(0, 100),
+            TextViewStyle::from_theme(Theme::luna_dark()),
+            "Editor",
+            true,
+            true,
+        );
+        let track = view.vertical_scrollbar_bounds();
+        let thumb = view.vertical_scrollbar_thumb();
+        let center_x = track.x.saturating_add(1);
+        assert_eq!(
+            view.vertical_scrollbar_action(PointI::new(center_x, thumb.y)),
+            VerticalScrollbarAction::DragThumb
+        );
+        assert_eq!(
+            view.vertical_scrollbar_action(PointI::new(center_x, track.y)),
+            VerticalScrollbarAction::PageUp
+        );
+        let bottom = i32::try_from(track.bottom().saturating_sub(1)).unwrap_or(i32::MAX);
+        assert_eq!(
+            view.vertical_scrollbar_action(PointI::new(center_x, bottom)),
+            VerticalScrollbarAction::PageDown
+        );
+        assert!(view.vertical_page_delta() > 0);
         Ok(())
     }
 

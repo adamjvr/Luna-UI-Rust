@@ -398,9 +398,9 @@ cost visible. Application errors propagate to the caller rather than being hidde
 ## Swift parity boundary
 
 The architectural spine is near parity with Swift Luna UI, but feature breadth is not. Rust currently
-has stronger retained editor-raster and concrete AccessKit paths. M3.3b closes the basic advanced-tab,
-submenu, tab-context-menu, completion-popup, find-option, and scrollbar gaps, while Swift remains
-ahead in arbitrary-depth popup behavior, asynchronous providers, native watcher breadth, pane
+has stronger retained editor-raster and concrete AccessKit paths. M3.3b closes the basic advanced-tab, submenu, tab-context-menu, completion-popup, find-option, and
+scrollbar gaps. M3.3c closes recursive popup, asynchronous provider, pane-session, and native-first
+watcher gaps, while Swift remains ahead in richer language services, platform breadth, pane
 persistence/docking, and paired Moth integration. [`SWIFT_PARITY.md`](SWIFT_PARITY.md) is the governing inventory;
 performance milestones must not be described as equivalent to editor-product feature parity.
 
@@ -409,3 +409,31 @@ performance milestones must not be described as equivalent to editor-product fea
 The workspace uses `unsafe_code = "forbid"`. If future FFI or GPU integration requires unsafe code,
 isolate it in a tiny adapter crate, state the invariant in a `SAFETY:` comment, add boundary tests,
 and never expose an unsafe requirement to ordinary widget or application code.
+
+
+## M3.3c persistence and delivery pipeline
+
+```text
+session V2 decode
+    -> document/source/storage-baseline validation
+    -> shared DocumentId reconstruction
+    -> independent DocumentViewId caret/selection/scroll reconstruction
+    -> recursive PaneTree restore and preview normalization
+
+native inotifywait or polling fallback
+    -> path-level event coalescing
+    -> full or smallest-safe-subtree refresh scope
+    -> immutable WorkspaceSnapshot reconciliation
+    -> UI-thread WorkspaceModel refresh
+
+completion request
+    -> monotonic request ID + view/revision context
+    -> provider-owned worker delivery
+    -> UI-thread channel drain
+    -> stale ID/view/revision rejection
+    -> explicit candidate replacement range
+```
+
+The persisted wire format remains isolated in `luna-session`; pane validity remains isolated in
+`luna-panes`; native watcher process and polling details remain isolated in `luna-workspaces`; and
+applications continue to own policy and all UI-thread mutation.

@@ -630,6 +630,45 @@ impl DocumentRegistry {
         id
     }
 
+    /// Restores an untitled document with its persisted sequence and title.
+    ///
+    /// This keeps future automatically generated untitled names monotonic across restarts.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DocumentError::InvalidUntitledSequence`] when `sequence` is zero or cannot
+    /// leave room for a future monotonic name, and [`DocumentError::DuplicateUntitledSequence`]
+    /// when another restored untitled document already owns it.
+    pub fn restore_untitled(
+        &mut self,
+        sequence: u32,
+        title: impl Into<String>,
+        initial_edit_revision: u64,
+    ) -> Result<DocumentId, DocumentError> {
+        if sequence == 0 || sequence == u32::MAX {
+            return Err(DocumentError::InvalidUntitledSequence(sequence));
+        }
+        if self.records.iter().any(|record| {
+            matches!(
+                &record.source,
+                DocumentSource::Untitled { sequence: existing } if *existing == sequence
+            )
+        }) {
+            return Err(DocumentError::DuplicateUntitledSequence(sequence));
+        }
+        let id = self.allocate_id();
+        self.next_untitled_sequence = self.next_untitled_sequence.max(sequence.saturating_add(1));
+        self.records.push(DocumentRecord {
+            id,
+            source: DocumentSource::Untitled { sequence },
+            title: title.into(),
+            saved_edit_revision: initial_edit_revision,
+            storage_snapshot: None,
+            external_state: ExternalState::InSync,
+        });
+        Ok(id)
+    }
+
     /// Registers application-owned virtual content.
     ///
     /// # Errors
@@ -829,6 +868,10 @@ pub enum DocumentError {
     EmptyVirtualKey,
     /// A requested document identity was not registered.
     UnknownDocument(DocumentId),
+    /// A restored untitled sequence was zero or left no room for future monotonic allocation.
+    InvalidUntitledSequence(u32),
+    /// Two restored untitled documents claimed the same persisted sequence.
+    DuplicateUntitledSequence(u32),
     /// A relocation or detachment was requested for non-file-backed content.
     NotFileBacked(DocumentId),
     /// Another open document already owns a requested file identity.
@@ -850,6 +893,15 @@ impl Display for DocumentError {
             ),
             Self::EmptyVirtualKey => formatter.write_str("virtual document key cannot be empty"),
             Self::UnknownDocument(id) => write!(formatter, "unknown document: {id}"),
+            Self::InvalidUntitledSequence(sequence) => {
+                write!(formatter, "invalid restored untitled sequence: {sequence}")
+            }
+            Self::DuplicateUntitledSequence(sequence) => {
+                write!(
+                    formatter,
+                    "untitled sequence is already restored: {sequence}"
+                )
+            }
             Self::NotFileBacked(id) => write!(formatter, "document is not file-backed: {id}"),
             Self::FileAlreadyOpen { identity, existing } => write!(
                 formatter,
@@ -900,6 +952,34 @@ mod tests {
             registry.get(third).map(|record| record.title()),
             Some("Untitled-3")
         );
+    }
+
+    #[test]
+    fn restored_untitled_sequences_advance_future_names() -> Result<(), DocumentError> {
+        let mut registry = DocumentRegistry::new();
+        let restored = registry.restore_untitled(7, "Scratch", u64::MAX)?;
+        let next = registry.create_untitled(0);
+        assert_eq!(
+            registry.get(restored).map(|record| record.title()),
+            Some("Scratch")
+        );
+        assert_eq!(
+            registry.get(next).map(|record| record.title()),
+            Some("Untitled-8")
+        );
+        assert_eq!(
+            registry.restore_untitled(7, "Duplicate", 0),
+            Err(DocumentError::DuplicateUntitledSequence(7))
+        );
+        assert_eq!(
+            registry.restore_untitled(0, "Invalid", 0),
+            Err(DocumentError::InvalidUntitledSequence(0))
+        );
+        assert_eq!(
+            registry.restore_untitled(u32::MAX, "Exhausted", 0),
+            Err(DocumentError::InvalidUntitledSequence(u32::MAX))
+        );
+        Ok(())
     }
 
     #[test]

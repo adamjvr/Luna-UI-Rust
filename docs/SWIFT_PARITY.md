@@ -4,7 +4,7 @@ This document records the functional relationship between Luna-UI-Rust and the o
 Luna UI implementation. It is a directional feature-inventory assessment, not a line-count or API
 percentage guarantee.
 
-## Current estimate after M3.3b
+## Current estimate after M3.3c implementation
 
 ```text
 foundational architecture       79–87% parity
@@ -26,7 +26,7 @@ scrollbar. Swift remains broader and closer to a complete reusable editor platfo
 
 ## Capability matrix
 
-| Area | Luna-UI-Rust after M3.3b | Swift Luna UI | Relative state |
+| Area | Luna-UI-Rust after M3.3c | Swift Luna UI | Relative state |
 |---|---|---|---|
 | Core architecture | IDs, geometry, input, commands, layout, themes, rendering, accessibility, and host boundaries | Same broad spine with more downstream use | Near parity |
 | CPU rendering | Display lists, images, alpha composition, retained host/static layers, dirty-region restore | CPU framebuffer and proof-frame caching | Near parity |
@@ -42,9 +42,9 @@ scrollbar. Swift remains broader and closer to a complete reusable editor platfo
 | Documents | Stable buffer/view identities, canonical files, lifecycle decisions, synchronized shared text revisions, independent pane state, relocation/detachment, and retained caches | Live shared buffers with deeper product integration and richer transaction history | Swift moderately ahead |
 | File lifecycle | Strict UTF-8 Open, Save, Save As, atomic replacement, duplicate activation, dirty-close resolution, and optimistic conflict handling | Real UTF-8 lifecycle with broader host/product integration | Swift moderately ahead |
 | Native dialogs | Product-neutral contract plus Zenity/KDialog Linux adapter and deterministic scripted adapter | Host-owned cross-platform Open, Save As, dirty-close, and product integration | Swift ahead in breadth/platform coverage |
-| Projects/workspaces | Open Folder, recursive snapshots, create/rename/delete, collision policy, expansion, refresh, restoration, error projection, and file activation | Native watchers, incremental adapters, deeper product integration, and broader operations | Rust close in core runtime; Swift ahead in breadth |
-| Split panes | Recursive horizontal/vertical pane trees, pane-local tabs, shared logical buffers, independent view state, draggable splitters, focus traversal, close/collapse, and accessibility | Richer pane movement, docking, persistence, and product integration | Rust core implemented; Swift ahead in breadth |
-| Tab mechanics | Pinned/preview tabs, overflow geometry, active visibility, drag reordering, cross-pane movement, and close controls | Richer persistence, keyboard movement, docking, and cross-window transfer | Rust core implemented; Swift ahead in breadth |
+| Projects/workspaces | Open Folder, recursive snapshots, mutations, native-first watching, polling fallback, incremental subtree reconciliation, restoration, and file activation | Broader platform-native watchers, deeper product integration, and broader operations | Rust close in core runtime; Swift ahead in breadth |
+| Split panes | Recursive horizontal/vertical trees, shared buffers, independent persisted view state, keyboard movement, splitters, focus, close/collapse, and accessibility | Richer docking, cross-window movement, and product integration | Rust core implemented; Swift ahead in breadth |
+| Tab mechanics | Persisted pinned/preview/order/active state, overflow geometry, drag and keyboard reorder, cross-pane movement, and close controls | Richer docking and cross-window transfer | Rust core implemented; Swift ahead in breadth |
 | Accessibility | Validated semantic trees and a concrete AccessKit bridge with fingerprinted update suppression | Broader semantic coverage because more widgets exist | Rust stronger bridge; Swift broader surface |
 | Runtime scheduling | Typed invalidation, event-driven editor, retained animation lane | Persistent semantic scheduler and presentation deadlines | Different strengths |
 | GPU renderer | Planned wgpu backend | Production GPU path remains unfinished | Neither complete |
@@ -101,11 +101,11 @@ and skip unchanged accessibility translation.
 
 ## Where Swift remains ahead
 
-M3.3b closes the basic advanced-tab, child-submenu, tab-context-menu, completion-popup, literal
-find-option, and vertical-scrollbar gaps. Swift still implements arbitrary-depth popup behavior,
-asynchronous completion providers, regex/search history, richer command availability, native event
-watchers, incremental workspace adapters, pane/tab persistence, docking, and direct paired Moth
-integration. It also has substantially broader phase-specific regression coverage.
+M3.3c closes the reusable pane-session, arbitrary-depth menu, asynchronous completion-delivery,
+search-history/options, scrollbar paging, and native-first incremental watcher gaps. Swift remains
+ahead in regex and language-aware search, syntax services, richer command availability, docking and
+cross-window movement, broader native platform adapters, and direct paired Moth integration. It also
+has substantially broader phase-specific product regression coverage.
 
 ## Roadmap interpretation
 
@@ -123,13 +123,13 @@ M3.2d -> recursive workspace snapshots, Open Folder, expansion, refresh, and sid
 M3.2e -> workspace operations, persistent sessions, shared-view identity, and watcher seams
 M3.3a -> recursive split panes, synchronized shared text, pane-local state, and splitters
 M3.3b -> advanced tabs, submenus, tab context, completion, find options, and scrollbar
-M3.3c -> desktop persistence, async provider seams, popup depth, and native watchers
+M3.3c -> durable pane/view sessions, async providers, popup depth, search history, and native watchers
 M4    -> wgpu renderer
 M5    -> syntax spans, Sublime themes, undo/redo, multiple cursors, and IME
 M6    -> direct Moth integration and platform hardening
 ```
 
-M3.3b now provides live recursive panes plus the core desktop tab and popup surfaces on top of the
-real file, workspace, mutation, and session runtime. Pane/tab persistence, arbitrary-depth popup
-behavior, asynchronous completion providers, native watcher backends, incremental subtree refresh,
-and direct Moth integration remain the major gaps.
+M3.3c now provides durable recursive panes, deep desktop popup behavior, asynchronous completion,
+search history/options, and native-first incremental workspace refresh on top of the real file,
+workspace, mutation, and session runtime. Richer language-aware editing, regex search, docking,
+broader platform adapters, GPU rendering, and direct Moth integration remain the major gaps.

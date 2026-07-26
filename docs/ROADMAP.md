@@ -144,7 +144,7 @@
 - Native watcher-event and full/subtree refresh-scope boundaries.
 - Deterministic standard-library, in-memory, scripted-dialog, session, and editor tests.
 
-## M3.3 — expanded editor shell — active
+## M3.3 — expanded editor shell — implemented; local validation pending
 
 ### M3.3a — shared-buffer split panes — complete
 
@@ -154,7 +154,7 @@
 - Pane-local tabs, close/collapse behavior, and unique-document rehoming.
 - Draggable splitters, minimum pane sizes, depth-first focus traversal, and accessibility.
 
-### M3.3b — advanced tabs and command surfaces — implemented
+### M3.3b — advanced tabs and command surfaces — complete
 
 - Tab overflow, scrolling, pinned tabs, preview tabs, and active-tab visibility.
 - Local drag reordering and cross-pane movement.
@@ -162,14 +162,17 @@
 - Product-neutral tab context menus and completion popups.
 - Richer find/replace behavior and interactive scrollbar geometry.
 
-### M3.3c — desktop interaction hardening
+### M3.3c — desktop interaction hardening — implemented; local validation pending
 
-- Pane topology, tab order, pinned state, and active-view session persistence.
-- Keyboard tab reordering and cross-pane movement.
-- Arbitrary-depth cascading popup state and pointer-intent behavior.
-- Asynchronous completion-provider contracts and result replacement.
-- Search history, richer search options, and additional scrollbar affordances.
-- Native watcher delivery and incremental workspace subtree integration.
+- Versioned recursive pane/tab/view session persistence with V1 compatibility.
+- Per-view caret, directional selection, scroll, active-view, and focused-pane restoration.
+- Dirty-buffer and storage-baseline persistence with restart-time external-change detection.
+- Keyboard tab reordering and previous/next-pane movement.
+- Arbitrary-depth cascading popup paths, pointer intent, and delayed-hover state.
+- Asynchronous completion-provider contracts, cancellation, and stale-result rejection.
+- Search history, wrap/selection options, and scrollbar page-track affordances.
+- Native-first Linux watcher delivery, polling fallback, event coalescing, and incremental subtree
+  reconciliation.
 
 ## M4 — GPU backend and rendering scalability
 
@@ -195,6 +198,6 @@
 
 See [`SWIFT_PARITY.md`](SWIFT_PARITY.md). M3.1 now combines selected later-stage performance
 mechanics with first-level desktop dropdown menus. M3.2 supplies the real file/workspace runtime;
-M3.3a supplies the first live recursive pane runtime. M3.3b adds advanced tabs, nested menus,
-context menus, completion, richer find/replace, and scrollbars. M3.3c is the remaining desktop
-interaction hardening step before the GPU backend.
+M3.3a supplies the first live recursive pane runtime. M3.3b adds advanced tabs, nested menus, context menus, completion, richer find/replace, and
+scrollbars. M3.3c adds durable pane sessions, recursive popup routing, asynchronous providers, and
+native-first incremental workspace delivery. M4 is next after local validation.

@@ -9,6 +9,7 @@
 
 use luna_core::{PointI, RectI};
 use luna_documents::DocumentViewId;
+use std::collections::BTreeSet;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
@@ -168,6 +169,56 @@ impl PaneNode {
     }
 }
 
+/// Persistable product-neutral snapshot of one pane tree.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PaneTreeSnapshot {
+    /// Focused leaf-pane numeric identity.
+    pub focused_pane_key: u64,
+    /// Recursive root snapshot.
+    pub root: PaneNodeSnapshot,
+}
+
+/// Persistable recursive pane node.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum PaneNodeSnapshot {
+    /// Terminal pane with ordered application-defined view keys.
+    Leaf(PaneLeafSnapshot),
+    /// Recursive split.
+    Split(PaneSplitSnapshot),
+}
+
+/// Persistable leaf-pane state.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PaneLeafSnapshot {
+    /// Stable pane numeric identity.
+    pub pane_key: u64,
+    /// Application-defined view keys in tab order.
+    pub view_keys: Vec<u64>,
+    /// Active application-defined view key.
+    pub active_view_key: u64,
+    /// Pinned application-defined view keys in display order.
+    pub pinned_view_keys: Vec<u64>,
+    /// Transient preview view key, when present.
+    pub preview_view_key: Option<u64>,
+    /// First regular tab projected into the overflow viewport.
+    pub tab_scroll_offset: usize,
+}
+
+/// Persistable split state.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PaneSplitSnapshot {
+    /// Stable split numeric identity.
+    pub split_key: u64,
+    /// Split direction.
+    pub axis: PaneAxis,
+    /// First-child ratio in thousandths.
+    pub ratio_milli: u16,
+    /// First child.
+    pub first: Box<PaneNodeSnapshot>,
+    /// Second child.
+    pub second: Box<PaneNodeSnapshot>,
+}
+
 /// Geometry constants used when projecting a pane tree.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct PaneLayoutMetrics {
@@ -280,6 +331,10 @@ pub enum PaneError {
     EmptyPane,
     /// A pinned tab cannot be converted into a transient preview tab.
     CannotPreviewPinned,
+    /// A persisted pane snapshot violates pane-tree invariants.
+    InvalidSnapshot(&'static str),
+    /// A persisted application-defined view key could not be resolved.
+    UnknownViewKey(u64),
 }
 
 impl Display for PaneError {
@@ -290,6 +345,8 @@ impl Display for PaneError {
             Self::CannotCloseLastPane => write!(formatter, "cannot close the final editor pane"),
             Self::EmptyPane => write!(formatter, "pane must own at least one document view"),
             Self::CannotPreviewPinned => write!(formatter, "pinned tabs cannot be previews"),
+            Self::InvalidSnapshot(message) => write!(formatter, "invalid pane snapshot: {message}"),
+            Self::UnknownViewKey(key) => write!(formatter, "unknown persisted view key: {key}"),
         }
     }
 }
@@ -327,6 +384,57 @@ impl PaneTree {
     #[must_use]
     pub const fn root(&self) -> &PaneNode {
         &self.root
+    }
+
+    /// Captures topology and pane-local tab state using application-defined view keys.
+    #[must_use]
+    pub fn snapshot_with<F>(&self, mut view_key: F) -> PaneTreeSnapshot
+    where
+        F: FnMut(DocumentViewId) -> u64,
+    {
+        PaneTreeSnapshot {
+            focused_pane_key: self.focused_pane.value(),
+            root: snapshot_node(&self.root, &mut view_key),
+        }
+    }
+
+    /// Restores a validated pane tree by resolving application-defined view keys.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PaneError`] when identities are duplicated, required views are missing, or tab
+    /// metadata violates the pinned/preview/active invariants.
+    pub fn restore_with<F>(
+        snapshot: &PaneTreeSnapshot,
+        mut resolve_view: F,
+    ) -> Result<Self, PaneError>
+    where
+        F: FnMut(u64) -> Option<DocumentViewId>,
+    {
+        let mut pane_keys = BTreeSet::new();
+        let mut view_keys = BTreeSet::new();
+        let root = restore_node(
+            &snapshot.root,
+            &mut resolve_view,
+            &mut pane_keys,
+            &mut view_keys,
+        )?;
+        let focused_pane = PaneId(snapshot.focused_pane_key);
+        if snapshot.focused_pane_key == 0 || find_leaf(&root, focused_pane).is_none() {
+            return Err(PaneError::InvalidSnapshot("focused pane is not a leaf"));
+        }
+        let next_id = pane_keys
+            .iter()
+            .next_back()
+            .copied()
+            .unwrap_or(0)
+            .saturating_add(1)
+            .max(1);
+        Ok(Self {
+            next_id,
+            root,
+            focused_pane,
+        })
     }
 
     /// Returns the currently focused leaf pane.
@@ -531,6 +639,42 @@ impl PaneTree {
             .min(target.views.len().saturating_sub(1));
         self.focused_pane = target_pane;
         Ok(target_pane)
+    }
+
+    /// Moves the focused pane's active tab one position left within its pin partition.
+    pub fn move_active_tab_left(&mut self) -> Result<(), PaneError> {
+        let pane_id = self.focused_pane;
+        let leaf = self.leaf(pane_id).ok_or(PaneError::UnknownPane(pane_id))?;
+        let view_id = leaf.active_view;
+        let current = leaf
+            .views
+            .iter()
+            .position(|candidate| *candidate == view_id)
+            .ok_or(PaneError::UnknownView(view_id))?;
+        self.reorder_view(pane_id, view_id, current.saturating_sub(1))
+    }
+
+    /// Moves the focused pane's active tab one position right within its pin partition.
+    pub fn move_active_tab_right(&mut self) -> Result<(), PaneError> {
+        let pane_id = self.focused_pane;
+        let leaf = self.leaf(pane_id).ok_or(PaneError::UnknownPane(pane_id))?;
+        let view_id = leaf.active_view;
+        let current = leaf
+            .views
+            .iter()
+            .position(|candidate| *candidate == view_id)
+            .ok_or(PaneError::UnknownView(view_id))?;
+        self.reorder_view(pane_id, view_id, current.saturating_add(2))
+    }
+
+    /// Moves the focused pane's active tab to the previous pane in depth-first order.
+    pub fn move_active_tab_to_previous_pane(&mut self) -> Result<PaneId, PaneError> {
+        self.move_active_tab_to_adjacent_pane(-1)
+    }
+
+    /// Moves the focused pane's active tab to the next pane in depth-first order.
+    pub fn move_active_tab_to_next_pane(&mut self) -> Result<PaneId, PaneError> {
+        self.move_active_tab_to_adjacent_pane(1)
     }
 
     /// Pins a view and moves it into the pane's leading pinned partition.
@@ -776,6 +920,28 @@ impl PaneTree {
         snapshot
     }
 
+    fn move_active_tab_to_adjacent_pane(&mut self, delta: i32) -> Result<PaneId, PaneError> {
+        let source = self.focused_pane;
+        let view_id = self.focused_view();
+        let leaf_ids = self
+            .leaves()
+            .into_iter()
+            .map(PaneLeaf::id)
+            .collect::<Vec<_>>();
+        if leaf_ids.len() < 2 {
+            return Ok(source);
+        }
+        let current = leaf_ids
+            .iter()
+            .position(|pane_id| *pane_id == source)
+            .unwrap_or(0);
+        let count = i32::try_from(leaf_ids.len()).unwrap_or(i32::MAX);
+        let target_index = (i32::try_from(current).unwrap_or(0) + delta).rem_euclid(count);
+        let target = leaf_ids[usize::try_from(target_index).unwrap_or(0)];
+        let insertion = self.leaf(target).map_or(0, |leaf| leaf.views.len());
+        self.move_view(source, target, view_id, insertion)
+    }
+
     fn allocate_id(&mut self) -> PaneId {
         let id = PaneId(self.next_id);
         self.next_id = self.next_id.saturating_add(1);
@@ -797,6 +963,152 @@ impl PaneTree {
         self.focused_pane = leaf_ids[usize::try_from(next).unwrap_or(0)];
         self.focused_pane
     }
+}
+
+fn snapshot_node<F>(node: &PaneNode, view_key: &mut F) -> PaneNodeSnapshot
+where
+    F: FnMut(DocumentViewId) -> u64,
+{
+    match node {
+        PaneNode::Leaf(leaf) => PaneNodeSnapshot::Leaf(PaneLeafSnapshot {
+            pane_key: leaf.id.value(),
+            view_keys: leaf.views.iter().copied().map(&mut *view_key).collect(),
+            active_view_key: view_key(leaf.active_view),
+            pinned_view_keys: leaf
+                .pinned_views
+                .iter()
+                .copied()
+                .map(&mut *view_key)
+                .collect(),
+            preview_view_key: leaf.preview_view.map(|view| view_key(view)),
+            tab_scroll_offset: leaf.tab_scroll_offset,
+        }),
+        PaneNode::Split(split) => PaneNodeSnapshot::Split(PaneSplitSnapshot {
+            split_key: split.id.value(),
+            axis: split.axis,
+            ratio_milli: split.ratio_milli,
+            first: Box::new(snapshot_node(&split.first, view_key)),
+            second: Box::new(snapshot_node(&split.second, view_key)),
+        }),
+    }
+}
+
+fn restore_node<F>(
+    snapshot: &PaneNodeSnapshot,
+    resolve_view: &mut F,
+    pane_keys: &mut BTreeSet<u64>,
+    view_keys: &mut BTreeSet<u64>,
+) -> Result<PaneNode, PaneError>
+where
+    F: FnMut(u64) -> Option<DocumentViewId>,
+{
+    match snapshot {
+        PaneNodeSnapshot::Leaf(leaf) => {
+            validate_pane_key(leaf.pane_key, pane_keys)?;
+            if leaf.view_keys.is_empty() {
+                return Err(PaneError::InvalidSnapshot("leaf has no views"));
+            }
+            let mut views = Vec::with_capacity(leaf.view_keys.len());
+            for key in &leaf.view_keys {
+                if !view_keys.insert(*key) {
+                    return Err(PaneError::InvalidSnapshot("view appears in multiple panes"));
+                }
+                views.push(resolve_view(*key).ok_or(PaneError::UnknownViewKey(*key))?);
+            }
+            let active_index = leaf
+                .view_keys
+                .iter()
+                .position(|key| *key == leaf.active_view_key)
+                .ok_or(PaneError::InvalidSnapshot("active view is not pane-local"))?;
+            let mut pinned_views = Vec::with_capacity(leaf.pinned_view_keys.len());
+            let mut pinned_keys = BTreeSet::new();
+            for key in &leaf.pinned_view_keys {
+                if !pinned_keys.insert(*key) {
+                    return Err(PaneError::InvalidSnapshot("pinned view is duplicated"));
+                }
+                let index = leaf
+                    .view_keys
+                    .iter()
+                    .position(|candidate| candidate == key)
+                    .ok_or(PaneError::InvalidSnapshot("pinned view is not pane-local"))?;
+                pinned_views.push(views[index]);
+            }
+            if leaf.view_keys.get(..pinned_views.len()) != Some(leaf.pinned_view_keys.as_slice()) {
+                return Err(PaneError::InvalidSnapshot(
+                    "pinned views are not the leading partition",
+                ));
+            }
+            let preview_view = match leaf.preview_view_key {
+                Some(key) => {
+                    if pinned_keys.contains(&key) {
+                        return Err(PaneError::InvalidSnapshot("preview view is pinned"));
+                    }
+                    let index = leaf
+                        .view_keys
+                        .iter()
+                        .position(|candidate| *candidate == key)
+                        .ok_or(PaneError::InvalidSnapshot("preview view is not pane-local"))?;
+                    Some(views[index])
+                }
+                None => None,
+            };
+            let regular_count = views.len().saturating_sub(pinned_views.len());
+            let maximum_offset = regular_count.saturating_sub(1);
+            if leaf.tab_scroll_offset > maximum_offset {
+                return Err(PaneError::InvalidSnapshot(
+                    "tab overflow offset is out of range",
+                ));
+            }
+            Ok(PaneNode::Leaf(PaneLeaf {
+                id: PaneId(leaf.pane_key),
+                active_view: views[active_index],
+                views,
+                pinned_views,
+                preview_view,
+                tab_scroll_offset: leaf.tab_scroll_offset,
+            }))
+        }
+        PaneNodeSnapshot::Split(split) => {
+            validate_pane_key(split.split_key, pane_keys)?;
+            if !(100..=900).contains(&split.ratio_milli) {
+                return Err(PaneError::InvalidSnapshot(
+                    "split ratio is outside safe bounds",
+                ));
+            }
+            Ok(PaneNode::Split(PaneSplit {
+                id: PaneId(split.split_key),
+                axis: split.axis,
+                ratio_milli: split.ratio_milli,
+                first: Box::new(restore_node(
+                    &split.first,
+                    resolve_view,
+                    pane_keys,
+                    view_keys,
+                )?),
+                second: Box::new(restore_node(
+                    &split.second,
+                    resolve_view,
+                    pane_keys,
+                    view_keys,
+                )?),
+            }))
+        }
+    }
+}
+
+fn validate_pane_key(key: u64, pane_keys: &mut BTreeSet<u64>) -> Result<(), PaneError> {
+    if key == 0 {
+        return Err(PaneError::InvalidSnapshot("pane identity is zero"));
+    }
+    if key == u64::MAX {
+        return Err(PaneError::InvalidSnapshot(
+            "pane identity leaves no room for future allocation",
+        ));
+    }
+    if !pane_keys.insert(key) {
+        return Err(PaneError::InvalidSnapshot("pane identity is duplicated"));
+    }
+    Ok(())
 }
 
 fn first_leaf(node: &PaneNode) -> &PaneLeaf {
@@ -1007,7 +1319,9 @@ fn split_bounds(
 
 #[cfg(test)]
 mod tests {
-    use super::{PaneAxis, PaneError, PaneLayoutMetrics, PaneTree};
+    use super::{
+        PaneAxis, PaneError, PaneLayoutMetrics, PaneNodeSnapshot, PaneTree, PaneTreeSnapshot,
+    };
     use luna_core::{PointI, RectI};
     use luna_documents::{DocumentRegistry, DocumentViewRegistry};
     use std::error::Error;
@@ -1206,6 +1520,97 @@ mod tests {
             .ok_or(PaneError::UnknownPane(second_pane))?;
         assert_eq!(leaf.views(), &[first_view, second_view]);
         assert!(leaf.is_pinned(first_view));
+        Ok(())
+    }
+
+    #[test]
+    fn pane_snapshot_round_trips_topology_tabs_focus_and_metadata() -> TestResult {
+        let (mut documents, mut registry, first_view) = views()?;
+        let second_view = registry.create_view(document(&mut documents, "two")?);
+        let third_view = registry.create_view(document(&mut documents, "three")?);
+        let mut panes = PaneTree::new(first_view);
+        let first_pane = panes.focused_pane();
+        panes.add_view(first_pane, second_view)?;
+        panes.pin_view(first_pane, first_view)?;
+        panes.set_preview_view(first_pane, second_view)?;
+        let second_pane = panes.split_focused(PaneAxis::Vertical, third_view);
+        panes.focus(first_pane)?;
+        panes.set_tab_scroll_offset(first_pane, 0)?;
+
+        let snapshot = panes.snapshot_with(luna_documents::DocumentViewId::value);
+        let restored = PaneTree::restore_with(&snapshot, |key| {
+            registry
+                .views()
+                .iter()
+                .find(|view| view.id().value() == key)
+                .map(|view| view.id())
+        })?;
+
+        assert_eq!(restored, panes);
+        assert_eq!(restored.focused_pane(), first_pane);
+        assert!(restored.leaf(second_pane).is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn pane_snapshot_rejects_duplicate_view_ownership() -> TestResult {
+        let (_documents, registry, first_view) = views()?;
+        let snapshot = PaneTreeSnapshot {
+            focused_pane_key: 1,
+            root: PaneNodeSnapshot::Split(super::PaneSplitSnapshot {
+                split_key: 2,
+                axis: PaneAxis::Horizontal,
+                ratio_milli: 500,
+                first: Box::new(PaneNodeSnapshot::Leaf(super::PaneLeafSnapshot {
+                    pane_key: 1,
+                    view_keys: vec![first_view.value()],
+                    active_view_key: first_view.value(),
+                    pinned_view_keys: Vec::new(),
+                    preview_view_key: None,
+                    tab_scroll_offset: 0,
+                })),
+                second: Box::new(PaneNodeSnapshot::Leaf(super::PaneLeafSnapshot {
+                    pane_key: 3,
+                    view_keys: vec![first_view.value()],
+                    active_view_key: first_view.value(),
+                    pinned_view_keys: Vec::new(),
+                    preview_view_key: None,
+                    tab_scroll_offset: 0,
+                })),
+            }),
+        };
+        assert_eq!(
+            PaneTree::restore_with(&snapshot, |key| {
+                registry
+                    .views()
+                    .iter()
+                    .find(|view| view.id().value() == key)
+                    .map(|view| view.id())
+            }),
+            Err(PaneError::InvalidSnapshot("view appears in multiple panes"))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn keyboard_tab_commands_preserve_partitions_and_move_between_panes() -> TestResult {
+        let (mut documents, mut registry, first_view) = views()?;
+        let second_view = registry.create_view(document(&mut documents, "two")?);
+        let third_view = registry.create_view(document(&mut documents, "three")?);
+        let mut panes = PaneTree::new(first_view);
+        let first_pane = panes.focused_pane();
+        panes.add_view(first_pane, second_view)?;
+        panes.pin_view(first_pane, first_view)?;
+        panes.move_active_tab_left()?;
+        assert_eq!(
+            panes.leaf(first_pane).map(|leaf| leaf.views()),
+            Some(&[first_view, second_view][..])
+        );
+        let second_pane = panes.split_focused(PaneAxis::Horizontal, third_view);
+        panes.focus(first_pane)?;
+        panes.activate_view(first_pane, second_view)?;
+        assert_eq!(panes.move_active_tab_to_next_pane()?, second_pane);
+        assert_eq!(panes.pane_for_view(second_view), Some(second_pane));
         Ok(())
     }
 

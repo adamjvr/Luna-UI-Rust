@@ -651,7 +651,7 @@ pub enum FindField {
 }
 
 /// Application-owned find/replace panel state.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FindPanelState {
     /// Search query.
     pub query: String,
@@ -669,6 +669,27 @@ pub struct FindPanelState {
     pub case_sensitive: bool,
     /// Whether matches must occupy complete identifier words.
     pub whole_word: bool,
+    /// Whether next/previous navigation wraps at the first and last match.
+    pub wrap_around: bool,
+    /// Whether matching is restricted to an application-captured selection range.
+    pub selection_only: bool,
+}
+
+impl Default for FindPanelState {
+    fn default() -> Self {
+        Self {
+            query: String::new(),
+            replacement: String::new(),
+            match_count: 0,
+            selected_match: 0,
+            active_field: FindField::Query,
+            replacement_is_visible: false,
+            case_sensitive: false,
+            whole_word: false,
+            wrap_around: true,
+            selection_only: false,
+        }
+    }
 }
 
 /// Find/replace panel geometry.
@@ -692,6 +713,10 @@ pub struct FindPanelLayout {
     pub match_case: RectI,
     /// Whole-word toggle.
     pub whole_word: RectI,
+    /// Wrap-around navigation toggle.
+    pub wrap_around: RectI,
+    /// Selection-only search toggle.
+    pub selection_only: RectI,
     /// Replace-current button.
     pub replace_one: RectI,
     /// Replace-all button.
@@ -713,6 +738,8 @@ pub struct FindPanel {
     status_id: NodeId,
     match_case_id: NodeId,
     whole_word_id: NodeId,
+    wrap_around_id: NodeId,
+    selection_only_id: NodeId,
     replace_one_id: NodeId,
     replace_all_id: NodeId,
     layout: FindPanelLayout,
@@ -734,6 +761,8 @@ impl FindPanel {
         let status_id = id.child("status")?;
         let match_case_id = id.child("match-case")?;
         let whole_word_id = id.child("whole-word")?;
+        let wrap_around_id = id.child("wrap-around")?;
+        let selection_only_id = id.child("selection-only")?;
         let replace_one_id = id.child("replace-one")?;
         let replace_all_id = id.child("replace-all")?;
         let layout = calculate_find_layout(bounds, state.replacement_is_visible);
@@ -750,6 +779,8 @@ impl FindPanel {
             status_id,
             match_case_id,
             whole_word_id,
+            wrap_around_id,
+            selection_only_id,
             replace_one_id,
             replace_all_id,
             layout,
@@ -819,6 +850,18 @@ impl FindPanel {
         &self.whole_word_id
     }
 
+    /// Returns the wrap-around toggle semantic ID.
+    #[must_use]
+    pub const fn wrap_around_node_id(&self) -> &NodeId {
+        &self.wrap_around_id
+    }
+
+    /// Returns the selection-only toggle semantic ID.
+    #[must_use]
+    pub const fn selection_only_node_id(&self) -> &NodeId {
+        &self.selection_only_id
+    }
+
     /// Returns the replace-current semantic ID.
     #[must_use]
     pub const fn replace_one_node_id(&self) -> &NodeId {
@@ -866,6 +909,22 @@ impl Widget for FindPanel {
                 self.theme.panel_header
             },
         );
+        display_list.fill_rect(
+            self.layout.wrap_around,
+            if self.state.wrap_around {
+                self.theme.selection()
+            } else {
+                self.theme.panel_header
+            },
+        );
+        display_list.fill_rect(
+            self.layout.selection_only,
+            if self.state.selection_only {
+                self.theme.selection()
+            } else {
+                self.theme.panel_header
+            },
+        );
         if self.state.replacement_is_visible {
             display_list.fill_rect(self.layout.replace_one, self.theme.panel_header);
             display_list.fill_rect(self.layout.replace_all, self.theme.panel_header);
@@ -886,6 +945,8 @@ impl Widget for FindPanel {
             self.status_id.clone(),
             self.match_case_id.clone(),
             self.whole_word_id.clone(),
+            self.wrap_around_id.clone(),
+            self.selection_only_id.clone(),
         ];
         if self.state.replacement_is_visible {
             children.insert(1, self.replacement_id.clone());
@@ -961,6 +1022,32 @@ impl Widget for FindPanel {
         );
         nodes.push(
             AccessibilityNode::new(
+                self.wrap_around_id.clone(),
+                AccessibilityRole::CheckBox,
+                self.layout.wrap_around,
+            )
+            .with_label("Wrap around")
+            .with_value(if self.state.wrap_around {
+                "Checked"
+            } else {
+                "Unchecked"
+            }),
+        );
+        nodes.push(
+            AccessibilityNode::new(
+                self.selection_only_id.clone(),
+                AccessibilityRole::CheckBox,
+                self.layout.selection_only,
+            )
+            .with_label("Search in selection")
+            .with_value(if self.state.selection_only {
+                "Checked"
+            } else {
+                "Unchecked"
+            }),
+        );
+        nodes.push(
+            AccessibilityNode::new(
                 self.whole_word_id.clone(),
                 AccessibilityRole::CheckBox,
                 self.layout.whole_word,
@@ -1019,6 +1106,10 @@ impl Widget for FindPanel {
             Some(self.match_case_id.clone())
         } else if self.layout.whole_word.contains(point) {
             Some(self.whole_word_id.clone())
+        } else if self.layout.wrap_around.contains(point) {
+            Some(self.wrap_around_id.clone())
+        } else if self.layout.selection_only.contains(point) {
+            Some(self.selection_only_id.clone())
         } else if self.state.replacement_is_visible && self.layout.replace_one.contains(point) {
             Some(self.replace_one_id.clone())
         } else if self.state.replacement_is_visible && self.layout.replace_all.contains(point) {
@@ -1078,11 +1169,28 @@ fn calculate_find_layout(bounds: RectI, replacement_is_visible: bool) -> FindPan
         button_width,
         whole_word.height,
     );
+    let wrap_around = RectI::new(
+        match_case
+            .x
+            .saturating_sub(i32::try_from(button_width + 6).unwrap_or(i32::MAX)),
+        match_case.y,
+        button_width,
+        match_case.height,
+    );
+    let selection_only = RectI::new(
+        wrap_around
+            .x
+            .saturating_sub(i32::try_from(button_width + 6).unwrap_or(i32::MAX)),
+        wrap_around.y,
+        button_width,
+        wrap_around.height,
+    );
     let query = RectI::new(
         panel.x.saturating_add(8),
         panel.y.saturating_add(8),
-        u32::try_from(i64::from(match_case.x).saturating_sub(i64::from(panel.x) + 14)).unwrap_or(0),
-        match_case.height,
+        u32::try_from(i64::from(selection_only.x).saturating_sub(i64::from(panel.x) + 14))
+            .unwrap_or(0),
+        selection_only.height,
     );
     let replacement = RectI::new(
         query.x,
@@ -1120,6 +1228,8 @@ fn calculate_find_layout(bounds: RectI, replacement_is_visible: bool) -> FindPan
         status,
         match_case,
         whole_word,
+        wrap_around,
+        selection_only,
         replace_one,
         replace_all,
     }
@@ -1235,14 +1345,21 @@ mod tests {
                 replacement_is_visible: true,
                 case_sensitive: true,
                 whole_word: true,
+                wrap_around: false,
+                selection_only: true,
                 ..FindPanelState::default()
             },
         )?;
         assert!(!panel.layout().match_case.is_empty());
+        assert!(!panel.layout().selection_only.is_empty());
         assert!(!panel.layout().replace_all.is_empty());
         assert_eq!(
             panel.match_case_node_id().to_string(),
             "find-options.match-case"
+        );
+        assert_eq!(
+            panel.selection_only_node_id().to_string(),
+            "find-options.selection-only"
         );
         Ok(())
     }

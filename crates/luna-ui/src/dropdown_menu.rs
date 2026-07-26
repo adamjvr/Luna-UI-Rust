@@ -198,8 +198,13 @@ pub struct DropdownMenuState {
     pub selected_index: usize,
     /// Open first-level submenu item index.
     pub active_submenu_index: Option<usize>,
-    /// Selected item index inside the open submenu.
+    /// Selected item index inside the open first-level submenu.
     pub submenu_selected_index: usize,
+    /// Selected row at every currently open panel depth.
+    ///
+    /// Index zero mirrors [`Self::selected_index`]. Index one mirrors
+    /// [`Self::submenu_selected_index`]. Additional entries provide arbitrary-depth submenu state.
+    pub selection_path: Vec<usize>,
 }
 
 impl DropdownMenuState {
@@ -209,109 +214,80 @@ impl DropdownMenuState {
         self.active_menu_id.is_some()
     }
 
-    /// Returns whether a nested submenu is open.
+    /// Returns whether any nested submenu is open.
     #[must_use]
-    pub const fn submenu_is_open(&self) -> bool {
-        self.active_submenu_index.is_some()
+    pub fn submenu_is_open(&self) -> bool {
+        self.selection_path.len() > 1 || self.active_submenu_index.is_some()
+    }
+
+    /// Returns selected row indices from the root panel to the deepest open panel.
+    #[must_use]
+    pub fn selected_path(&self) -> &[usize] {
+        &self.selection_path
     }
 
     /// Opens the supplied menu and selects its first enabled row.
     pub fn open(&mut self, definition: &MenuDefinition) {
         self.active_menu_id = Some(definition.id.clone());
-        self.selected_index = definition.first_enabled_index().unwrap_or(0);
-        self.active_submenu_index = None;
-        self.submenu_selected_index = 0;
+        self.selection_path = vec![definition.first_enabled_index().unwrap_or(0)];
+        self.sync_legacy_fields();
     }
 
     /// Closes any active dropdown.
     pub fn close(&mut self) {
         self.active_menu_id = None;
-        self.selected_index = 0;
-        self.active_submenu_index = None;
-        self.submenu_selected_index = 0;
+        self.selection_path.clear();
+        self.sync_legacy_fields();
     }
 
-    /// Selects the next enabled row, wrapping around separators and disabled rows.
+    /// Selects the next enabled row at the deepest open menu level.
     pub fn select_next(&mut self, definition: &MenuDefinition) {
-        match self.active_submenu(definition) {
-            Some(submenu) => {
-                if let Some(index) = submenu.enabled_index_after(self.submenu_selected_index) {
-                    self.submenu_selected_index = index;
-                }
-            }
-            None => {
-                if let Some(index) = definition.enabled_index_after(self.selected_index) {
-                    self.selected_index = index;
-                    self.active_submenu_index = None;
-                }
-            }
-        }
+        self.move_selection(definition, 1);
     }
 
-    /// Selects the previous enabled row, wrapping around separators and disabled rows.
+    /// Selects the previous enabled row at the deepest open menu level.
     pub fn select_previous(&mut self, definition: &MenuDefinition) {
-        match self.active_submenu(definition) {
-            Some(submenu) => {
-                if let Some(index) = submenu.enabled_index_before(self.submenu_selected_index) {
-                    self.submenu_selected_index = index;
-                }
-            }
-            None => {
-                if let Some(index) = definition.enabled_index_before(self.selected_index) {
-                    self.selected_index = index;
-                    self.active_submenu_index = None;
-                }
-            }
-        }
+        self.move_selection(definition, -1);
     }
 
     /// Selects the first enabled command in the current menu level.
     pub fn select_first(&mut self, definition: &MenuDefinition) {
-        match self.active_submenu(definition) {
-            Some(submenu) => {
-                if let Some(index) = submenu.first_enabled_index() {
-                    self.submenu_selected_index = index;
-                }
-            }
-            None => {
-                if let Some(index) = definition.first_enabled_index() {
-                    self.selected_index = index;
-                }
-            }
-        }
+        self.select_endpoint(definition, false);
     }
 
     /// Selects the last enabled command in the current menu level.
     pub fn select_last(&mut self, definition: &MenuDefinition) {
-        match self.active_submenu(definition) {
-            Some(submenu) => {
-                if let Some(index) = submenu.last_enabled_index() {
-                    self.submenu_selected_index = index;
-                }
-            }
-            None => {
-                if let Some(index) = definition.last_enabled_index() {
-                    self.selected_index = index;
-                }
-            }
-        }
+        self.select_endpoint(definition, true);
     }
 
-    /// Opens the currently selected nested submenu.
+    /// Opens the currently selected nested submenu at any depth.
     pub fn open_selected_submenu(&mut self, definition: &MenuDefinition) -> bool {
-        let Some(MenuItem::Submenu(submenu)) = definition.items.get(self.selected_index) else {
+        self.ensure_path(definition);
+        let depth = self.selection_path.len().saturating_sub(1);
+        let Some(menu) = menu_at_depth(definition, &self.selection_path, depth) else {
             return false;
         };
-        self.active_submenu_index = Some(self.selected_index);
-        self.submenu_selected_index = submenu.first_enabled_index().unwrap_or(0);
+        let selected = self.selection_path[depth];
+        let Some(submenu) = menu.items.get(selected).and_then(MenuItem::as_submenu) else {
+            return false;
+        };
+        let Some(first_enabled) = submenu.first_enabled_index() else {
+            return false;
+        };
+        self.selection_path.push(first_enabled);
+        self.sync_legacy_fields();
         true
     }
 
-    /// Closes the active nested submenu while retaining its parent selection.
+    /// Closes the deepest active nested submenu while retaining its parent selection.
     pub fn close_submenu(&mut self) -> bool {
-        let was_open = self.active_submenu_index.take().is_some();
-        self.submenu_selected_index = 0;
-        was_open
+        self.ensure_legacy_path();
+        if self.selection_path.len() <= 1 {
+            return false;
+        }
+        let _ = self.selection_path.pop();
+        self.sync_legacy_fields();
+        true
     }
 
     /// Selects a pointer-hovered row and reports whether interaction state changed.
@@ -321,45 +297,28 @@ impl DropdownMenuState {
         menu_depth: usize,
         index: usize,
     ) -> bool {
-        if menu_depth == 0 {
-            let Some(item) = definition.items.get(index) else {
-                return false;
-            };
-            if !item.is_selectable() {
-                return false;
-            }
-            let changed = self.selected_index != index;
-            self.selected_index = index;
-            match item {
-                MenuItem::Submenu(submenu) => {
-                    let submenu_changed = self.active_submenu_index != Some(index);
-                    self.active_submenu_index = Some(index);
-                    self.submenu_selected_index = submenu.first_enabled_index().unwrap_or(0);
-                    changed || submenu_changed
-                }
-                MenuItem::Command(_) | MenuItem::Separator => {
-                    let submenu_changed = self.active_submenu_index.take().is_some();
-                    self.submenu_selected_index = 0;
-                    changed || submenu_changed
-                }
-            }
-        } else {
-            let Some(submenu) = self.active_submenu(definition) else {
-                return false;
-            };
-            if !submenu
-                .items
-                .get(index)
-                .is_some_and(MenuItem::is_selectable)
-            {
-                return false;
-            }
-            if self.submenu_selected_index == index {
-                return false;
-            }
-            self.submenu_selected_index = index;
-            true
+        self.ensure_path(definition);
+        if menu_depth >= self.selection_path.len() {
+            return false;
         }
+        let Some(menu) = menu_at_depth(definition, &self.selection_path, menu_depth) else {
+            return false;
+        };
+        let Some(item) = menu.items.get(index) else {
+            return false;
+        };
+        if !item.is_selectable() {
+            return false;
+        }
+        let previous = self.selection_path.clone();
+        self.selection_path.truncate(menu_depth.saturating_add(1));
+        self.selection_path[menu_depth] = index;
+        if let MenuItem::Submenu(submenu) = item {
+            self.selection_path
+                .push(submenu.first_enabled_index().unwrap_or(0));
+        }
+        self.sync_legacy_fields();
+        previous != self.selection_path
     }
 
     /// Backward-compatible selection helper for a top-level hovered row.
@@ -367,70 +326,152 @@ impl DropdownMenuState {
         self.select_hovered_path(definition, 0, index)
     }
 
-    /// Returns the selected enabled command ID across the active menu level.
+    /// Returns the selected enabled command ID across the deepest active menu level.
     #[must_use]
     pub fn selected_command<'a>(&self, definition: &'a MenuDefinition) -> Option<&'a str> {
-        if let Some(submenu) = self.active_submenu(definition) {
-            return submenu
-                .items
-                .get(self.submenu_selected_index)
-                .and_then(MenuItem::as_command)
-                .filter(|command| command.is_enabled)
-                .map(|command| command.id.as_str());
-        }
-        definition
+        let path = self.effective_path();
+        let (&selected, parents) = path.split_last()?;
+        menu_at_parent_path(definition, parents)?
             .items
-            .get(self.selected_index)
+            .get(selected)
             .and_then(MenuItem::as_command)
             .filter(|command| command.is_enabled)
             .map(|command| command.id.as_str())
     }
 
-    /// Activates a case-insensitive mnemonic, returning a command when one is selected.
+    /// Activates a case-insensitive mnemonic at the deepest active menu level.
     pub fn activate_mnemonic(
         &mut self,
         definition: &MenuDefinition,
         mnemonic: char,
     ) -> Option<String> {
+        self.ensure_path(definition);
+        let depth = self.selection_path.len().saturating_sub(1);
+        let menu = menu_at_depth(definition, &self.selection_path, depth)?;
         let mnemonic = mnemonic.to_ascii_lowercase();
-        if let Some(submenu) = self.active_submenu(definition) {
-            let index = submenu.items.iter().position(|item| match item {
-                MenuItem::Command(command) => {
-                    command.is_enabled && command.mnemonic == Some(mnemonic)
-                }
-                MenuItem::Submenu(definition) => definition.mnemonic == Some(mnemonic),
-                MenuItem::Separator => false,
-            })?;
-            self.submenu_selected_index = index;
-            return submenu
-                .items
-                .get(index)
-                .and_then(MenuItem::as_command)
-                .map(|command| command.id.clone());
-        }
-        let index = definition.items.iter().position(|item| match item {
+        let index = menu.items.iter().position(|item| match item {
             MenuItem::Command(command) => command.is_enabled && command.mnemonic == Some(mnemonic),
-            MenuItem::Submenu(definition) => definition.mnemonic == Some(mnemonic),
+            MenuItem::Submenu(submenu) => {
+                submenu.mnemonic == Some(mnemonic) && submenu.first_enabled_index().is_some()
+            }
             MenuItem::Separator => false,
         })?;
-        self.selected_index = index;
-        match definition.items.get(index) {
+        self.selection_path.truncate(depth.saturating_add(1));
+        self.selection_path[depth] = index;
+        let command = match menu.items.get(index) {
             Some(MenuItem::Command(command)) => Some(command.id.clone()),
             Some(MenuItem::Submenu(submenu)) => {
-                self.active_submenu_index = Some(index);
-                self.submenu_selected_index = submenu.first_enabled_index().unwrap_or(0);
+                if let Some(first_enabled) = submenu.first_enabled_index() {
+                    self.selection_path.push(first_enabled);
+                }
                 None
             }
             Some(MenuItem::Separator) | None => None,
+        };
+        self.sync_legacy_fields();
+        command
+    }
+
+    fn move_selection(&mut self, definition: &MenuDefinition, delta: i32) {
+        self.ensure_path(definition);
+        let depth = self.selection_path.len().saturating_sub(1);
+        let Some(menu) = menu_at_depth(definition, &self.selection_path, depth) else {
+            return;
+        };
+        let current = self.selection_path[depth];
+        let next = if delta < 0 {
+            menu.enabled_index_before(current)
+        } else {
+            menu.enabled_index_after(current)
+        };
+        if let Some(next) = next {
+            self.selection_path[depth] = next;
+            self.sync_legacy_fields();
         }
     }
 
-    fn active_submenu<'a>(&self, definition: &'a MenuDefinition) -> Option<&'a MenuDefinition> {
-        definition
-            .items
-            .get(self.active_submenu_index?)
-            .and_then(MenuItem::as_submenu)
+    fn select_endpoint(&mut self, definition: &MenuDefinition, last: bool) {
+        self.ensure_path(definition);
+        let depth = self.selection_path.len().saturating_sub(1);
+        let Some(menu) = menu_at_depth(definition, &self.selection_path, depth) else {
+            return;
+        };
+        let next = if last {
+            menu.last_enabled_index()
+        } else {
+            menu.first_enabled_index()
+        };
+        if let Some(next) = next {
+            self.selection_path[depth] = next;
+            self.sync_legacy_fields();
+        }
     }
+
+    fn ensure_path(&mut self, definition: &MenuDefinition) {
+        if self.selection_path.is_empty() {
+            self.selection_path.push(
+                definition
+                    .first_enabled_index()
+                    .unwrap_or(self.selected_index),
+            );
+        } else if self.selection_path.first().copied() != Some(self.selected_index) {
+            // M3.3b exposed the root selection fields publicly. Preserve compatibility with
+            // applications and tests that still update those fields directly by treating a
+            // changed root index as an intentional reset of the recursive selection path.
+            self.selection_path.clear();
+            self.selection_path.push(self.selected_index);
+            if self.active_submenu_index == Some(self.selected_index) {
+                self.selection_path.push(self.submenu_selected_index);
+            }
+        }
+        self.sync_legacy_fields();
+    }
+
+    fn ensure_legacy_path(&mut self) {
+        if self.selection_path.is_empty() {
+            self.selection_path.push(self.selected_index);
+            if self.active_submenu_index == Some(self.selected_index) {
+                self.selection_path.push(self.submenu_selected_index);
+            }
+        }
+    }
+
+    fn effective_path(&self) -> Vec<usize> {
+        if self.selection_path.is_empty() {
+            let mut path = vec![self.selected_index];
+            if self.active_submenu_index == Some(self.selected_index) {
+                path.push(self.submenu_selected_index);
+            }
+            path
+        } else {
+            self.selection_path.clone()
+        }
+    }
+
+    fn sync_legacy_fields(&mut self) {
+        self.selected_index = self.selection_path.first().copied().unwrap_or(0);
+        self.active_submenu_index = (self.selection_path.len() > 1).then_some(self.selected_index);
+        self.submenu_selected_index = self.selection_path.get(1).copied().unwrap_or(0);
+    }
+}
+
+fn menu_at_parent_path<'a>(
+    definition: &'a MenuDefinition,
+    parent_path: &[usize],
+) -> Option<&'a MenuDefinition> {
+    let mut menu = definition;
+    for index in parent_path {
+        menu = menu.items.get(*index)?.as_submenu()?;
+    }
+    Some(menu)
+}
+
+fn menu_at_depth<'a>(
+    definition: &'a MenuDefinition,
+    selection_path: &[usize],
+    depth: usize,
+) -> Option<&'a MenuDefinition> {
+    menu_at_parent_path(definition, selection_path.get(..depth)?)
 }
 
 /// Geometry and semantic state for one dropdown row.
@@ -464,7 +505,7 @@ pub struct DropdownMenuRowFrame {
     pub is_selected: bool,
 }
 
-/// Complete geometry for one open dropdown menu and its optional nested panel.
+/// Complete geometry for one open dropdown menu and every visible nested panel.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DropdownMenuLayout {
     /// Primary elevated panel bounds.
@@ -500,11 +541,12 @@ impl DropdownMenu {
             selected_index,
             active_submenu_index: None,
             submenu_selected_index: 0,
+            selection_path: vec![selected_index],
         };
         Self::new_with_state(id, viewport, anchor, theme, definition, &state)
     }
 
-    /// Creates a dropdown and optional first-level submenu from full interaction state.
+    /// Creates a dropdown and arbitrary-depth submenu stack from full interaction state.
     pub fn new_with_state(
         id: NodeId,
         viewport: RectI,
@@ -579,6 +621,43 @@ impl DropdownMenu {
     #[must_use]
     pub fn contains(&self, point: PointI) -> bool {
         self.layout.panels.iter().any(|panel| panel.contains(point))
+    }
+
+    /// Returns whether pointer travel should preserve an open child submenu.
+    ///
+    /// The deterministic corridor joins the selected parent row to its child panel. Applications
+    /// can ignore sibling-row hover changes while the pointer remains inside this corridor.
+    #[must_use]
+    pub fn preserves_submenu_pointer_intent(
+        &self,
+        parent_depth: usize,
+        point: PointI,
+        margin: u32,
+    ) -> bool {
+        let Some(parent_row) = self
+            .layout
+            .rows
+            .iter()
+            .find(|row| row.menu_depth == parent_depth && row.is_selected && row.has_submenu)
+        else {
+            return false;
+        };
+        let Some(child_panel) = self.layout.panels.get(parent_depth.saturating_add(1)) else {
+            return false;
+        };
+        let parent = expand_rect(parent_row.bounds, margin);
+        let child = expand_rect(*child_panel, margin);
+        let left = parent.x.min(child.x);
+        let top = parent.y.min(child.y);
+        let right = parent.right().max(child.right());
+        let bottom = parent.bottom().max(child.bottom());
+        RectI::new(
+            left,
+            top,
+            u32::try_from(right.saturating_sub(i64::from(left))).unwrap_or(u32::MAX),
+            u32::try_from(bottom.saturating_sub(i64::from(top))).unwrap_or(u32::MAX),
+        )
+        .contains(point)
     }
 }
 
@@ -713,33 +792,43 @@ fn calculate_layout(
     definition: &MenuDefinition,
     state: &DropdownMenuState,
 ) -> Result<DropdownMenuLayout, NodeIdError> {
-    let panel = panel_bounds(viewport, anchor, definition, false);
-    let mut panels = vec![panel];
-    let mut rows = panel_rows(id, panel, definition, 0, state.selected_index)?;
-    if let Some(submenu_index) = state.active_submenu_index
-        && let Some(submenu) = definition
-            .items
-            .get(submenu_index)
-            .and_then(MenuItem::as_submenu)
-        && let Some(parent_row) = rows
+    let selection_path = state.effective_path();
+    let panel = panel_bounds(viewport, anchor, definition, None);
+    let mut panels = Vec::new();
+    let mut rows = Vec::new();
+    let mut menu = definition;
+    let mut current_panel = panel;
+    for depth in 0..selection_path.len().max(1) {
+        let selected_index = selection_path.get(depth).copied().unwrap_or(0);
+        let panel_rows = panel_rows(id, current_panel, menu, depth, selected_index)?;
+        let child_anchor = panel_rows
             .iter()
-            .find(|row| row.menu_depth == 0 && row.item_index == submenu_index)
-    {
-        let submenu_anchor = RectI::new(
-            i32::try_from(parent_row.bounds.right()).unwrap_or(parent_row.bounds.x),
-            parent_row.bounds.y,
-            1,
-            parent_row.bounds.height,
-        );
-        let submenu_panel = panel_bounds(viewport, submenu_anchor, submenu, true);
-        panels.push(submenu_panel);
-        rows.extend(panel_rows(
-            id,
-            submenu_panel,
-            submenu,
-            1,
-            state.submenu_selected_index,
-        )?);
+            .find(|row| row.item_index == selected_index)
+            .map(|row| {
+                RectI::new(
+                    i32::try_from(row.bounds.right()).unwrap_or(row.bounds.x),
+                    row.bounds.y,
+                    1,
+                    row.bounds.height,
+                )
+            });
+        panels.push(current_panel);
+        rows.extend(panel_rows);
+        if selection_path.get(depth.saturating_add(1)).is_none() {
+            break;
+        }
+        let Some(submenu) = menu
+            .items
+            .get(selected_index)
+            .and_then(MenuItem::as_submenu)
+        else {
+            break;
+        };
+        let Some(child_anchor) = child_anchor else {
+            break;
+        };
+        current_panel = panel_bounds(viewport, child_anchor, submenu, Some(current_panel));
+        menu = submenu;
     }
     Ok(DropdownMenuLayout {
         panel,
@@ -752,7 +841,7 @@ fn panel_bounds(
     viewport: RectI,
     anchor: RectI,
     definition: &MenuDefinition,
-    submenu: bool,
+    parent_panel: Option<RectI>,
 ) -> RectI {
     let horizontal_margin = 4_u32.min(viewport.width / 2);
     let available_width = viewport
@@ -782,20 +871,23 @@ fn panel_bounds(
     )
     .unwrap_or(minimum_x)
     .max(minimum_x);
-    let preferred_x = if submenu {
+    let preferred_x = if parent_panel.is_some() {
         anchor.x
     } else {
         anchor.x.clamp(minimum_x, maximum_x)
     };
-    let panel_x = if submenu && preferred_x > maximum_x {
-        anchor
-            .x
-            .saturating_sub(i32::try_from(panel_width.saturating_add(2)).unwrap_or(i32::MAX))
+    let panel_x = if preferred_x > maximum_x {
+        parent_panel
+            .map_or(preferred_x, |parent| {
+                parent.x.saturating_sub(
+                    i32::try_from(panel_width.saturating_add(2)).unwrap_or(i32::MAX),
+                )
+            })
             .clamp(minimum_x, maximum_x)
     } else {
         preferred_x.clamp(minimum_x, maximum_x)
     };
-    let preferred_y = if submenu {
+    let preferred_y = if parent_panel.is_some() {
         anchor
             .y
             .saturating_sub(i32::try_from(PANEL_PADDING).unwrap_or(0))
@@ -907,6 +999,16 @@ fn panel_rows(
     Ok(rows)
 }
 
+fn expand_rect(rect: RectI, margin: u32) -> RectI {
+    let delta = i32::try_from(margin).unwrap_or(i32::MAX);
+    RectI::new(
+        rect.x.saturating_sub(delta),
+        rect.y.saturating_sub(delta),
+        rect.width.saturating_add(margin.saturating_mul(2)),
+        rect.height.saturating_add(margin.saturating_mul(2)),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::{DropdownMenu, DropdownMenuState, MenuCommand, MenuDefinition, MenuItem};
@@ -942,6 +1044,30 @@ mod tests {
                 MenuItem::Separator,
                 MenuItem::command(MenuCommand::new("exit", "Exit", "").with_mnemonic('x')),
             ],
+        )
+    }
+
+    fn deep_menu() -> MenuDefinition {
+        MenuDefinition::new(
+            "root",
+            "Root",
+            vec![MenuItem::submenu(MenuDefinition::new(
+                "one",
+                "One",
+                vec![MenuItem::submenu(MenuDefinition::new(
+                    "two",
+                    "Two",
+                    vec![MenuItem::submenu(MenuDefinition::new(
+                        "three",
+                        "Three",
+                        vec![MenuItem::command(MenuCommand::new(
+                            "deep-command",
+                            "Deep Command",
+                            "",
+                        ))],
+                    ))],
+                ))],
+            ))],
         )
     }
 
@@ -1004,6 +1130,59 @@ mod tests {
             )),
             Some("recent-one")
         );
+        Ok(())
+    }
+
+    #[test]
+    fn arbitrary_depth_state_and_layout_reach_fourth_panel() -> Result<(), Box<dyn Error>> {
+        let definition = deep_menu();
+        let mut state = DropdownMenuState::default();
+        state.open(&definition);
+        assert!(state.open_selected_submenu(&definition));
+        assert!(state.open_selected_submenu(&definition));
+        assert!(state.open_selected_submenu(&definition));
+        assert_eq!(state.selected_path(), &[0, 0, 0, 0]);
+        assert_eq!(state.selected_command(&definition), Some("deep-command"));
+
+        let menu = DropdownMenu::new_with_state(
+            NodeId::new("deep-dropdown")?,
+            RectI::new(0, 0, 1_200, 700),
+            RectI::new(20, 0, 40, 28),
+            Theme::luna_dark(),
+            definition,
+            &state,
+        )?;
+        assert_eq!(menu.layout().panels.len(), 4);
+        let command_row = menu
+            .layout()
+            .rows
+            .iter()
+            .find(|row| row.command_id.as_deref() == Some("deep-command"))
+            .ok_or("deep command row missing")?;
+        assert_eq!(command_row.menu_depth, 3);
+        assert_eq!(
+            menu.menu_item_at(PointI::new(
+                command_row.bounds.x.saturating_add(1),
+                command_row.bounds.y.saturating_add(1),
+            )),
+            Some((3, 0))
+        );
+        let parent_row = menu
+            .layout()
+            .rows
+            .iter()
+            .find(|row| row.menu_depth == 2 && row.is_selected)
+            .ok_or("selected parent row missing")?;
+        assert!(menu.preserves_submenu_pointer_intent(
+            2,
+            PointI::new(
+                i32::try_from(parent_row.bounds.right()).unwrap_or(parent_row.bounds.x),
+                parent_row.bounds.y.saturating_add(4),
+            ),
+            8,
+        ));
+        assert!(state.close_submenu());
+        assert_eq!(state.selected_path(), &[0, 0, 0]);
         Ok(())
     }
 

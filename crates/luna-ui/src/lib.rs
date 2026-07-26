@@ -6,6 +6,8 @@
 //! accessibility semantics derive from the same deterministic geometry. Product behavior remains
 //! in applications such as Moth Text; Luna supplies reusable UI anatomy and runtime contracts.
 
+mod cascading_menu;
+mod completion_provider;
 mod controls;
 mod demo_panel;
 mod dropdown_menu;
@@ -14,11 +16,20 @@ mod editor_shell;
 mod frame;
 mod overlays;
 mod proof_gallery;
+mod search_history;
 mod text_label;
 mod text_view;
 mod widget;
 mod workspace_demo;
 
+pub use cascading_menu::{
+    CascadingMenuLayout, CascadingMenuPanel, CascadingMenuState, MenuHoverIntent, MenuPath,
+};
+pub use completion_provider::{
+    CompletionCandidate, CompletionCoordinator, CompletionProvider, CompletionReplacementRange,
+    CompletionRequest, CompletionRequestId, CompletionResponse, CompletionResponseSender,
+    ScriptedCompletionProvider,
+};
 pub use controls::{Button, ControlState, ProgressBar, Toggle, card_border};
 pub use demo_panel::DemoPanel;
 pub use dropdown_menu::{
@@ -40,7 +51,8 @@ pub use overlays::{
     FindPanelLayout, FindPanelState, PaletteItem, PaletteRowFrame,
 };
 pub use proof_gallery::{ProofCardFrame, ProofGallery, ProofGalleryLayout, ProofGalleryState};
+pub use search_history::SearchHistory;
 pub use text_label::{TextAlignment, TextLabel, TextLabelCache, TextLabelCacheStats};
-pub use text_view::{TextView, TextViewStyle};
+pub use text_view::{TextView, TextViewStyle, VerticalScrollbarAction};
 pub use widget::Widget;
 pub use workspace_demo::{WorkspaceDemo, WorkspaceDemoLayout, WorkspaceDemoState};

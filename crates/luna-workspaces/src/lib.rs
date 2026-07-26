@@ -13,8 +13,13 @@ use std::error::Error;
 use std::ffi::OsStr;
 use std::fmt::{Display, Formatter};
 use std::fs;
+use std::io::{BufRead, BufReader};
 use std::path::{Component, Path, PathBuf};
+use std::process::{Child, Command, Stdio};
 use std::rc::Rc;
+use std::sync::mpsc::{self, Receiver};
+use std::thread::{self, JoinHandle};
+use std::time::SystemTime;
 
 #[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
@@ -290,6 +295,66 @@ impl WorkspaceSnapshot {
     pub const fn fingerprint(&self) -> u64 {
         self.fingerprint
     }
+
+    /// Reconciles one rescanned directory subtree into this immutable snapshot.
+    ///
+    /// Pass `None` when the subtree was removed. Stable path-derived identities outside the target
+    /// remain byte-for-byte unchanged.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`WorkspaceError`] when the target escapes the workspace root or a replacement
+    /// snapshot does not describe the requested subtree.
+    pub fn reconcile_subtree(
+        &self,
+        target: &Path,
+        replacement: Option<&WorkspaceSnapshot>,
+    ) -> Result<Self, WorkspaceError> {
+        validate_absolute_path(target)?;
+        if !target.starts_with(&self.root) {
+            return Err(WorkspaceError::invalid_path(
+                target,
+                "incremental refresh target escaped the workspace root",
+            ));
+        }
+        if target == self.root {
+            return replacement.cloned().ok_or_else(|| {
+                WorkspaceError::invalid_snapshot(
+                    target,
+                    "the workspace root cannot be removed by subtree reconciliation",
+                )
+            });
+        }
+        if let Some(snapshot) = replacement
+            && snapshot.root != target
+        {
+            return Err(WorkspaceError::invalid_snapshot(
+                target,
+                "replacement snapshot root does not match the refresh target",
+            ));
+        }
+        let mut nodes = self
+            .nodes
+            .values()
+            .filter(|node| !node.path.starts_with(target))
+            .cloned()
+            .map(|node| (node.id.clone(), node))
+            .collect::<BTreeMap<_, _>>();
+        if let Some(snapshot) = replacement {
+            for replacement_node in snapshot.nodes.values() {
+                let mut node = replacement_node.clone();
+                node.relative_path = node
+                    .path
+                    .strip_prefix(&self.root)
+                    .unwrap_or(node.path.as_path())
+                    .to_path_buf();
+                node.children.clear();
+                let _ = nodes.insert(node.id.clone(), node);
+            }
+        }
+        rebuild_children(&mut nodes);
+        WorkspaceSnapshot::from_nodes(self.root.clone(), self.root_id.clone(), nodes)
+    }
 }
 
 /// One flattened visible row produced from expansion state.
@@ -462,6 +527,37 @@ impl WorkspaceModel {
         true
     }
 
+    /// Applies coalesced watcher events using a full or minimal subtree scan.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`WorkspaceError`] when event paths escape the workspace or the selected scan fails.
+    pub fn refresh_from_events<S>(
+        &mut self,
+        service: &S,
+        events: &[WorkspaceWatchEvent],
+        options: WorkspaceScanOptions,
+    ) -> Result<bool, WorkspaceError>
+    where
+        S: WorkspaceService + ?Sized,
+    {
+        let events = coalesce_watch_events(self.snapshot.root(), events)?;
+        let Some(scope) = refresh_scope_for_events(self.snapshot.root(), &events)? else {
+            return Ok(false);
+        };
+        let snapshot = match scope {
+            WorkspaceRefreshScope::Full => service.scan(self.snapshot.root(), options)?,
+            WorkspaceRefreshScope::Subtree(path) => match service.scan(&path, options) {
+                Ok(replacement) => self.snapshot.reconcile_subtree(&path, Some(&replacement))?,
+                Err(error) if error.is_not_found() => {
+                    self.snapshot.reconcile_subtree(&path, None)?
+                }
+                Err(error) => return Err(error),
+            },
+        };
+        Ok(self.refresh(snapshot))
+    }
+
     /// Flattens the root and expanded descendants into visible rows.
     #[must_use]
     pub fn visible_rows(&self) -> Vec<WorkspaceVisibleRow> {
@@ -560,7 +656,7 @@ pub trait WorkspaceRuntimeService: WorkspaceService + WorkspaceMutationService {
 
 impl<T> WorkspaceRuntimeService for T where T: WorkspaceService + WorkspaceMutationService {}
 
-/// Broad filesystem change classification delivered by a future native watcher.
+/// Broad filesystem change classification delivered by native or fallback watchers.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum WorkspaceWatchKind {
     /// One path was created.
@@ -636,7 +732,388 @@ impl WorkspaceWatchService for MemoryWorkspaceWatchService {
     }
 }
 
-/// Scope requested for a future incremental workspace rescan.
+/// Coalesces watcher bursts into deterministic path-level events.
+///
+/// # Errors
+///
+/// Returns [`WorkspaceError`] when an event escapes `root`.
+pub fn coalesce_watch_events(
+    root: &Path,
+    events: &[WorkspaceWatchEvent],
+) -> Result<Vec<WorkspaceWatchEvent>, WorkspaceError> {
+    validate_absolute_path(root)?;
+    if events.iter().any(|event| !event.path.starts_with(root)) {
+        return Err(WorkspaceError::invalid_path(
+            root,
+            "watcher event escaped the active workspace root",
+        ));
+    }
+    if events.len() > 256
+        || events
+            .iter()
+            .any(|event| event.kind == WorkspaceWatchKind::RescanRequired)
+    {
+        return Ok(vec![WorkspaceWatchEvent {
+            path: root.to_path_buf(),
+            kind: WorkspaceWatchKind::RescanRequired,
+        }]);
+    }
+    let mut by_path = BTreeMap::<PathBuf, WorkspaceWatchKind>::new();
+    for event in events {
+        let next = by_path
+            .get(&event.path)
+            .copied()
+            .map_or(event.kind, |current| {
+                stronger_watch_kind(current, event.kind)
+            });
+        let _ = by_path.insert(event.path.clone(), next);
+    }
+    let paths = by_path.keys().cloned().collect::<Vec<_>>();
+    by_path.retain(|path, kind| {
+        *kind != WorkspaceWatchKind::Modified
+            || !paths
+                .iter()
+                .any(|candidate| candidate != path && candidate.starts_with(path))
+    });
+    Ok(by_path
+        .into_iter()
+        .map(|(path, kind)| WorkspaceWatchEvent { path, kind })
+        .collect())
+}
+
+/// Chooses the smallest safe directory refresh scope for coalesced events.
+///
+/// Returns `None` for an empty event set.
+///
+/// # Errors
+///
+/// Returns [`WorkspaceError`] when an event escapes `root`.
+pub fn refresh_scope_for_events(
+    root: &Path,
+    events: &[WorkspaceWatchEvent],
+) -> Result<Option<WorkspaceRefreshScope>, WorkspaceError> {
+    validate_absolute_path(root)?;
+    if events.is_empty() {
+        return Ok(None);
+    }
+    if events.iter().any(|event| !event.path.starts_with(root)) {
+        return Err(WorkspaceError::invalid_path(
+            root,
+            "refresh event escaped the workspace root",
+        ));
+    }
+    if events
+        .iter()
+        .any(|event| event.kind == WorkspaceWatchKind::RescanRequired || event.path == root)
+    {
+        return Ok(Some(WorkspaceRefreshScope::Full));
+    }
+    let mut directories = events.iter().filter_map(|event| event.path.parent());
+    let Some(first) = directories.next() else {
+        return Ok(Some(WorkspaceRefreshScope::Full));
+    };
+    let mut common = first.to_path_buf();
+    for directory in directories {
+        while !directory.starts_with(&common) && common != root {
+            let Some(parent) = common.parent() else {
+                return Ok(Some(WorkspaceRefreshScope::Full));
+            };
+            common = parent.to_path_buf();
+        }
+    }
+    if common == root {
+        Ok(Some(WorkspaceRefreshScope::Full))
+    } else {
+        Ok(Some(WorkspaceRefreshScope::Subtree(common)))
+    }
+}
+
+const fn stronger_watch_kind(
+    current: WorkspaceWatchKind,
+    incoming: WorkspaceWatchKind,
+) -> WorkspaceWatchKind {
+    if watch_kind_rank(incoming) > watch_kind_rank(current) {
+        incoming
+    } else {
+        current
+    }
+}
+
+const fn watch_kind_rank(kind: WorkspaceWatchKind) -> u8 {
+    match kind {
+        WorkspaceWatchKind::Modified => 0,
+        WorkspaceWatchKind::Created => 1,
+        WorkspaceWatchKind::Removed => 2,
+        WorkspaceWatchKind::Renamed => 3,
+        WorkspaceWatchKind::RescanRequired => 4,
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PollEntry {
+    is_directory: bool,
+    length: u64,
+    modified: Option<SystemTime>,
+}
+
+/// Safe standard-library polling fallback for systems without native watcher delivery.
+#[derive(Clone, Debug, Default)]
+pub struct PollingWorkspaceWatchService {
+    root: Option<PathBuf>,
+    entries: BTreeMap<PathBuf, PollEntry>,
+}
+
+impl WorkspaceWatchService for PollingWorkspaceWatchService {
+    fn watch(&mut self, root: &Path) -> Result<(), WorkspaceError> {
+        let canonical = fs::canonicalize(root)
+            .map_err(|error| WorkspaceError::io("canonicalize watcher root", root, error))?;
+        validate_absolute_path(&canonical)?;
+        self.entries = poll_entries(&canonical)?;
+        self.root = Some(canonical);
+        Ok(())
+    }
+
+    fn drain_events(&mut self) -> Result<Vec<WorkspaceWatchEvent>, WorkspaceError> {
+        let root = self.root.as_ref().ok_or_else(|| {
+            WorkspaceError::invalid_path(Path::new("/"), "workspace watcher has no active root")
+        })?;
+        let next = poll_entries(root)?;
+        let mut events = Vec::new();
+        for (path, entry) in &next {
+            match self.entries.get(path) {
+                None => events.push(WorkspaceWatchEvent {
+                    path: path.clone(),
+                    kind: WorkspaceWatchKind::Created,
+                }),
+                Some(previous) if previous != entry => events.push(WorkspaceWatchEvent {
+                    path: path.clone(),
+                    kind: WorkspaceWatchKind::Modified,
+                }),
+                Some(_) => {}
+            }
+        }
+        for path in self.entries.keys() {
+            if !next.contains_key(path) {
+                events.push(WorkspaceWatchEvent {
+                    path: path.clone(),
+                    kind: WorkspaceWatchKind::Removed,
+                });
+            }
+        }
+        self.entries = next;
+        coalesce_watch_events(root, &events)
+    }
+}
+
+fn poll_entries(root: &Path) -> Result<BTreeMap<PathBuf, PollEntry>, WorkspaceError> {
+    let mut entries = BTreeMap::new();
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(path) = pending.pop() {
+        let metadata = match fs::symlink_metadata(&path) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound && path != root => {
+                continue;
+            }
+            Err(error) => {
+                return Err(WorkspaceError::io("observe watched path", &path, error));
+            }
+        };
+        let is_directory = metadata.is_dir() && !metadata.file_type().is_symlink();
+        let _ = entries.insert(
+            path.clone(),
+            PollEntry {
+                is_directory,
+                length: metadata.len(),
+                modified: metadata.modified().ok(),
+            },
+        );
+        if is_directory {
+            let directory = match fs::read_dir(&path) {
+                Ok(directory) => directory,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound && path != root => {
+                    let _ = entries.remove(&path);
+                    continue;
+                }
+                Err(error) => {
+                    return Err(WorkspaceError::io("read watched directory", &path, error));
+                }
+            };
+            for entry in directory {
+                let entry = match entry {
+                    Ok(entry) => entry,
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                    Err(error) => {
+                        return Err(WorkspaceError::io("read watched entry", &path, error));
+                    }
+                };
+                pending.push(entry.path());
+            }
+        }
+    }
+    Ok(entries)
+}
+
+#[derive(Debug, Default)]
+struct InotifyWorkspaceWatchService {
+    root: Option<PathBuf>,
+    child: Option<Child>,
+    receiver: Option<Receiver<WorkspaceWatchEvent>>,
+    reader: Option<JoinHandle<()>>,
+}
+
+impl InotifyWorkspaceWatchService {
+    fn start(&mut self, root: &Path) -> Result<(), WorkspaceError> {
+        self.stop();
+        let canonical = fs::canonicalize(root)
+            .map_err(|error| WorkspaceError::io("canonicalize watcher root", root, error))?;
+        validate_absolute_path(&canonical)?;
+        let mut child = Command::new("inotifywait")
+            .args([
+                "--monitor",
+                "--recursive",
+                "--quiet",
+                "--format",
+                "%w%f\t%e",
+                "--event",
+                "create,modify,attrib,close_write,delete,moved_from,moved_to",
+            ])
+            .arg(&canonical)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|error| WorkspaceError::io("start inotifywait", &canonical, error))?;
+        let stdout = child.stdout.take().ok_or_else(|| {
+            WorkspaceError::invalid_path(&canonical, "inotifywait did not expose event output")
+        })?;
+        let (sender, receiver) = mpsc::channel();
+        let reader = thread::spawn(move || {
+            for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+                let Some((path, flags)) = line.rsplit_once('\t') else {
+                    continue;
+                };
+                let kind = if flags.contains("MOVED_") {
+                    WorkspaceWatchKind::Renamed
+                } else if flags.contains("DELETE") {
+                    WorkspaceWatchKind::Removed
+                } else if flags.contains("CREATE") {
+                    WorkspaceWatchKind::Created
+                } else {
+                    WorkspaceWatchKind::Modified
+                };
+                if sender
+                    .send(WorkspaceWatchEvent {
+                        path: PathBuf::from(path),
+                        kind,
+                    })
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        });
+        self.root = Some(canonical);
+        self.child = Some(child);
+        self.receiver = Some(receiver);
+        self.reader = Some(reader);
+        Ok(())
+    }
+
+    fn stop(&mut self) {
+        if let Some(child) = &mut self.child {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        self.child = None;
+        self.receiver = None;
+        if let Some(reader) = self.reader.take() {
+            let _ = reader.join();
+        }
+        self.root = None;
+    }
+
+    fn drain(&mut self) -> Result<Vec<WorkspaceWatchEvent>, WorkspaceError> {
+        let root = self.root.clone().ok_or_else(|| {
+            WorkspaceError::invalid_path(Path::new("/"), "native watcher has no active root")
+        })?;
+        if let Some(child) = &mut self.child
+            && let Some(status) = child
+                .try_wait()
+                .map_err(|error| WorkspaceError::io("inspect inotifywait", &root, error))?
+        {
+            return Err(WorkspaceError::invalid_path(
+                &root,
+                format!("inotifywait exited unexpectedly with {status}"),
+            ));
+        }
+        let receiver = self.receiver.as_ref().ok_or_else(|| {
+            WorkspaceError::invalid_path(&root, "native watcher response channel is unavailable")
+        })?;
+        let events = receiver.try_iter().collect::<Vec<_>>();
+        coalesce_watch_events(&root, &events)
+    }
+}
+
+impl Drop for InotifyWorkspaceWatchService {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
+#[derive(Debug)]
+enum LinuxWatchBackend {
+    Native(InotifyWorkspaceWatchService),
+    Polling(PollingWorkspaceWatchService),
+}
+
+/// Linux watcher that prefers recursive inotify delivery and falls back to safe polling.
+#[derive(Debug)]
+pub struct LinuxWorkspaceWatchService {
+    backend: LinuxWatchBackend,
+}
+
+impl Default for LinuxWorkspaceWatchService {
+    fn default() -> Self {
+        Self {
+            backend: LinuxWatchBackend::Polling(PollingWorkspaceWatchService::default()),
+        }
+    }
+}
+
+impl WorkspaceWatchService for LinuxWorkspaceWatchService {
+    fn watch(&mut self, root: &Path) -> Result<(), WorkspaceError> {
+        let mut native = InotifyWorkspaceWatchService::default();
+        if native.start(root).is_ok() {
+            self.backend = LinuxWatchBackend::Native(native);
+            return Ok(());
+        }
+        let mut polling = PollingWorkspaceWatchService::default();
+        polling.watch(root)?;
+        self.backend = LinuxWatchBackend::Polling(polling);
+        Ok(())
+    }
+
+    fn drain_events(&mut self) -> Result<Vec<WorkspaceWatchEvent>, WorkspaceError> {
+        let fallback_root = match &mut self.backend {
+            LinuxWatchBackend::Native(native) => match native.drain() {
+                Ok(events) => return Ok(events),
+                Err(_) => native.root.clone(),
+            },
+            LinuxWatchBackend::Polling(polling) => return polling.drain_events(),
+        };
+        let root = fallback_root.ok_or_else(|| {
+            WorkspaceError::invalid_path(Path::new("/"), "native watcher lost its root")
+        })?;
+        let mut polling = PollingWorkspaceWatchService::default();
+        polling.watch(&root)?;
+        self.backend = LinuxWatchBackend::Polling(polling);
+        Ok(vec![WorkspaceWatchEvent {
+            path: root,
+            kind: WorkspaceWatchKind::RescanRequired,
+        }])
+    }
+}
+
+/// Scope requested for an incremental workspace rescan.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum WorkspaceRefreshScope {
     /// Rebuild the complete workspace snapshot.
@@ -1274,6 +1751,12 @@ impl WorkspaceError {
         }
     }
 
+    /// Returns whether the failure means the requested path no longer exists.
+    #[must_use]
+    pub const fn is_not_found(&self) -> bool {
+        matches!(self.kind, WorkspaceErrorKind::NotFound)
+    }
+
     /// Returns the operation that failed.
     #[must_use]
     pub const fn operation(&self) -> &'static str {
@@ -1479,6 +1962,30 @@ fn build_memory_snapshot(
     WorkspaceSnapshot::from_nodes(root.to_path_buf(), root_id, nodes)
 }
 
+fn rebuild_children(nodes: &mut BTreeMap<WorkspaceNodeId, WorkspaceNode>) {
+    for node in nodes.values_mut() {
+        node.children.clear();
+    }
+    let parent_children = nodes
+        .values()
+        .filter_map(|node| {
+            let parent_path = node.path.parent()?.to_path_buf();
+            let parent_id = nodes
+                .values()
+                .find(|candidate| candidate.path == parent_path)?
+                .id
+                .clone();
+            Some((parent_id, node.id.clone()))
+        })
+        .collect::<Vec<_>>();
+    for (parent, child) in parent_children {
+        if let Some(node) = nodes.get_mut(&parent) {
+            node.children.push(child);
+        }
+    }
+    sort_all_children(nodes);
+}
+
 fn sort_all_children(nodes: &mut BTreeMap<WorkspaceNodeId, WorkspaceNode>) {
     let metadata: BTreeMap<_, _> = nodes
         .iter()
@@ -1648,10 +2155,12 @@ fn path_bytes(value: &OsStr) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::{
-        HiddenFilePolicy, MemoryWorkspaceService, MemoryWorkspaceWatchService, StdWorkspaceService,
-        SymlinkPolicy, WorkspaceCollisionPolicy, WorkspaceModel, WorkspaceMutationService,
-        WorkspaceNodeId, WorkspaceNodeKind, WorkspaceNodeStatus, WorkspaceScanOptions,
-        WorkspaceService, WorkspaceWatchEvent, WorkspaceWatchKind, WorkspaceWatchService,
+        HiddenFilePolicy, MemoryWorkspaceService, MemoryWorkspaceWatchService,
+        PollingWorkspaceWatchService, StdWorkspaceService, SymlinkPolicy, WorkspaceCollisionPolicy,
+        WorkspaceModel, WorkspaceMutationService, WorkspaceNodeId, WorkspaceNodeKind,
+        WorkspaceNodeStatus, WorkspaceRefreshScope, WorkspaceScanOptions, WorkspaceService,
+        WorkspaceWatchEvent, WorkspaceWatchKind, WorkspaceWatchService, coalesce_watch_events,
+        refresh_scope_for_events,
     };
     use std::error::Error;
     use std::fs;
@@ -2144,6 +2653,135 @@ mod tests {
                 .is_symlink()
         );
         fs::remove_file(root.join("destination.txt"))?;
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn watcher_bursts_coalesce_and_choose_the_smallest_safe_scope() -> TestResult {
+        let root = Path::new("/workspace");
+        let events = vec![
+            WorkspaceWatchEvent {
+                path: PathBuf::from("/workspace/src/main.rs"),
+                kind: WorkspaceWatchKind::Modified,
+            },
+            WorkspaceWatchEvent {
+                path: PathBuf::from("/workspace/src/main.rs"),
+                kind: WorkspaceWatchKind::Renamed,
+            },
+            WorkspaceWatchEvent {
+                path: PathBuf::from("/workspace/src/lib.rs"),
+                kind: WorkspaceWatchKind::Created,
+            },
+        ];
+        let coalesced = coalesce_watch_events(root, &events)?;
+        assert_eq!(coalesced.len(), 2);
+        assert_eq!(
+            coalesced
+                .iter()
+                .find(|event| event.path.ends_with("main.rs"))
+                .map(|event| event.kind),
+            Some(WorkspaceWatchKind::Renamed)
+        );
+        assert_eq!(
+            refresh_scope_for_events(root, &coalesced)?,
+            Some(WorkspaceRefreshScope::Subtree(PathBuf::from(
+                "/workspace/src"
+            )))
+        );
+        let cross_tree = vec![
+            WorkspaceWatchEvent {
+                path: PathBuf::from("/workspace/src/main.rs"),
+                kind: WorkspaceWatchKind::Modified,
+            },
+            WorkspaceWatchEvent {
+                path: PathBuf::from("/workspace/docs/guide.md"),
+                kind: WorkspaceWatchKind::Modified,
+            },
+        ];
+        assert_eq!(
+            refresh_scope_for_events(root, &cross_tree)?,
+            Some(WorkspaceRefreshScope::Full)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn incremental_refresh_preserves_unaffected_identity_expansion_and_selection() -> TestResult {
+        let service = memory()?;
+        service.insert_file(Path::new("src/main.rs"))?;
+        service.insert_file(Path::new("docs/guide.md"))?;
+        let snapshot = service.scan(Path::new("/workspace"), WorkspaceScanOptions::default())?;
+        let mut model = WorkspaceModel::new(snapshot);
+        let source_id = model
+            .snapshot()
+            .node_for_path(Path::new("/workspace/src"))
+            .ok_or_else(|| std::io::Error::other("source directory missing"))?
+            .id()
+            .clone();
+        let selected = model
+            .snapshot()
+            .node_for_path(Path::new("/workspace/src/main.rs"))
+            .ok_or_else(|| std::io::Error::other("selected file missing"))?
+            .id()
+            .clone();
+        let unaffected = model
+            .snapshot()
+            .node_for_path(Path::new("/workspace/docs/guide.md"))
+            .ok_or_else(|| std::io::Error::other("unaffected file missing"))?
+            .id()
+            .clone();
+        assert!(model.toggle_expanded(&source_id));
+        assert!(model.select(Some(selected.clone())));
+
+        service.insert_file(Path::new("src/lib.rs"))?;
+        assert!(model.refresh_from_events(
+            &service,
+            &[WorkspaceWatchEvent {
+                path: PathBuf::from("/workspace/src/lib.rs"),
+                kind: WorkspaceWatchKind::Created,
+            }],
+            WorkspaceScanOptions::default(),
+        )?);
+
+        assert!(model.is_expanded(&source_id));
+        assert_eq!(model.selected(), Some(&selected));
+        assert_eq!(
+            model
+                .snapshot()
+                .node_for_path(Path::new("/workspace/docs/guide.md"))
+                .map(|node| node.id()),
+            Some(&unaffected)
+        );
+        assert!(
+            model
+                .snapshot()
+                .node_for_path(Path::new("/workspace/src/lib.rs"))
+                .is_some()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn polling_watcher_reports_real_create_and_remove_events() -> TestResult {
+        let root = temp_root("poll-watcher")?;
+        let mut watcher = PollingWorkspaceWatchService::default();
+        watcher.watch(&root)?;
+        let file = root.join("created.txt");
+        fs::write(&file, "created")?;
+        let created = watcher.drain_events()?;
+        assert!(
+            created
+                .iter()
+                .any(|event| { event.path == file && event.kind == WorkspaceWatchKind::Created })
+        );
+        fs::remove_file(&file)?;
+        let removed = watcher.drain_events()?;
+        assert!(
+            removed
+                .iter()
+                .any(|event| { event.path == file && event.kind == WorkspaceWatchKind::Removed })
+        );
         fs::remove_dir_all(root)?;
         Ok(())
     }
