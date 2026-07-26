@@ -73,6 +73,79 @@ fn mix_channel(left: u8, right: u8, inverse: u16, amount: u16) -> u8 {
     u8::try_from(weighted.saturating_add(127) / 255).unwrap_or(u8::MAX)
 }
 
+/// Named theme presets exposed by Luna's native proofs and editor shell.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum ThemePreset {
+    /// Luna's neutral dark reference palette.
+    LunaDark,
+    /// Luna's neutral light reference palette.
+    LunaLight,
+    /// Warm amber/orange phosphor on black, inspired by vintage monochrome monitors.
+    AmberMonitor,
+    /// Bright green phosphor on black, inspired by classic terminal displays.
+    GreenTerminal,
+}
+
+impl ThemePreset {
+    /// Every built-in preset in stable menu/gallery order.
+    pub const ALL: [Self; 4] = [
+        Self::LunaDark,
+        Self::LunaLight,
+        Self::AmberMonitor,
+        Self::GreenTerminal,
+    ];
+
+    /// Stable command/session identifier.
+    #[must_use]
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::LunaDark => "luna-dark",
+            Self::LunaLight => "luna-light",
+            Self::AmberMonitor => "amber-monitor",
+            Self::GreenTerminal => "green-terminal",
+        }
+    }
+
+    /// Human-readable menu label.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::LunaDark => "Luna Dark",
+            Self::LunaLight => "Luna Light",
+            Self::AmberMonitor => "Amber Monitor",
+            Self::GreenTerminal => "Green Terminal",
+        }
+    }
+
+    /// Resolves the semantic palette for this preset.
+    #[must_use]
+    pub const fn theme(self) -> Theme {
+        match self {
+            Self::LunaDark => Theme::luna_dark(),
+            Self::LunaLight => Theme::luna_light(),
+            Self::AmberMonitor => Theme::amber_monitor(),
+            Self::GreenTerminal => Theme::green_terminal(),
+        }
+    }
+
+    /// Returns the next preset, wrapping at the end of [`Self::ALL`].
+    #[must_use]
+    pub const fn next(self) -> Self {
+        match self {
+            Self::LunaDark => Self::LunaLight,
+            Self::LunaLight => Self::AmberMonitor,
+            Self::AmberMonitor => Self::GreenTerminal,
+            Self::GreenTerminal => Self::LunaDark,
+        }
+    }
+
+    /// Parses a stable preset identifier.
+    #[must_use]
+    pub fn from_id(id: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|preset| preset.id() == id)
+    }
+}
+
 /// Compact semantic palette shared by Luna's native proofs and reusable editor anatomy.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Theme {
@@ -113,6 +186,30 @@ impl Theme {
         }
     }
 
+    /// Vintage amber/orange phosphor palette on an almost-black background.
+    #[must_use]
+    pub const fn amber_monitor() -> Self {
+        Self {
+            background: Rgba8::opaque(5, 3, 0),
+            panel: Rgba8::opaque(14, 8, 1),
+            panel_header: Rgba8::opaque(28, 15, 2),
+            accent: Rgba8::opaque(255, 132, 24),
+            foreground: Rgba8::opaque(255, 179, 71),
+        }
+    }
+
+    /// Bright green terminal phosphor palette on an almost-black background.
+    #[must_use]
+    pub const fn green_terminal() -> Self {
+        Self {
+            background: Rgba8::opaque(0, 5, 1),
+            panel: Rgba8::opaque(0, 14, 3),
+            panel_header: Rgba8::opaque(0, 28, 7),
+            accent: Rgba8::opaque(0, 255, 102),
+            foreground: Rgba8::opaque(103, 255, 136),
+        }
+    }
+
     /// Muted foreground derived from the current panel and foreground tokens.
     #[must_use]
     pub fn muted_foreground(self) -> Rgba8 {
@@ -140,7 +237,7 @@ impl Theme {
 
 #[cfg(test)]
 mod tests {
-    use super::{Rgba8, Theme};
+    use super::{Rgba8, Theme, ThemePreset};
 
     #[test]
     fn integer_color_mix_preserves_endpoints() {
@@ -154,5 +251,26 @@ mod tests {
     #[test]
     fn light_and_dark_reference_palettes_are_distinct() {
         assert_ne!(Theme::luna_dark(), Theme::luna_light());
+    }
+
+    #[test]
+    fn terminal_presets_are_distinct_and_cycle_stably() {
+        assert_ne!(Theme::amber_monitor(), Theme::green_terminal());
+        assert_eq!(ThemePreset::LunaDark.next(), ThemePreset::LunaLight);
+        assert_eq!(ThemePreset::GreenTerminal.next(), ThemePreset::LunaDark);
+        assert_eq!(
+            ThemePreset::from_id("amber-monitor"),
+            Some(ThemePreset::AmberMonitor)
+        );
+    }
+
+    #[test]
+    fn all_presets_keep_dark_backgrounds_for_terminal_modes() {
+        for preset in [ThemePreset::AmberMonitor, ThemePreset::GreenTerminal] {
+            let theme = preset.theme();
+            assert!(theme.background.red < 8);
+            assert!(theme.background.green < 8);
+            assert!(theme.background.blue < 8);
+        }
     }
 }

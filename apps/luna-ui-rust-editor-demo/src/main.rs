@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-//! Native M3.3c editor integration harness for Luna UI Rust.
+//! Native M4 editor integration harness for Luna UI Rust.
 //!
 //! This application mirrors the purpose of Swift LunaUITestApp's default editor mode: reusable
 //! shell anatomy and editor text are exercised together without embedding Moth Text product
@@ -11,8 +11,8 @@
 //! workspace trees, controlled workspace mutations, persistent session restoration, overscanned
 //! glyph rasters, stable-slot chrome-label caching, recursive split panes, pane-local tabs, and
 //! shared document buffers with independent editor-view state, advanced tab overflow and drag
-//! behavior, desktop submenus and context menus, completion popups, richer find/replace, and
-//! interactive editor scrollbars.
+//! behavior, desktop submenus and context menus, completion popups, richer find/replace,
+//! interactive editor scrollbars, four built-in color schemes, and optional CPU/GPU presentation.
 //!
 //! Shortcuts: Control-P command palette, Control-O open, Control-F find, Control-H replace,
 //! Control-S save, Control-Shift-S Save As, Control-Shift-O Open Folder, Control-Shift-R refresh
@@ -36,6 +36,7 @@ use luna_documents::{
     DocumentViewRegistry, ExternalState, FileIdentity, OpenFileOutcome, RecentFileList,
     SaveRequirement, StorageInstance, StorageRevision, StorageSnapshot,
 };
+use luna_host_wgpu::run_native_wgpu;
 use luna_host_winit::{
     AccessibilityActionKind, AccessibilityActionRequest, ApplicationError, HostControl,
     InvalidationClass, NativeApplication, WindowConfig, run_native,
@@ -59,7 +60,7 @@ use luna_text::{EditableText, SnapBias, TextLocation, TextRange, TextScroll};
 use luna_text_cosmic::{
     TextEngine, TextLayoutCache, TextLayoutCacheStats, TextLayoutRequest, TextLayoutSnapshot,
 };
-use luna_theme::{Rgba8, Theme};
+use luna_theme::{Rgba8, Theme, ThemePreset};
 use luna_ui::DropdownMenuState;
 use luna_ui::{
     CommandPalette, CommandPaletteState, CompletionCandidate, CompletionCoordinator,
@@ -138,7 +139,20 @@ const THEME_TEXT: &str =
     "{\n  \"name\": \"Luna Dark\",\n  \"background\": \"#121418\",\n  \"accent\": \"#8269ff\"\n}\n";
 
 fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
-    run_native(EditorDemoApplication::new()?)?;
+    let backend = std::env::var("LUNA_RENDER_BACKEND")
+        .unwrap_or_else(|_| "cpu".to_owned())
+        .to_ascii_lowercase();
+    match backend.as_str() {
+        "wgpu" | "gpu" => run_native_wgpu(EditorDemoApplication::new()?)?,
+        "cpu" | "softbuffer" => run_native(EditorDemoApplication::new()?)?,
+        other => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("unsupported LUNA_RENDER_BACKEND={other:?}; expected cpu or wgpu"),
+            )
+            .into());
+        }
+    }
     Ok(())
 }
 
@@ -458,6 +472,7 @@ struct EditorDemoApplication {
     last_editor_bounds: RectI,
     viewport: RectI,
     theme: Theme,
+    theme_preset: ThemePreset,
     sidebar_is_visible: bool,
     selected_sidebar_id: Option<String>,
     palette: Option<CommandPaletteState>,
@@ -582,6 +597,7 @@ impl EditorDemoApplication {
             last_editor_bounds: RectI::new(0, 0, 1, 1),
             viewport: RectI::new(0, 0, 1_180, 760),
             theme: Theme::luna_dark(),
+            theme_preset: ThemePreset::LunaDark,
             sidebar_is_visible: true,
             selected_sidebar_id: Some(editor_id.stable_key()),
             palette: None,
@@ -1673,10 +1689,25 @@ impl EditorDemoApplication {
                         .with_enabled(self.pane_tree.leaves().len() > 1),
                     ),
                     MenuItem::Separator,
-                    MenuItem::command(
-                        MenuCommand::new("theme", "Light Theme", "")
-                            .with_checked(self.theme == Theme::luna_light())
-                            .with_mnemonic('l'),
+                    MenuItem::submenu(
+                        MenuDefinition::new(
+                            "color-schemes",
+                            "Color Scheme",
+                            ThemePreset::ALL
+                                .into_iter()
+                                .map(|preset| {
+                                    MenuItem::command(
+                                        MenuCommand::new(
+                                            format!("theme:{}", preset.id()),
+                                            preset.label(),
+                                            "",
+                                        )
+                                        .with_checked(self.theme_preset == preset),
+                                    )
+                                })
+                                .collect(),
+                        )
+                        .with_mnemonic('c'),
                     ),
                 ],
             )
@@ -2880,21 +2911,26 @@ impl EditorDemoApplication {
                 self.sidebar_is_visible = !self.sidebar_is_visible;
                 InvalidationClass::WidgetLayout
             }
-            "theme" => {
-                self.theme = if self.theme == Theme::luna_dark() {
-                    Theme::luna_light()
-                } else {
-                    Theme::luna_dark()
+            command if command.starts_with("theme:") => {
+                let preset_id = command.trim_start_matches("theme:");
+                let Some(preset) = ThemePreset::from_id(preset_id) else {
+                    return HostControl::Continue;
                 };
+                if self.theme_preset == preset {
+                    return HostControl::Continue;
+                }
+                self.theme_preset = preset;
+                self.theme = preset.theme();
                 self.label_cache.clear();
                 for cache in self.text_layouts.values_mut() {
                     cache.invalidate_raster();
                 }
+                self.lifecycle_notice = Some(format!("Color scheme: {}", preset.label()));
                 InvalidationClass::FullFrame
             }
             "runtime-status" => {
                 self.lifecycle_notice = Some(format!(
-                    "M3.3c runtime: {} panes, {} views, {} documents",
+                    "M4 runtime: {} panes, {} views, {} documents",
                     self.pane_tree.leaves().len(),
                     self.pane_views.len(),
                     self.documents.len(),
@@ -6289,6 +6325,7 @@ mod tests {
     use luna_panes::PaneAxis;
     use luna_session::{MemorySessionStore, SessionRecentFile, SessionState, SessionWorkspace};
     use luna_text::{TextLocation, TextRange, TextScroll};
+    use luna_theme::ThemePreset;
     use luna_ui::DropdownMenuState;
     use luna_workspaces::{MemoryWorkspaceService, WorkspaceNodeKind};
     use std::error::Error;
@@ -7953,6 +7990,25 @@ mod tests {
                 .palette_items()
                 .iter()
                 .any(|item| item.id == "open-recent-0")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn color_scheme_commands_select_terminal_presets() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let mut application = test_application(&files, &dialogs)?;
+
+        let _ = application.execute_command("theme:amber-monitor");
+        assert_eq!(application.theme_preset, ThemePreset::AmberMonitor);
+        assert_eq!(application.theme, ThemePreset::AmberMonitor.theme());
+
+        let _ = application.execute_command("theme:green-terminal");
+        assert_eq!(application.theme_preset, ThemePreset::GreenTerminal);
+        assert_eq!(application.theme, ThemePreset::GreenTerminal.theme());
+        assert_eq!(
+            application.lifecycle_notice.as_deref(),
+            Some("Color scheme: Green Terminal")
         );
         Ok(())
     }

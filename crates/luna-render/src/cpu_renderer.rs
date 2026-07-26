@@ -5,8 +5,8 @@ use luna_core::RectI;
 
 /// Safe, deterministic reference renderer for tests and fallback operation.
 ///
-/// The production GPU renderer will be a separate backend consuming the same display list. This
-/// renderer is intentionally boring: it provides an executable specification for command order,
+/// The `luna-render-wgpu` backend consumes the same display list. This renderer is intentionally
+/// boring: it provides an executable specification for command order,
 /// clipping, DPI conversion, image composition, and pixel output.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct CpuRenderer;
@@ -29,11 +29,31 @@ impl CpuRenderer {
         scale_factor: f64,
     ) {
         let scale_factor = normalized_scale_factor(scale_factor);
+        let framebuffer_bounds =
+            RectI::new(0, 0, framebuffer.size().width, framebuffer.size().height);
+        let mut clip_stack = vec![framebuffer_bounds];
         for command in display_list.commands() {
             match command {
                 DisplayCommand::Clear(color) => framebuffer.clear(*color),
+                DisplayCommand::PushClip(clip) => {
+                    let physical = scale_rect(*clip, scale_factor);
+                    let current = clip_stack.last().copied().unwrap_or(framebuffer_bounds);
+                    let intersection = current
+                        .intersection(physical)
+                        .unwrap_or_else(|| RectI::new(0, 0, 0, 0));
+                    clip_stack.push(intersection);
+                }
+                DisplayCommand::PopClip => {
+                    if clip_stack.len() > 1 {
+                        let _ = clip_stack.pop();
+                    }
+                }
                 DisplayCommand::FillRect { bounds, color } => {
-                    framebuffer.fill_rect(scale_rect(*bounds, scale_factor), *color);
+                    let physical = scale_rect(*bounds, scale_factor);
+                    let clip = clip_stack.last().copied().unwrap_or(framebuffer_bounds);
+                    if let Some(clipped) = physical.intersection(clip) {
+                        framebuffer.fill_rect(clipped, *color);
+                    }
                 }
                 DisplayCommand::DrawImage {
                     origin,
@@ -42,12 +62,18 @@ impl CpuRenderer {
                 } => {
                     let logical_bounds =
                         RectI::new(origin.x, origin.y, image.size().width, image.size().height);
-                    let physical_clip = clip.map(|value| scale_rect(value, scale_factor));
-                    framebuffer.blend_image_clipped(
-                        scale_rect(logical_bounds, scale_factor),
-                        image,
-                        physical_clip,
-                    );
+                    let stack_clip = clip_stack.last().copied().unwrap_or(framebuffer_bounds);
+                    let physical_clip = match clip {
+                        Some(value) => scale_rect(*value, scale_factor).intersection(stack_clip),
+                        None => Some(stack_clip),
+                    };
+                    if let Some(physical_clip) = physical_clip {
+                        framebuffer.blend_image_clipped(
+                            scale_rect(logical_bounds, scale_factor),
+                            image,
+                            Some(physical_clip),
+                        );
+                    }
                 }
             }
         }
@@ -148,6 +174,66 @@ mod tests {
 
         assert_eq!(&framebuffer.bytes()[0..4], &[3, 2, 1, 255]);
         assert_eq!(&framebuffer.bytes()[4..8], &[0, 0, 0, 0]);
+        Ok(())
+    }
+
+    #[test]
+    fn clip_stack_intersects_nested_content() -> Result<(), Box<dyn Error>> {
+        let mut list = DisplayList::new();
+        list.clear(Rgba8::opaque(0, 0, 0));
+        list.push_clip(RectI::new(1, 1, 2, 2));
+        list.push_clip(RectI::new(2, 0, 2, 2));
+        list.fill_rect(RectI::new(0, 0, 4, 4), Rgba8::opaque(10, 20, 30));
+        list.pop_clip();
+        list.pop_clip();
+        let mut framebuffer = Framebuffer::new(SizeI::new(4, 4))?;
+
+        CpuRenderer::render(&list, &mut framebuffer);
+
+        let lit = (1_usize * 4 + 2) * 4;
+        assert_eq!(&framebuffer.bytes()[lit..lit + 4], &[30, 20, 10, 255]);
+        let dark = (1_usize * 4 + 1) * 4;
+        assert_eq!(&framebuffer.bytes()[dark..dark + 4], &[0, 0, 0, 255]);
+        Ok(())
+    }
+
+    #[test]
+    fn empty_clip_suppresses_content_until_pop() -> Result<(), Box<dyn Error>> {
+        let mut list = DisplayList::new();
+        list.clear(Rgba8::opaque(0, 0, 0));
+        list.push_clip(RectI::new(0, 0, 0, 0));
+        list.fill_rect(RectI::new(0, 0, 2, 2), Rgba8::opaque(10, 20, 30));
+        list.pop_clip();
+        list.fill_rect(RectI::new(1, 1, 1, 1), Rgba8::opaque(40, 50, 60));
+        let mut framebuffer = Framebuffer::new(SizeI::new(2, 2))?;
+
+        CpuRenderer::render(&list, &mut framebuffer);
+
+        assert_eq!(&framebuffer.bytes()[0..4], &[0, 0, 0, 255]);
+        let visible = (1_usize * 2 + 1) * 4;
+        assert_eq!(
+            &framebuffer.bytes()[visible..visible + 4],
+            &[60, 50, 40, 255]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn disjoint_image_clip_draws_nothing() -> Result<(), Box<dyn Error>> {
+        let image = RasterImage::new(SizeI::new(1, 1), vec![30, 20, 10, 255])?;
+        let mut list = DisplayList::new();
+        list.clear(Rgba8::opaque(0, 0, 0));
+        list.draw_image_clipped(PointI::new(0, 0), image, RectI::new(1, 1, 1, 1));
+        let mut framebuffer = Framebuffer::new(SizeI::new(2, 2))?;
+
+        CpuRenderer::render(&list, &mut framebuffer);
+
+        assert!(
+            framebuffer
+                .bytes()
+                .chunks_exact(4)
+                .all(|pixel| pixel == [0, 0, 0, 255])
+        );
         Ok(())
     }
 

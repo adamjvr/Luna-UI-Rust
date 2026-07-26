@@ -1,16 +1,18 @@
 // SPDX-License-Identifier: MPL-2.0
 
-//! Native M3 proof gallery for Luna UI Rust.
+//! Native M4 CPU/GPU proof gallery for Luna UI Rust.
 //!
 //! This application is intentionally separate from the editor harness. It continuously exercises
 //! responsive geometry, stateful controls, theme switching, multilingual shaping, immutable image
 //! composition, timed invalidation, hit testing, and accessibility without turning animation into
 //! editor overhead. M3.1c retains static geometry, paint, labels, and semantics while rebuilding only
-//! the animation lane on timed samples.
+//! the animation lane on timed samples. M4 can present the same frame through either the CPU or
+//! `wgpu` host and exposes four built-in color-scheme presets for visual comparison.
 
 use luna_accessibility::{AccessibilityNode, AccessibilityRole, AccessibilityTree};
 use luna_core::{NodeId, PointI, RectI, SizeI};
 use luna_host_core::InvalidationClass;
+use luna_host_wgpu::run_native_wgpu;
 use luna_host_winit::{
     AccessibilityActionKind, AccessibilityActionRequest, ApplicationError, HostControl,
     NativeApplication, WindowConfig, run_native,
@@ -18,7 +20,7 @@ use luna_host_winit::{
 use luna_input::{InputEvent, Key, NamedKey, PointerButton, PointerEventKind};
 use luna_render::DisplayList;
 use luna_text_cosmic::{TextEngine, TextLayoutSnapshot};
-use luna_theme::Theme;
+use luna_theme::{Theme, ThemePreset};
 use luna_ui::{
     Button, ControlState, ProgressBar, ProofGallery, ProofGalleryLayout, ProofGalleryState,
     RetainedDisplayList, TextAlignment, TextLabel, TextLabelCache, Toggle, UiFrame, Widget,
@@ -37,7 +39,20 @@ const MULTILINGUAL_SAMPLE: &str = "Latin: Luna UI Rust\nArabic: مرحباً ب�
 const ACCESSIBILITY_NOTE: &str = "Every card, control, dialog, tab, tree row, and text surface exposes a stable NodeId and shared logical bounds.";
 
 fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
-    run_native(ProofGalleryApplication::new()?)?;
+    let backend = std::env::var("LUNA_RENDER_BACKEND")
+        .unwrap_or_else(|_| "cpu".to_owned())
+        .to_ascii_lowercase();
+    match backend.as_str() {
+        "wgpu" | "gpu" => run_native_wgpu(ProofGalleryApplication::new()?)?,
+        "cpu" | "softbuffer" => run_native(ProofGalleryApplication::new()?)?,
+        other => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("unsupported LUNA_RENDER_BACKEND={other:?}; expected cpu or wgpu"),
+            )
+            .into());
+        }
+    }
     Ok(())
 }
 
@@ -46,7 +61,7 @@ struct LabelCacheKey {
     width: u32,
     height: u32,
     activation_count: u32,
-    light_theme: bool,
+    theme_preset: ThemePreset,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -63,7 +78,7 @@ struct StaticGalleryKey {
     viewport: RectI,
     activation_count: u32,
     toggle_is_on: bool,
-    light_theme: bool,
+    theme_preset: ThemePreset,
     hover_target: GalleryHitTarget,
 }
 
@@ -72,7 +87,7 @@ struct SemanticGalleryKey {
     viewport: RectI,
     activation_count: u32,
     toggle_is_on: bool,
-    light_theme: bool,
+    theme_preset: ThemePreset,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -199,7 +214,7 @@ struct ProofGalleryApplication {
     semantic_cache: Option<SemanticGalleryCacheEntry>,
     next_static_revision: u64,
     viewport: RectI,
-    light_theme: bool,
+    theme_preset: ThemePreset,
     hover_target: GalleryHitTarget,
     metrics: GalleryCacheMetrics,
 }
@@ -223,18 +238,22 @@ impl ProofGalleryApplication {
             semantic_cache: None,
             next_static_revision: 1,
             viewport: RectI::new(0, 0, 1_180, 760),
-            light_theme: false,
+            theme_preset: ThemePreset::LunaDark,
             hover_target: GalleryHitTarget::None,
             metrics: GalleryCacheMetrics::new(),
         })
     }
 
     const fn theme(&self) -> Theme {
-        if self.light_theme {
-            Theme::luna_light()
-        } else {
-            Theme::luna_dark()
-        }
+        self.theme_preset.theme()
+    }
+
+    fn theme_note(&self) -> String {
+        format!(
+            "{} palette\nClick this card for {}",
+            self.theme_preset.label(),
+            self.theme_preset.next().label()
+        )
     }
 
     fn shape_label(
@@ -264,7 +283,7 @@ impl ProofGalleryApplication {
             width: self.viewport.width,
             height: self.viewport.height,
             activation_count: self.state.activation_count,
-            light_theme: self.light_theme,
+            theme_preset: self.theme_preset,
         };
         if self.label_cache_key == Some(key) {
             return Ok(());
@@ -331,11 +350,7 @@ impl ProofGalleryApplication {
         )?;
         self.shape_label(
             "theme-note",
-            if self.light_theme {
-                "Light reference palette\nClick this card for dark mode"
-            } else {
-                "Dark reference palette\nClick this card for light mode"
-            },
+            &self.theme_note(),
             gallery.layout().cards[5].content.width,
             14.0,
             22.0,
@@ -386,7 +401,7 @@ impl ProofGalleryApplication {
             viewport: self.viewport,
             activation_count: self.state.activation_count,
             toggle_is_on: self.state.toggle_is_on,
-            light_theme: self.light_theme,
+            theme_preset: self.theme_preset,
             hover_target: self.hover_target,
         }
     }
@@ -396,7 +411,7 @@ impl ProofGalleryApplication {
             viewport: self.viewport,
             activation_count: self.state.activation_count,
             toggle_is_on: self.state.toggle_is_on,
-            light_theme: self.light_theme,
+            theme_preset: self.theme_preset,
         }
     }
 
@@ -503,11 +518,7 @@ impl ProofGalleryApplication {
             "theme-note",
             "m3-gallery-theme-note",
             gallery.layout().cards[5].content,
-            if self.light_theme {
-                "Light reference palette\nClick this card for dark mode"
-            } else {
-                "Dark reference palette\nClick this card for light mode"
-            },
+            &self.theme_note(),
             TextAlignment::Leading,
         ) {
             label.build_display_list(display_list);
@@ -701,7 +712,7 @@ impl ProofGalleryApplication {
     }
 
     fn activate_theme(&mut self) -> HostControl {
-        self.light_theme = !self.light_theme;
+        self.theme_preset = self.theme_preset.next();
         self.label_cache_key = None;
         HostControl::Invalidate(InvalidationClass::FullFrame)
     }

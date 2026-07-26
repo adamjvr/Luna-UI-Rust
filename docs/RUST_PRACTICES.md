@@ -56,7 +56,7 @@ Add a dependency only after documenting:
 - feature flags actually required;
 - whether a smaller dependency or standard-library implementation suffices.
 
-Current external dependencies are isolated by role: winit and softbuffer in the native host,
-AccessKit in the accessibility bridge, unicode-segmentation in the platform-neutral text model, and
-cosmic-text in the shaping/raster adapter. A future wgpu backend belongs in a renderer leaf crate,
-not in `luna-core`, `luna-text`, or `luna-ui`.
+Current external dependencies are isolated by role: winit and softbuffer in the CPU native host,
+AccessKit in the accessibility bridge, unicode-segmentation in the platform-neutral text model,
+cosmic-text in the shaping/raster adapter, and `wgpu`/pollster/bytemuck in the M4 GPU renderer and
+host leaf crates. GPU APIs do not enter `luna-core`, `luna-text`, or `luna-ui`.

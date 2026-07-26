@@ -144,7 +144,7 @@
 - Native watcher-event and full/subtree refresh-scope boundaries.
 - Deterministic standard-library, in-memory, scripted-dialog, session, and editor tests.
 
-## M3.3 — expanded editor shell — implemented; local validation pending
+## M3.3 — expanded editor shell — complete
 
 ### M3.3a — shared-buffer split panes — complete
 
@@ -162,7 +162,7 @@
 - Product-neutral tab context menus and completion popups.
 - Richer find/replace behavior and interactive scrollbar geometry.
 
-### M3.3c — desktop interaction hardening — implemented; local validation pending
+### M3.3c — desktop interaction hardening — complete
 
 - Versioned recursive pane/tab/view session persistence with V1 compatibility.
 - Per-view caret, directional selection, scroll, active-view, and focused-pane restoration.
@@ -174,12 +174,15 @@
 - Native-first Linux watcher delivery, polling fallback, event coalescing, and incremental subtree
   reconciliation.
 
-## M4 — GPU backend and rendering scalability
+## M4 — GPU backend and rendering scalability — implemented; local validation pending
 
-- `luna-render-wgpu` consuming the existing immutable display list.
-- Surface lifecycle, device-loss recovery, batching, clip stacks, and glyph/image atlas upload.
-- Retained CPU renderer as test oracle and fallback.
-- Proof-gallery CPU/GPU comparison fixtures.
+- `luna-render-wgpu` consumes the existing immutable display list through ordered solid/image quads.
+- `luna-host-wgpu` drives the existing native application contract with AccessKit preserved.
+- Surface resize/loss/suboptimal/outdated recovery and event-driven device-loss reconstruction.
+- Consecutive scissor batching, nested display-list clip stacks, and bounded BGRA image-atlas upload.
+- Retained CPU renderer remains the default deterministic oracle and fallback.
+- Proof-gallery and editor CPU/GPU runtime selection with a comparison checklist.
+- Stable Luna Dark, Luna Light, Amber Monitor, and Green Terminal theme presets.
 
 ## M5 — broader editor component parity
 
@@ -200,4 +203,4 @@ See [`SWIFT_PARITY.md`](SWIFT_PARITY.md). M3.1 now combines selected later-stage
 mechanics with first-level desktop dropdown menus. M3.2 supplies the real file/workspace runtime;
 M3.3a supplies the first live recursive pane runtime. M3.3b adds advanced tabs, nested menus, context menus, completion, richer find/replace, and
 scrollbars. M3.3c adds durable pane sessions, recursive popup routing, asynchronous providers, and
-native-first incremental workspace delivery. M4 is next after local validation.
+native-first incremental workspace delivery. M4 adds the optional `wgpu` renderer/host and four-palette comparison matrix. M5 is next after local validation.

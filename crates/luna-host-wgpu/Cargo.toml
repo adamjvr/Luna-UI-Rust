@@ -1,0 +1,25 @@
+[package]
+name = "luna-host-wgpu"
+description = "Native winit and wgpu host for Luna UI Rust."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+accesskit.workspace = true
+accesskit_winit.workspace = true
+luna-accessibility-accesskit = { path = "../luna-accessibility-accesskit" }
+luna-core = { path = "../luna-core" }
+luna-host-core = { path = "../luna-host-core" }
+luna-host-winit = { path = "../luna-host-winit" }
+luna-render-wgpu = { path = "../luna-render-wgpu" }
+luna-ui = { path = "../luna-ui" }
+pollster.workspace = true
+wgpu.workspace = true
+winit.workspace = true
+
+[lints]
+workspace = true

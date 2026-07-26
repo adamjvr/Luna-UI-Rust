@@ -4,8 +4,8 @@
 |---|---|---|
 | `LunaCore` | `luna-core` | IDs, geometry, and diagnostics implemented |
 | `LunaInput` | `luna-input` | Platform-neutral model plus winit translation implemented |
-| `LunaTheme` | `luna-theme` | Dark/light reference palettes and derived UI colors implemented |
-| `LunaRender` | `luna-render` | Display lists, CPU renderer, DPI scaling, raster images, alpha composition, and retained dirty-region restore primitives implemented |
+| `LunaTheme` | `luna-theme` | Luna Dark/Light plus Amber Monitor and Green Terminal presets with derived UI colors implemented |
+| `LunaRender` | `luna-render` plus `luna-render-wgpu` | Display lists, nested clips, CPU oracle, DPI scaling, raster images, alpha composition, ordered GPU quad batches, and BGRA atlas upload implemented |
 | `LunaAccessibility` | `luna-accessibility` | Validated tree, text ranges, editor-control roles, and deterministic semantic fingerprints implemented |
 | Native accessibility bridge | `luna-accessibility-accesskit` | Stable-ID AccessKit bridge plus activation-aware unchanged-tree suppression implemented |
 | `LunaHostCore` | `luna-host-core` | Frame invalidation/runtime implemented |
@@ -28,16 +28,16 @@
 | Swift workspace/project adapters | `luna-workspaces` | Stable recursive snapshots, mutations, native-first Linux watching, polling fallback, coalescing, incremental subtree reconciliation, refresh preservation, and deterministic adapters implemented |
 | Swift persistent editor session | `luna-session` | Versioned atomic recent-file and workspace-tree restoration with standard and memory stores implemented |
 | default `LunaUITestApp` editor mode | `luna-ui-rust-editor-demo` | Real files/workspaces, durable recursive pane sessions, advanced tabs, deep menus, async completion, search history/options, scrollbar paging, native watcher delivery, and accessibility integrated |
-| `LunaHostSDL` / `LunaHostMetal` | `luna-host-winit` plus render adapters | Retained working/static CPU buffers, timed update lane, and conditional AccessKit submission implemented |
+| `LunaHostSDL` / `LunaHostMetal` | `luna-host-winit` and `luna-host-wgpu` | CPU/softbuffer and GPU/wgpu hosts share input, application, invalidation, and AccessKit contracts; GPU surface/device recovery implemented |
 | incremental gallery/accessibility pipeline | existing host/gallery/accessibility crates | M3.1c retained static layer, dirty-region restore, input coalescing, and semantic fingerprints implemented |
 | Swift Phase 4C first-level menu behavior | `luna-ui::DropdownMenu` plus editor demo routing | M3.1d complete for first-level menus; submenus/mnemonics remain M3.3 |
-| GPU rendering | future `luna-render-wgpu` | Planned M4 after M3.2/M3.3 editor breadth |
+| GPU rendering | `luna-render-wgpu` plus `luna-host-wgpu` | M4 optional native backend, batching, scissor clips, atlas upload, metrics, and proof-gallery comparison implemented |
 
 ## Porting rule
 
 Behavioral tests and architectural invariants are ported before feature breadth. Rust types model
 invalid states out where practical, but the rewrite must not invent Moth product policy inside Luna.
-Native, text-engine, and future GPU adapters translate; they do not redefine widget or document
+Native, text-engine, and GPU adapters translate; they do not redefine widget or document
 semantics.
 
 ## Functional parity
@@ -47,6 +47,4 @@ coverage is near parity. First-level dropdown menus, document lifecycle state, U
 atomic Save, Save As, native dialogs, recent files, continuous external-change delivery, and one
 real recursive workspace tree, controlled workspace mutations, and persistent recent/workspace
 restoration now exist. Recursive live panes, durable tab/view sessions, deep popups, async completion,
-and native-first watcher delivery now exist; direct Moth integration remains concentrated in later
-platform work and
-M6.
+and native-first watcher delivery now exist; direct Moth integration remains concentrated in later platform work and M6.

@@ -145,7 +145,7 @@ Confirm:
 4. Menus and palette execute the same command IDs.
 5. disabled Open, Save As, Undo, Redo, Cut, Copy, Paste, and About rows remain visible but inert;
 6. Save and Close Tab availability tracks current application state;
-7. Show Sidebar and Light Theme checked state tracks the application;
+7. Show Sidebar and the selected View > Color Scheme row track application state;
 8. pointer and keyboard navigation behave as described above;
 9. accessibility activation opens headings and executes enabled rows;
 10. menu interaction creates no document layout/raster cache miss;

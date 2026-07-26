@@ -8,27 +8,25 @@ This is not a mechanical Swift-to-Rust translation. The rewrite preserves Luna's
 contracts while expressing them through Rust ownership, explicit errors, immutable frame snapshots,
 small workspace crates, strict compiler tooling, and platform-specific leaf adapters.
 
-## M3.3b status
+## M4 status
 
 M0 established the deterministic core, M1 added the native host, M2 added editor-grade text, M3
-added the twin proof-gallery/editor applications, M3.1 made the CPU path incremental and added real
-first-level dropdown menus, and M3.2 completed real file, workspace, mutation, and session behavior.
+added the twin proof-gallery/editor applications, M3.1 made the CPU path incremental, M3.2 completed
+real file/workspace/session behavior, and M3.3 completed durable recursive panes and hardened desktop
+interaction.
 
-M3.3a.2 is locally validated and committed. M3.3b expands the pane runtime into a desktop-grade
-advanced-tab and popup interaction layer:
+M4 adds an optional GPU path while retaining the CPU renderer as the default oracle and fallback:
 
-- pinned and replaceable preview tabs with explicit promotion;
-- local drag reordering and cross-pane tab movement;
-- overflow buttons with pinned-first projection and active-tab visibility correction;
-- nested Open Recent, Tabs, and Move to Pane command surfaces with mnemonics;
-- tab context menus sharing application command IDs;
-- caret-anchored completion popup with keyboard, pointer, and accessibility activation;
-- match-case and whole-word find options plus Replace Current and Replace All;
-- interactive vertical scrollbar geometry and pointer mapping;
-- deterministic model, widget, editor-integration, and regression tests.
+- `luna-render-wgpu` compiles immutable display lists into ordered solid/image quad batches;
+- nested logical clip stacks map to CPU clips and GPU scissors through one DPI rule;
+- repeated raster images share a bounded per-frame BGRA atlas;
+- `luna-host-wgpu` preserves the existing application, input, invalidation, and AccessKit contracts;
+- surface resize/loss and device-loss paths rebuild native GPU resources without resetting app state;
+- the proof gallery runs through either CPU/softbuffer or GPU/wgpu presentation;
+- Luna Dark, Luna Light, Amber Monitor, and Green Terminal are shared built-in theme presets;
+- the editor exposes the presets through **View > Color Scheme**.
 
-File/Edit/Find/View/Help remain anchored dropdowns, while Control-P opens the independent searchable
-command palette. See `docs/M3_3B_ADVANCED_TABS_POPUPS.md` and `docs/SWIFT_PARITY.md`.
+See `docs/M4_GPU_RENDERING.md`, `docs/ROADMAP.md`, and `docs/SWIFT_PARITY.md`.
 
 ## Build and validate
 
@@ -39,26 +37,38 @@ cargo fmt --all
 ./scripts/validate.sh
 ```
 
-M3.3b includes the current focused automated gate and runtime-fixture generator:
+M4 includes the focused automated gate and CPU/GPU runtime checklist:
 
 ```bash
-./scripts/test-m3-3b.sh
+./scripts/test-m4.sh
 ```
 
-Run the proof gallery in release mode:
+Run the proof gallery with the deterministic CPU backend:
 
 ```bash
 cargo run --release -p luna-ui-rust-proof-gallery
+```
+
+Run the identical application through the GPU backend:
+
+```bash
+LUNA_RENDER_BACKEND=wgpu cargo run --release -p luna-ui-rust-proof-gallery
 ```
 
 The M3.1c gallery baseline must remain intact: ordinary animation hits retained layout, static-paint,
 semantic, and label caches; restores only the animation lane; skips unchanged accessibility
 translation; and produces no frame while pointer motion remains inside one semantic hover target.
 
-Run the event-driven editor integration harness:
+Run the event-driven editor integration harness through the CPU backend:
 
 ```bash
 cargo run --release -p luna-ui-rust-editor-demo
+```
+
+Run the same editor through the GPU backend:
+
+```bash
+LUNA_RENDER_BACKEND=wgpu cargo run --release -p luna-ui-rust-editor-demo
 ```
 
 Editor menu behavior:
@@ -68,7 +78,7 @@ Editor menu behavior:
 - use Up/Down/Home/End at the current menu level; Right opens a submenu and Left closes it;
 - use Enter or Space to activate and Escape or an outside click to dismiss;
 - disabled commands remain visible but cannot activate;
-- checked commands expose current sidebar/theme state; Alt mnemonics open top-level menus;
+- checked commands expose current sidebar and selected color scheme; Alt mnemonics open top-level menus;
 - **Control-P** opens the separate searchable command palette and never opens from an ordinary
   menu-heading click.
 
@@ -91,7 +101,7 @@ Editor shortcuts:
 - **Control-A** — select all editor text;
 - **Escape** — close the active menu/overlay, or exit when none is open.
 
-M3.3b document, workspace, pane, and popup behavior:
+Current document, workspace, pane, popup, and rendering behavior:
 
 - New File creates an empty, clean, monotonically named Untitled document;
 - Open loads strict UTF-8 text and activates an existing tab when the canonical file is already open;
@@ -150,8 +160,9 @@ native event / AccessKit action / scheduled logical update
     -> platform-neutral Luna application state
     -> retained text/layout/chrome or retained static scene
     -> dynamic display list + shared validated semantic snapshot
-    -> retained working/static CPU framebuffers + conditional AccessKit translation
-    -> size-gated softbuffer presentation
+    -> CPU retained framebuffers or ordered GPU quad/scissor/atlas compilation
+    -> conditional AccessKit translation
+    -> softbuffer or wgpu presentation
 ```
 
 Widgets do not call graphics APIs, create native windows, own operating-system event loops, or embed
@@ -161,7 +172,8 @@ Moth-specific product policy. See `docs/ARCHITECTURE.md`, `docs/PORTING_MAP.md`,
 `docs/M3_2A_DOCUMENT_LIFECYCLE.md`, `docs/M3_2B_FILE_DIALOG_SERVICES.md`,
 `docs/M3_2C_RECENT_EXTERNAL_CHANGES.md`, `docs/M3_2D_WORKSPACE_TREE.md`,
 `docs/M3_2E_WORKSPACE_OPERATIONS_SESSION.md`, `docs/M3_3A_SPLIT_PANES.md`,
-`docs/M3_3B_ADVANCED_TABS_POPUPS.md`, and `docs/SWIFT_PARITY.md`.
+`docs/M3_3B_ADVANCED_TABS_POPUPS.md`, `docs/M3_3C_DESKTOP_HARDENING.md`,
+`docs/M4_GPU_RENDERING.md`, and `docs/SWIFT_PARITY.md`.
 
 ## License
 

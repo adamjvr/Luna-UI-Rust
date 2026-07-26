@@ -1,58 +1,57 @@
 # Current Status
 
-**Milestone:** M3.3c desktop interaction hardening — implemented, Pop!_OS validation pending
+**Milestone:** M4 GPU backend and rendering scalability — implemented; local Pop!_OS validation pending
 
 ## Baseline
 
-M3.3c is based on committed M3.3b.6 at
-`45150b72de3df8922c8cac9dfb8d88638d27c784`. That baseline supplies recursive panes, advanced tabs,
-nested menus, tab context menus, completion-popup presentation, richer literal find/replace, and
-interactive scrollbars.
+M4 is based on committed and locally runnable M3.3c at
+`b9aa4bbe8e65bc03e28ada1ec7a60726840bbb03`. That baseline supplies durable recursive pane sessions,
+asynchronous completion delivery, deep popup routing, search history/options, scrollbar paging, and
+native-first incremental workspace refresh.
 
-## Implemented in M3.3c
+## Implemented in M4
 
-- versioned V2 editor-session format with V1 compatibility;
-- recursive pane topology, split-ratio, focus, active-tab, order, pin, preview, and overflow restore;
-- independent caret, directional selection, and scroll restoration per `DocumentViewId`;
-- one persisted shared buffer per `DocumentId`;
-- dirty-state and storage-baseline persistence with restart-time external-change detection;
-- safe preview normalization for dirty, untitled, and virtual documents;
-- keyboard tab reorder and previous/next-pane movement;
-- arbitrary-depth dropdown selection paths, geometry, pointer routing, and accessibility;
-- pointer-intent corridors and reusable delayed cascading-menu state;
-- asynchronous completion request, cancellation, delivery, and stale-result rejection contracts;
-- delayed demo completion provider with explicit candidate replacement ranges;
-- bounded search history, wrap search, and Find in Selection;
-- scrollbar page-up/page-down track actions;
-- native-first Linux workspace watching with polling fallback;
-- deterministic event coalescing and incremental subtree reconciliation;
-- expanded model, service, editor-integration, corruption, restart, and runtime tests;
-- `scripts/test-m3-3c.sh` and M3.3c runtime fixture.
+- new `luna-render-wgpu` display-list backend pinned to `wgpu` 29.0.3;
+- new `luna-host-wgpu` native host driving the existing `NativeApplication` contract;
+- surface resize/loss/suboptimal/outdated/timeout/occlusion handling;
+- device-loss callback, event-loop wakeup, and complete GPU-resource reconstruction;
+- solid/image quad compilation with ordered scissor batches;
+- bounded per-frame BGRA image atlas and repeated-image deduplication;
+- nested `PushClip`/`PopClip` commands implemented by both CPU and GPU renderers;
+- retained static and dynamic display-list submission in painter order;
+- GPU timing, scene, atlas, surface-recovery, and device-recovery diagnostics;
+- CPU/GPU proof-gallery and editor selection through `LUNA_RENDER_BACKEND`;
+- shared `ThemePreset` catalog with Luna Dark, Luna Light, Amber Monitor, and Green Terminal;
+- four-palette theme cycling in the proof gallery;
+- checked **View > Color Scheme** submenu in the editor demo;
+- focused M4 tests, runtime checklist, architecture documentation, roadmap, parity, and porting updates.
 
 ## Architectural boundary
 
-`luna-session` owns the persisted wire format. `luna-panes` owns valid topology and pane-local tab
-policy. `luna-ui` owns product-neutral popup, completion, search-history, and scrollbar interaction
-contracts. `luna-workspaces` owns watch delivery and snapshot reconciliation. The editor application
-owns lifecycle decisions, provider choice, search policy, and UI-thread integration.
+Widgets, text layout, command routing, editor state, and accessibility remain independent of `wgpu`.
+`luna-render-wgpu` only compiles immutable paint data. `luna-host-wgpu` is a leaf adapter that owns
+native GPU resources and translates lifecycle events. `luna-render` remains the reference CPU
+implementation and supplies the shared logical-to-physical rectangle rule.
 
 ## Validation status
 
-Static source checks, TOML parsing, shell syntax, delimiter scans, SPDX checks, banned-token scans,
-and archive reconstruction checks are performed in this delivery environment. Rust 1.97.1 is not
-installed in that environment, so compiler, rustfmt, strict Clippy, tests, and rustdoc must be run on
-the target Pop!_OS workstation before M3.3c is accepted.
+Static delimiter checks, TOML parsing, shell syntax, local-path checks, patch whitespace checks, and
+package reconstruction are performed in the delivery environment. That environment has no Rust
+1.97.1 toolchain and cannot download crates, so it does not claim rustfmt, rustc, Clippy, tests,
+rustdoc, shader validation, GPU startup, or presentation success.
 
-Run:
+The authoritative Pop!_OS gate is:
 
 ```bash
 cargo fmt --all
-./scripts/test-m3-3c.sh
+./scripts/test-m4.sh
 ```
 
-Then perform the runtime checklist in `docs/M3_3C_DESKTOP_HARDENING.md` and the generated handoff.
+The first connected run will update `Cargo.lock` for the new pinned GPU dependencies. Commit that
+lockfile update with the phase. Then complete both backend runs described in
+[`M4_GPU_RENDERING.md`](M4_GPU_RENDERING.md).
 
 ## Next milestone
 
-After M3.3c passes locally, M4 begins with `luna-render-wgpu`, immutable-display-list consumption,
-surface/device-loss handling, batching, clip stacks, atlas upload, and CPU/GPU comparison fixtures.
+M5 adds broader editor component parity: syntax spans, Sublime color-scheme adapters, richer command
+routing/accessibility actions, undo/redo, multiple cursors, and complete IME pre-edit handling.

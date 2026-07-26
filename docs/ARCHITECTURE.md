@@ -40,6 +40,12 @@ luna-text-cosmic
   ├── luna-render
   └── cosmic-text
 
+luna-render-wgpu
+  ├── luna-core
+  ├── luna-render
+  ├── luna-theme
+  └── wgpu
+
 luna-host-core
 
 luna-commands
@@ -59,9 +65,14 @@ luna-ui
 
 native leaf adapters
   ├── luna-accessibility-accesskit
-  └── luna-host-winit
-        ├── winit
-        ├── softbuffer
+  ├── luna-host-winit
+  │     ├── winit
+  │     ├── softbuffer
+  │     └── AccessKit
+  └── luna-host-wgpu
+        ├── luna-host-winit contracts/input
+        ├── luna-render-wgpu
+        ├── winit + wgpu
         └── AccessKit
 
 applications
@@ -87,10 +98,12 @@ through explicit messages or adapters. It never mutates widget state directly.
 ## Proof-gallery/editor split
 
 The Swift Luna test application deliberately separates an animated proof gallery from its default
-editor harness. M3 preserves that split:
+editor harness. M3 established that split, and M4 runs the same proof application through either
+native renderer:
 
-- the proof gallery continuously exercises reusable controls, responsive geometry, themes, shaping,
-  animation, clipping, DPI, hit testing, and accessibility;
+- the proof gallery continuously exercises reusable controls, responsive geometry, four theme
+  presets, shaping, animation, clipping, DPI, hit testing, and accessibility through CPU or GPU
+  presentation;
 - the editor demo remains event-driven and exercises realistic shell composition, text editing,
   tabs, project navigation, command overlays, dirty state, and status updates.
 
@@ -344,7 +357,7 @@ cache keys. Moth-specific command policy remains above Luna.
 
 ## Immutable frame snapshots
 
-A frame contains data, not callbacks into widget state. The renderer consumes a dynamic
+A frame contains data, not callbacks into widget state. Either renderer consumes a dynamic
 `DisplayList` and may also consume a shared `RetainedDisplayList`. The accessibility adapter consumes
 a validated `AccessibilityTree` shared through `Arc`. Large immutable raster images, static paint
 lists, and semantic trees therefore cross frame boundaries without copying every glyph pixel, paint
@@ -354,9 +367,11 @@ A retained paint layer carries an application-owned revision and logical dirty r
 
 ```text
 static display list revision
-    -> host-retained static framebuffer
-    -> full restore after revision/size/scale change
-    -> clipped dirty-region restore on dynamic-only frames
+    -> CPU host-retained static framebuffer
+         -> full restore after revision/size/scale change
+         -> clipped dirty-region restore on dynamic-only frames
+    -> GPU retained immutable display-list layer
+         -> ordered quad/scissor/atlas compilation with dynamic paint
     -> dynamic display list
 ```
 
@@ -379,36 +394,45 @@ chrome geometry.
 
 ## Native host lifecycle
 
-The winit host creates windows only after `resumed`, creates the AccessKit adapter before making the
-window visible, normalizes native input, schedules optional logical updates, and requests frames
-through typed invalidations. It builds one immutable `UiFrame`, reuses the ordinary working
-framebuffer, optionally retains a separately rasterized static framebuffer, converts directly into
-softbuffer storage, and resizes the surface only after physical-size changes.
+Both native hosts create windows only after `resumed`, create the AccessKit adapter before making the
+window visible, normalize native input through `WinitInputTranslator`, schedule optional logical
+updates, and request frames through typed invalidations. Each builds the same immutable `UiFrame`.
 
-For a retained frame, the host rerasterizes static paint only after revision, physical-size, or scale
-changes. Otherwise it restores the declared dirty rectangle and executes only dynamic commands.
+The CPU host reuses its working framebuffer, optionally retains a separately rasterized static
+framebuffer, restores declared dirty regions, converts directly into softbuffer storage, and resizes
+only after physical-size changes. The GPU host preserves retained and dynamic display lists as
+separate painter-ordered layers, compiles them into solid/image quad batches, uploads one bounded
+per-frame BGRA atlas, applies physical scissor rectangles, and presents through a `wgpu` surface.
 
-`AccessibilityTree` computes a deterministic fixed-endian field fingerprint during validation.
-The host tracks AccessKit activation and translates semantics only after fingerprint or scale
-changes. Initial activation always receives a complete current tree, and deactivation clears the
-translated-snapshot state. Stage
-timings and lifetime/cache counters make build, rendering, presentation, retained-scene, and semantic
-cost visible. Application errors propagate to the caller rather than being hidden.
+Surface resize, suboptimal, outdated, timeout, occlusion, and loss outcomes remain host concerns.
+Surface loss or a device-loss callback rebuilds GPU resources while leaving application state,
+semantic IDs, and command state intact. `luna-host-wgpu` does not become a second application runtime;
+it is a leaf presentation adapter for the same `NativeApplication` contract.
+
+`AccessibilityTree` computes a deterministic fixed-endian field fingerprint during validation. Both
+hosts track AccessKit activation and translate semantics only after fingerprint or scale changes.
+Initial activation always receives a complete current tree, and deactivation clears translated
+snapshot state. CPU and GPU stage timings make build, rendering, presentation, retained-scene,
+atlas/batch, recovery, and semantic cost visible. Application errors propagate to the caller rather
+than being hidden.
 
 ## Swift parity boundary
 
 The architectural spine is near parity with Swift Luna UI, but feature breadth is not. Rust currently
-has stronger retained editor-raster and concrete AccessKit paths. M3.3b closes the basic advanced-tab, submenu, tab-context-menu, completion-popup, find-option, and
-scrollbar gaps. M3.3c closes recursive popup, asynchronous provider, pane-session, and native-first
-watcher gaps, while Swift remains ahead in richer language services, platform breadth, pane
-persistence/docking, and paired Moth integration. [`SWIFT_PARITY.md`](SWIFT_PARITY.md) is the governing inventory;
-performance milestones must not be described as equivalent to editor-product feature parity.
+has stronger retained editor-raster, concrete AccessKit, and optional cross-platform `wgpu` proof
+paths. M3.3c closes recursive popup, asynchronous provider, pane-session, and native-first watcher
+gaps. M4 adds backend-neutral clip commands, the GPU renderer/host leaf adapters, CPU/GPU comparison,
+and a four-preset theme matrix. Swift remains ahead in richer language services, platform breadth,
+docking/cross-window behavior, and paired Moth integration. [`SWIFT_PARITY.md`](SWIFT_PARITY.md) is
+the governing inventory; rendering milestones must not be described as equivalent to editor-product
+feature parity.
 
 ## Safety policy
 
-The workspace uses `unsafe_code = "forbid"`. If future FFI or GPU integration requires unsafe code,
-isolate it in a tiny adapter crate, state the invariant in a `SAFETY:` comment, add boundary tests,
-and never expose an unsafe requirement to ordinary widget or application code.
+The workspace uses `unsafe_code = "forbid"`. The M4 `wgpu` renderer and host remain entirely within
+safe Rust. If a future FFI integration requires unsafe code, isolate it in a tiny adapter crate,
+state the invariant in a `SAFETY:` comment, add boundary tests, and never expose an unsafe requirement
+to ordinary widget or application code.
 
 
 ## M3.3c persistence and delivery pipeline

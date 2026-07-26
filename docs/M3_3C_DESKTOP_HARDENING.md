@@ -96,6 +96,5 @@ cargo fmt --all
 ./scripts/test-m3-3c.sh
 ```
 
-M4 must not begin until formatting, compiler checking, strict Clippy, all tests, rustdoc, native
-runtime behavior, accessibility, session restart, watcher fallback, and proof-gallery regressions
-pass locally.
+This gate passed on the committed M3.3c baseline before M4 began. Future regressions remain covered by
+`scripts/test-m4.sh`, which includes the complete workspace gate plus CPU/GPU proof acceptance.

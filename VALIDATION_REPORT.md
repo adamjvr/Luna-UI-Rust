@@ -1,75 +1,64 @@
-# M3.3c Validation Report
+# M4 Validation Report
 
 ## Baseline
 
-M3.3c is reconstructed from committed M3.3b.6 at
-`45150b72de3df8922c8cac9dfb8d88638d27c784`, including the M3.3b.1 through M3.3b.6 compiler,
-Clippy, accessibility, node-ID, and submenu-test corrections.
+M4 is developed from committed M3.3c at
+`b9aa4bbe8e65bc03e28ada1ec7a60726840bbb03`.
 
 ## Change set
 
-- validated recursive pane snapshots and keyboard tab movement in `luna-panes`;
-- V2 document/view/pane session records with V1 read compatibility in `luna-session`;
-- explicit dirty-state and file storage-baseline restoration;
-- per-view caret, directional selection, and scroll persistence;
-- recursive dropdown selection paths and pointer intent in `luna-ui`;
-- reusable delayed cascading-menu state;
-- asynchronous completion request, cancellation, response, and replacement-range contracts;
-- bounded search history, wrap and selection-scoped find options;
-- scrollbar track page classification;
-- native-first Linux watcher delivery with polling fallback;
-- coalesced full/subtree refresh planning and immutable snapshot reconciliation;
-- editor-demo integration and expanded deterministic restart/corruption/service/runtime tests;
-- new `docs/M3_3C_DESKTOP_HARDENING.md` and `scripts/test-m3-3c.sh`;
-- updated architecture, roadmap, status, porting, parity, README, and validation documentation.
+- added `luna-render-wgpu` with ordered quad compilation, scissor batches, image-atlas upload, and
+  deterministic scene tests;
+- added `luna-host-wgpu` with winit lifecycle, AccessKit integration, surface recovery, device-loss
+  recovery with event-loop wakeup, and GPU diagnostics;
+- added nested display-list clip commands and matching CPU-renderer behavior;
+- added runtime CPU/GPU proof-gallery and editor selection;
+- added Luna Dark, Luna Light, Amber Monitor, and Green Terminal theme presets;
+- added proof-gallery cycling and editor **View > Color Scheme** projection;
+- added `docs/M4_GPU_RENDERING.md` and `scripts/test-m4.sh`;
+- updated README, architecture, current status, roadmap, porting map, Swift parity, and validation
+  documentation.
 
 ## Implemented invariants
 
-- session decoding cannot construct duplicate documents/views/nodes or orphaned pane records;
-- every persisted view is owned by exactly one pane tab and references one persisted document;
-- shared documents restore once while pane-local views restore independently;
-- pinned tabs form a leading partition and cannot be previews;
-- dirty, untitled, and virtual tabs do not restore as replaceable previews;
-- persisted file baselines retain modified/replaced/missing/recreated distinctions across restart;
-- keyboard tab movement preserves view and document identities;
-- dropdown selection, paint, pointer, keyboard, and accessibility share one recursive path/layout;
-- completion responses activate only when request, view, and edit revision still match;
-- every completion candidate owns an explicit valid UTF-8 replacement range;
-- watcher events mutate workspace state only after UI-thread draining;
-- watcher bursts are deterministic and excessive delivery degrades to a full rescan;
-- subtree refresh retains unaffected stable IDs, expansion, and selection;
-- polling and native watcher failure paths preserve a safe full-refresh fallback.
+- widgets and applications do not depend on `wgpu`;
+- CPU and GPU consume the same immutable display-list layers;
+- CPU and GPU nested clips use the same floor-leading/ceil-trailing DPI conversion;
+- disjoint image and stack clips draw nothing;
+- retained static paint precedes dynamic paint on both hosts;
+- repeated identical raster images occupy one per-frame atlas entry;
+- batch merging never reorders painter operations;
+- surface reconfiguration does not recreate application state;
+- device recovery rebuilds GPU resources while retaining application and accessibility state;
+- all built-in themes are selected through one stable `ThemePreset` catalog;
+- theme changes invalidate raster presentation, not document or pane identity.
 
 ## Static validation performed in the delivery environment
 
 - all TOML files parse;
 - every workspace member and local path dependency exists;
-- Rust lexical delimiter and splice scans pass;
-- public-item documentation heuristic passes for all changed reusable crates;
-- no unsafe block, unwrap, expect, panic, todo, or unimplemented call was introduced;
-- changed Rust, script, and documentation files retain SPDX/license expectations where applicable;
-- all shell scripts pass `bash -n`;
-- no trailing whitespace or malformed patch whitespace is present;
-- archive manifests and SHA-256 checks are generated after packaging;
-- overlay reconstruction is compared byte-for-byte with the changed working tree.
+- Rust lexical delimiter and duplicate-splice scans pass;
+- shell scripts pass `bash -n`;
+- `git diff --check` reports no malformed whitespace;
+- changed Rust and shell files retain SPDX identifiers;
+- generated archives are tested with `unzip -t`;
+- the repo-root overlay is reconstructed over the exact baseline and compared byte-for-byte;
+- SHA-256 manifests are generated after final archive creation.
 
-## Compiler validation boundary
+## Compiler and runtime boundary
 
-Rust 1.97.1 is not installed in the artifact-building container and outbound package retrieval is
-unavailable there. Therefore this report does **not** claim that rustfmt, rustc, strict Clippy, the
-Rust test runner, rustdoc, or the native application runtime were executed in that container.
+Rust 1.97.1 and the new registry dependencies are unavailable in the artifact-building container.
+Therefore this report does **not** claim that Cargo dependency resolution, rustfmt, rustc, strict
+Clippy, tests, rustdoc, WGSL validation, adapter selection, surface presentation, or device recovery
+were executed there.
 
-The authoritative Pop!_OS gate is:
+The authoritative validation command is:
 
 ```bash
-cargo fmt --all
-./scripts/test-m3-3c.sh
+./scripts/test-m4.sh
 ```
 
-Any formatting, compiler, Clippy, test, rustdoc, native watcher, session restart, accessibility,
-proof-gallery, or performance regression blocks acceptance and M4 work.
-## M3.3c.1 compiler correction
-
-The first external pinned-toolchain run identified two calls to a nonexistent `EditableText::text`
-method and one import-scope failure in the editor-demo test target. M3.3c.1 reads text through
-`EditableText::document().text()` and imports `DropdownMenuState` explicitly.
+The manual CPU/GPU and four-theme runtime checklist is documented in
+`docs/M4_GPU_RENDERING.md` and generated at `/tmp/luna-m4-comparison/README.txt` by the script.
+Any formatting, compiler, Clippy, test, rustdoc, shader, surface, accessibility, parity, or runtime
+regression blocks acceptance.

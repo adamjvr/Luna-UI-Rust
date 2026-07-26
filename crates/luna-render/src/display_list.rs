@@ -9,6 +9,10 @@ use luna_theme::Rgba8;
 pub enum DisplayCommand {
     /// Clear the complete target.
     Clear(Rgba8),
+    /// Pushes a logical clip rectangle intersected with the current clip stack.
+    PushClip(RectI),
+    /// Restores the previous logical clip rectangle. Extra pops are ignored by renderers.
+    PopClip,
     /// Fill an axis-aligned rectangle.
     FillRect {
         /// Rectangle to fill.
@@ -45,6 +49,16 @@ impl DisplayList {
     /// Appends a complete-target clear.
     pub fn clear(&mut self, color: Rgba8) {
         self.commands.push(DisplayCommand::Clear(color));
+    }
+
+    /// Pushes a logical clip rectangle.
+    pub fn push_clip(&mut self, clip: RectI) {
+        self.commands.push(DisplayCommand::PushClip(clip));
+    }
+
+    /// Pops one logical clip rectangle. Renderers ignore unmatched pops.
+    pub fn pop_clip(&mut self) {
+        self.commands.push(DisplayCommand::PopClip);
     }
 
     /// Appends an axis-aligned rectangle fill.
