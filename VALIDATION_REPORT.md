@@ -1,4 +1,4 @@
-# M7 Validation Report
+# M7.0.1 Acceptance and M8 Baseline Report
 
 ## Baseline
 
@@ -47,25 +47,35 @@ M7 is developed from committed and locally validated M6 at
 - generated ZIP and patch payloads reconstruct the exact M7 delivery tree;
 - SHA-256 manifests are generated after final archive creation.
 
-## Compiler and runtime boundary
+## Acceptance boundary
 
-Rust 1.97.1 is unavailable in the artifact-building container. This report therefore does **not**
-claim Cargo metadata, lockfile refresh, rustfmt, rustc, Clippy, tests, rustdoc, semver comparison,
-qualification execution, Linux desktop/AppStream validation, CPU/GPU startup, accessibility, IME,
-macOS hardware, or package launch were executed there.
+M7.0.1 is accepted on the blocking Linux/Pop!_OS lane. The authoritative local gate completed
+formatting, API-contract validation, all-target compilation, strict Clippy, complete tests, rustdoc,
+deterministic qualification, resource-loading execution, Linux package construction, and the CPU/
+Vulkan operator checks used for acceptance.
 
-Authoritative Linux/Pop!_OS validation:
+The retained M8 baseline is commit `e696df0cedaeda7ac5c0892cf8f709f8325eff8b`. M8 must re-run the
+complete M7 gate before recording new evidence:
 
 ```bash
-./scripts/test-m7.sh
+./scripts/test-m8.sh
 ```
 
-Advisory macOS validation:
+Advisory macOS validation remains:
 
 ```bash
 ./scripts/test-macos.sh
 ```
 
 Any Linux formatting, API-contract, compilation, Clippy, test, rustdoc, deterministic-budget,
-packaging, CPU/GPU, or operator-checklist regression blocks M7 acceptance. macOS remains advisory
+packaging, CPU/GPU, or operator-checklist regression blocks an M8 candidate. macOS remains advisory
 until repeated real-hardware acceptance supports promotion.
+
+## M8.0 Known Follow-Up
+
+- Edit > Copy and Edit > Paste remain disabled in both the CPU and `wgpu`
+  editor-demo backends.
+- The matching behavior across renderers indicates a shared command-enablement
+  or platform-clipboard integration gap rather than a renderer defect.
+- This is accepted for the M8.0 baseline commit but must be resolved before
+  the `0.2.0-rc.1` release candidate.

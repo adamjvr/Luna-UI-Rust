@@ -1,18 +1,18 @@
-# M7 Release Checklist
+# M8 Release-Candidate Checklist
 
-## Blocking Linux gate
+## Accepted M7.0.1 Linux baseline
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `python3 scripts/check-public-api.py`
-- [ ] `cargo check --workspace --all-targets --all-features`
-- [ ] strict workspace Clippy with warnings denied
-- [ ] complete workspace tests
-- [ ] rustdoc with warnings denied
-- [ ] deterministic M7 qualification report passes
-- [ ] Linux development bundle builds
-- [ ] CPU editor and proof gallery pass the operator checklist
-- [ ] Vulkan/`wgpu` editor and proof gallery pass the same checklist
-- [ ] `git diff --check` is clean and `Cargo.lock` is committed
+- [x] `cargo fmt --all -- --check`
+- [x] `python3 scripts/check-public-api.py`
+- [x] `cargo check --workspace --all-targets --all-features`
+- [x] strict workspace Clippy with warnings denied
+- [x] complete workspace tests
+- [x] rustdoc with warnings denied
+- [x] deterministic M7 qualification report passes
+- [x] Linux development bundle builds
+- [x] CPU editor and proof gallery pass the operator checklist
+- [x] Vulkan/`wgpu` editor and proof gallery pass the same checklist
+- [x] `git diff --check` is clean and `Cargo.lock` is committed
 
 ## Advisory compatibility evidence
 
@@ -33,3 +33,14 @@
 - [ ] VoiceOver audit passes or exceptions are recorded
 
 Windows is not a release blocker and receives no official package or support commitment.
+
+## M8 retained evidence
+
+- [ ] accepted M7 API snapshot retained
+- [ ] current API snapshot compared with the accepted baseline
+- [ ] qualification JSON retained with commit and environment metadata
+- [ ] Linux bundle checksum retained
+- [ ] repeated CPU/GPU long-session evidence recorded
+- [ ] external downstream consumer builds and packages
+- [ ] provisional API changes classified with migration notes
+- [ ] `0.2.0-rc.1` known limitations recorded

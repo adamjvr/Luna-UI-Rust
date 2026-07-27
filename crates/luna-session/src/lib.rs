@@ -1314,7 +1314,9 @@ mod tests {
 
         let mut invalid = state;
         invalid.documents[0].source = SessionDocumentSource::Virtual("virtual".to_owned());
-        assert!(super::decode_state(&super::encode_state(&invalid)).is_err());
+
+        let store = MemorySessionStore::default();
+        assert!(store.save(&invalid).is_err());
         Ok(())
     }
 

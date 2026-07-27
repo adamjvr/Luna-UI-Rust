@@ -51,9 +51,11 @@ impl SublimeColorSchemeAdapter {
                 if selectors.is_empty() {
                     continue;
                 }
-                let mut style = SyntaxStyle::default();
-                style.foreground = optional_color_field(rule, "foreground")?;
-                style.background = optional_color_field(rule, "background")?;
+                let mut style = SyntaxStyle {
+                    foreground: optional_color_field(rule, "foreground")?,
+                    background: optional_color_field(rule, "background")?,
+                    ..SyntaxStyle::default()
+                };
                 if let Some(font_style) = rule.get("font_style").and_then(JsonValue::as_string) {
                     for flag in font_style.split_ascii_whitespace() {
                         match flag {

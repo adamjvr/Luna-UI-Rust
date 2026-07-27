@@ -71,7 +71,7 @@ def validate_package_metadata(packages: dict[str, dict[str, object]]) -> None:
         if package.get("license") != "MPL-2.0":
             fail(f"{name} does not inherit MPL-2.0")
         if package.get("rust_version") != "1.97.1":
-            fail(f"{name} does not inherit the M7 MSRV")
+            fail(f"{name} does not inherit the project MSRV")
         if package.get("authors") != ["Adam Vadala-Roth"]:
             fail(f"{name} does not inherit the project author metadata")
         if package.get("repository") != "https://github.com/adamjvr/Luna-UI-Rust":
@@ -79,7 +79,7 @@ def validate_package_metadata(packages: dict[str, dict[str, object]]) -> None:
         if not package.get("readme"):
             fail(f"{name} does not inherit the workspace README")
         if package.get("publish") != []:
-            fail(f"{name} must remain non-publishable during M7 qualification")
+            fail(f"{name} must remain non-publishable during pre-release qualification")
 
 
 def parse_scalar(value: str, line_number: int) -> object:

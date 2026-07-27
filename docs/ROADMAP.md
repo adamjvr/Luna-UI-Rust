@@ -212,7 +212,7 @@
 - macOS CI remains advisory until repeated real-hardware CPU/Metal, IME, VoiceOver, watcher, dialog,
   lifecycle, and packaged-launch acceptance exists.
 
-## M7 — public API stabilization and release qualification — implemented; local validation pending
+## M7 — public API stabilization and release qualification — complete after Linux acceptance
 
 - Checked-in stable/provisional/internal crate contract inventory and package-metadata audit.
 - Stable machine-readable `ErrorCode`/`CodedError` contracts across public failure boundaries.
@@ -226,14 +226,17 @@
 - M7 Linux blocking CI; macOS remains advisory pending repeated real-hardware acceptance.
 - Windows remains unofficial, best-effort, and non-blocking.
 
-## M8 — release-candidate and ecosystem validation
+## M8 — release-candidate and ecosystem validation — active
 
-- Retain and compare public API snapshots across versioned development releases.
-- Run repeated Linux long-session CPU/GPU, watcher, session, accessibility, and package acceptance.
-- Record repeated Apple-Silicon hardware results and decide whether macOS CI can become blocking.
-- Expand product-neutral downstream examples and packaged resource/theme loading.
-- Resolve remaining provisional API churn before a versioned development release candidate.
+- M8.0 closes M7.0.1, freezes its API baseline, corrects documentation drift, and captures evidence.
+- M8.1 retains and compares public API snapshots and classifies every compatibility difference.
+- M8.2 builds a separate product-neutral downstream consumer using only public Luna APIs.
+- M8.3 runs repeated Linux CPU/GPU, watcher, session, accessibility, resource, and package workloads.
+- M8.4 records repeated Apple-Silicon hardware evidence before any macOS CI promotion decision.
+- M8.5 resolves provisional API churn and prepares the planned `0.2.0-rc.1` candidate.
 - Windows remains unofficial, best-effort, and non-blocking.
+
+See [`M8_RELEASE_CANDIDATE.md`](M8_RELEASE_CANDIDATE.md).
 
 ## Swift parity checkpoints
 

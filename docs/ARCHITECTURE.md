@@ -296,8 +296,8 @@ application command/candidate/search state
 
 Only one editor transient surface is presented at a time. The editor demo enforces mutual exclusion
 between the top-level dropdown, tab context menu, command palette, completion popup, and find panel.
-Current dropdown presentation supports a parent panel plus one child submenu; arbitrary-depth
-cascades remain a later extension.
+Dropdown presentation supports arbitrary-depth cascading popup paths with shared paint, pointer,
+keyboard, hover-intent, and accessibility routing.
 
 ## Text model boundary
 

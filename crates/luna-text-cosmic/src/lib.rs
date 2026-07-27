@@ -718,10 +718,10 @@ fn rich_text_segments<'a>(
     let mut segments = Vec::with_capacity(color_spans.len().saturating_mul(2).saturating_add(1));
     let mut cursor = 0_usize;
     for span in color_spans {
-        if cursor < span.range.start {
-            if let Some(segment) = text.get(cursor..span.range.start) {
-                segments.push((segment, default_attrs.clone()));
-            }
+        if cursor < span.range.start
+            && let Some(segment) = text.get(cursor..span.range.start)
+        {
+            segments.push((segment, default_attrs.clone()));
         }
         if let Some(segment) = text.get(span.range.clone()) {
             let color = Color::rgba(
@@ -734,10 +734,10 @@ fn rich_text_segments<'a>(
         }
         cursor = span.range.end;
     }
-    if cursor < text.len() {
-        if let Some(segment) = text.get(cursor..) {
-            segments.push((segment, default_attrs));
-        }
+    if cursor < text.len()
+        && let Some(segment) = text.get(cursor..)
+    {
+        segments.push((segment, default_attrs));
     }
     segments
 }

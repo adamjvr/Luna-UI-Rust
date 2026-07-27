@@ -4797,7 +4797,7 @@ impl EditorDemoApplication {
                 InvalidationClass::TextOverlay
             }
             NamedKey::PageDown => {
-                let query = self.find_history.next().map(str::to_owned);
+                let query = self.find_history.next_newer().map(str::to_owned);
                 if let Some(query) = query
                     && let Some(find) = self.find.as_mut()
                 {
@@ -8137,6 +8137,7 @@ mod tests {
             .active_view_mut()
             .editor
             .set_caret(TextLocation::new(0, 4));
+        application.refresh_active_selection_set_from_editor();
         application.active_view_mut().scroll = TextScroll::new(0, 11);
 
         application.split_focused_pane(PaneAxis::Horizontal);
@@ -8156,6 +8157,7 @@ mod tests {
             .active_view_mut()
             .editor
             .set_caret(TextLocation::new(1, 3));
+        application.refresh_active_selection_set_from_editor();
         application.active_view_mut().scroll = TextScroll::new(0, 44);
         let result = application.active_view_mut().editor.insert_text("shared ");
         assert!(result.did_change);

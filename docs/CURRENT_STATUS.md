@@ -1,6 +1,6 @@
 # Current Status
 
-**Milestone:** M7 public API stabilization and release qualification — implemented; local validation pending
+**Milestone:** M8 release-candidate and ecosystem validation — active
 
 ## Baseline
 
@@ -40,32 +40,28 @@ operator documentation without declaring a stable end-user product release.
 
 ## Validation status
 
-Static TOML, path, shell, Python, Markdown-link, SPDX, delimiter, whitespace, archive, overlay, and
-patch reconstruction checks are performed in the delivery environment. That environment has no
-Rust 1.97.1 toolchain or graphical desktop and therefore cannot claim rustfmt, rustc, strict Clippy,
-tests, rustdoc, Cargo metadata, qualification execution, package validators, GPU presentation, IME,
-accessibility, or macOS hardware success.
+M7.0.1 is accepted on the blocking Linux/Pop!_OS lane. The authoritative automated gate covers
+formatting, API-contract validation, all-target compilation, strict Clippy, complete tests, rustdoc,
+deterministic qualification, packaged-resource loading, and Linux bundle construction. CPU, Vulkan/
+`wgpu`, proof-gallery, and extracted-package checks were completed during local acceptance.
 
-Authoritative Linux/Pop!_OS gate:
+macOS remains supported but advisory. Repeated Apple-Silicon CPU/Metal, IME, VoiceOver, dialog,
+FSEvents, lifecycle, and packaged-launch evidence is still required before any promotion to a
+blocking lane.
 
-```bash
-cargo fmt --all
-./scripts/test-m7.sh
-```
-
-Advisory macOS gate:
+M8 re-runs the complete M7 gate before retaining release evidence:
 
 ```bash
-./scripts/test-macos.sh
+./scripts/test-m8.sh
 ```
 
-See [`M7_RELEASE_QUALIFICATION.md`](M7_RELEASE_QUALIFICATION.md),
+See [`M8_RELEASE_CANDIDATE.md`](M8_RELEASE_CANDIDATE.md),
+[`M7_RELEASE_QUALIFICATION.md`](M7_RELEASE_QUALIFICATION.md),
 [`EDITOR_DEMO_COMMANDS.md`](EDITOR_DEMO_COMMANDS.md), and
 [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md).
 
-## Next milestone
+## Active milestone
 
-M8 will consume the M7 evidence in a release-candidate cycle: retain API snapshots, qualify real
-Linux packages over repeated long sessions, record repeated macOS hardware results, expand
-product-neutral downstream examples, and resolve any API or resource-contract changes before a
-versioned development release. Windows remains unofficial and non-blocking.
+M8 retains the accepted M7.0.1 API and qualification baseline, exercises Luna from an external
+consumer, records repeated Linux and macOS evidence, and resolves intentional provisional-API churn
+before the planned `0.2.0-rc.1` development release. Windows remains unofficial and non-blocking.

@@ -59,7 +59,7 @@ impl SearchHistory {
     }
 
     /// Moves toward newer queries, returning an empty string after the newest entry.
-    pub fn next(&mut self) -> Option<&str> {
+    pub fn next_newer(&mut self) -> Option<&str> {
         let cursor = self.cursor?;
         if cursor == 0 {
             self.cursor = None;
@@ -95,7 +95,7 @@ mod tests {
         assert_eq!(history.entries().collect::<Vec<_>>(), vec!["alpha", "beta"]);
         assert_eq!(history.previous(), Some("alpha"));
         assert_eq!(history.previous(), Some("beta"));
-        assert_eq!(history.next(), Some("alpha"));
-        assert_eq!(history.next(), Some(""));
+        assert_eq!(history.next_newer(), Some("alpha"));
+        assert_eq!(history.next_newer(), Some(""));
     }
 }

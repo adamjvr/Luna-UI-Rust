@@ -994,7 +994,7 @@ where
                 .copied()
                 .map(&mut *view_key)
                 .collect(),
-            preview_view_key: leaf.preview_view.map(|view| view_key(view)),
+            preview_view_key: leaf.preview_view.map(&mut *view_key),
             tab_scroll_offset: leaf.tab_scroll_offset,
         }),
         PaneNode::Split(split) => PaneNodeSnapshot::Split(PaneSplitSnapshot {

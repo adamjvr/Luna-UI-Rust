@@ -1,11 +1,17 @@
 version = 1
-baseline_commit = "e696df0cedaeda7ac5c0892cf8f709f8325eff8b"
+milestone = "M7.0.1"
+accepted_commit = "e696df0cedaeda7ac5c0892cf8f709f8325eff8b"
+previous_baseline_commit = "89da6a786357d84a1be4e32f46749fc3666b9f1c"
 msrv = "1.97.1"
+workspace_version = "0.1.0"
+platform = "linux-primary"
+qualification_profile = "m7-release"
 
 [policy]
 error_codes_required = true
 missing_docs_denied = true
 unreachable_pub_denied = true
+unsafe_code_forbidden = true
 semver_check_mode = "advisory-until-0.2"
 
 [crates]

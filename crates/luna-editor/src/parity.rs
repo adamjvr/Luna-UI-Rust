@@ -147,8 +147,8 @@ impl EditorParityFixture {
         } else {
             Err(ParityError::Mismatch {
                 fixture: self.name.clone(),
-                expected: self.expected.clone(),
-                actual,
+                expected: Box::new(self.expected.clone()),
+                actual: Box::new(actual),
             })
         }
     }
@@ -187,9 +187,9 @@ pub enum ParityError {
         /// Fixture name.
         fixture: String,
         /// Checked-in expected state.
-        expected: ParityResult,
+        expected: Box<ParityResult>,
         /// Actual Rust result.
-        actual: ParityResult,
+        actual: Box<ParityResult>,
     },
 }
 

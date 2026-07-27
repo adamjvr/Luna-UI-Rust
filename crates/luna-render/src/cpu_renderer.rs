@@ -190,9 +190,9 @@ mod tests {
 
         CpuRenderer::render(&list, &mut framebuffer);
 
-        let lit = (1_usize * 4 + 2) * 4;
+        let lit = (4_usize + 2) * 4;
         assert_eq!(&framebuffer.bytes()[lit..lit + 4], &[30, 20, 10, 255]);
-        let dark = (1_usize * 4 + 1) * 4;
+        let dark = (4_usize + 1) * 4;
         assert_eq!(&framebuffer.bytes()[dark..dark + 4], &[0, 0, 0, 255]);
         Ok(())
     }
@@ -210,7 +210,7 @@ mod tests {
         CpuRenderer::render(&list, &mut framebuffer);
 
         assert_eq!(&framebuffer.bytes()[0..4], &[0, 0, 0, 255]);
-        let visible = (1_usize * 2 + 1) * 4;
+        let visible = (2_usize + 1) * 4;
         assert_eq!(
             &framebuffer.bytes()[visible..visible + 4],
             &[60, 50, 40, 255]

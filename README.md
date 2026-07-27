@@ -8,7 +8,7 @@ This is not a mechanical Swift-to-Rust translation. The rewrite preserves Luna's
 contracts while expressing them through Rust ownership, explicit errors, immutable frame snapshots,
 small workspace crates, strict compiler tooling, and platform-specific leaf adapters.
 
-## M7 status
+## M8 status
 
 M0 established the deterministic core, M1 added the native host, M2 added editor-grade text, M3
 added the twin proof-gallery/editor applications, M3.1 made the CPU path incremental, M3.2 completed
@@ -34,9 +34,14 @@ M7 establishes enforceable public API and release-qualification evidence:
 - Linux remains the blocking primary target, macOS remains the supported secondary/advisory target,
   and Windows remains unofficial and best-effort.
 
-See `docs/M7_RELEASE_QUALIFICATION.md`, `docs/PUBLIC_API_POLICY.md`,
-`docs/EDITOR_DEMO_COMMANDS.md`, `docs/LINUX_PACKAGING.md`, `docs/ACCESSIBILITY_AUDIT.md`,
-`docs/RELEASE_CHECKLIST.md`, `docs/ROADMAP.md`, and `docs/SWIFT_PARITY.md`.
+M7.0.1 is accepted on the blocking Linux/Pop!_OS lane. M8 retains that baseline, captures
+reproducible release evidence, validates a separate downstream consumer, and prepares the planned
+`0.2.0-rc.1` development candidate.
+
+See `docs/M8_RELEASE_CANDIDATE.md`, `docs/M7_RELEASE_QUALIFICATION.md`,
+`docs/PUBLIC_API_POLICY.md`, `docs/EDITOR_DEMO_COMMANDS.md`, `docs/LINUX_PACKAGING.md`,
+`docs/ACCESSIBILITY_AUDIT.md`, `docs/RELEASE_CHECKLIST.md`, `docs/ROADMAP.md`, and
+`docs/SWIFT_PARITY.md`.
 
 ## Build and validate
 
@@ -47,7 +52,13 @@ cargo fmt --all
 ./scripts/validate.sh
 ```
 
-M7 includes the public API, deterministic qualification, packaging, and runtime gate:
+M8 re-runs the complete M7 gate, verifies the retained baseline, and captures release evidence:
+
+```bash
+./scripts/test-m8.sh
+```
+
+The accepted M7 gate remains available directly:
 
 ```bash
 ./scripts/test-m7.sh
