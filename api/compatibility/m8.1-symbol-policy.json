@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "phase": "M8.1b",
+  "baseline_name": "m7.0.1",
+  "baseline_commit": "e696df0cedaeda7ac5c0892cf8f709f8325eff8b",
+  "rules": {
+    "unclassified_change": "reject",
+    "accidental_change": "reject",
+    "stable_symbol_removal": "require-intentionally-breaking",
+    "stable_symbol_addition": "require-explicit-classification",
+    "provisional_symbol_change": "require-explicit-classification"
+  },
+  "changes": [
+    {
+      "kind": "crate-added",
+      "package": "luna-clipboard",
+      "classification": "compatible",
+      "rationale": "M8.1a adds a new provisional clipboard crate without removing or changing any accepted M7 public symbol."
+    }
+  ]
+}
