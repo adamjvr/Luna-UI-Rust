@@ -7,6 +7,7 @@
 //! snapshots, while applications keep caret, selection, scroll, and rendering state above this
 //! layer. The resulting model is deterministic and can be tested without touching the filesystem.
 
+use luna_core::{CodedError, ErrorCode};
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
@@ -913,6 +914,20 @@ impl Display for DocumentError {
 }
 
 impl Error for DocumentError {}
+
+impl CodedError for DocumentError {
+    fn error_code(&self) -> ErrorCode {
+        ErrorCode::new(match self {
+            Self::NonCanonicalPath(_) => "documents.non_canonical_path",
+            Self::EmptyVirtualKey => "documents.empty_virtual_key",
+            Self::UnknownDocument(_) => "documents.unknown_document",
+            Self::InvalidUntitledSequence(_) => "documents.invalid_untitled_sequence",
+            Self::DuplicateUntitledSequence(_) => "documents.duplicate_untitled_sequence",
+            Self::NotFileBacked(_) => "documents.not_file_backed",
+            Self::FileAlreadyOpen { .. } => "documents.file_already_open",
+        })
+    }
+}
 
 #[cfg(test)]
 mod tests {

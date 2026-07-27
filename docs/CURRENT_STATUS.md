@@ -1,53 +1,56 @@
 # Current Status
 
-**Milestone:** M6 macOS hardening and downstream integration — implemented; local validation pending
+**Milestone:** M7 public API stabilization and release qualification — implemented; local validation pending
 
 ## Baseline
 
-M6 is based on committed and locally validated M5 at
-`b52685b7e528466b6257f1f48521746132764352`. The user confirmed the complete M5 Linux gate and editor
-runtime before commit. That baseline supplies syntax spans, Sublime color-scheme import,
-transactional undo/redo, multiple selections, IME composition, dynamic command state, editable
-accessibility actions, and the advisory macOS lane.
+M7 is based on committed and locally validated M6 at
+`89da6a786357d84a1be4e32f46749fc3666b9f1c`. The user confirmed Linux CPU editor operation after the
+M6.0.1 cache-field correction and committed the complete M6 phase. That baseline supplies explicit
+native lifecycle and dirty-state contracts, macOS dialogs/session/FSEvents/package tooling,
+application-owned downstream service composition, bounded platform support tiers, and the
+**Different** theme.
 
-## Implemented in M6
+## Implemented in M7
 
-- explicit native Resumed, Suspended, MemoryWarning, close-request, and unsaved-state contracts;
-- identical lifecycle delivery through CPU/softbuffer and GPU/wgpu hosts;
-- macOS native document-edited indication driven by application-owned dirty state;
-- session persistence on editor suspend, memory warning, and accepted native close;
-- conventional macOS Application Support session paths;
-- AppleScript Open, Save As, folder, prompt, conflict, and confirmation dialogs;
-- `notify`-backed FSEvents workspace watching with polling fallback;
-- product-neutral `PlatformWorkspaceWatchService` and macOS compatibility alias;
-- product-neutral `luna-integration` downstream adapter composition crate;
-- explicit platform support tiers in `luna-host-core`;
-- development `.app` bundle creation, plist validation, ad-hoc signing, and verification;
-- **Different**, a fifth built-in theme with translucent late-1990s/early-2000s desktop character;
-- focused M6 Linux and macOS validation scripts and expanded graphical acceptance checklists;
-- updated architecture, roadmap, porting, parity, support-policy, and validation documentation.
+- checked-in `api/public-api.toml` inventory for every public library crate;
+- stable, provisional, and internal API commitment tiers through `luna-qualification`;
+- inherited repository/readme metadata and complete package descriptions for public crates;
+- `luna_core::ErrorCode` and `CodedError` machine-readable public error contracts;
+- coded errors across document, workspace, session, pane, render, host, text, editor, integration,
+  command, accessibility, and qualification boundaries;
+- deterministic structural budgets for editor replay, text cache behavior, pane/menu/workspace
+  scale, CPU/GPU scene size, retained GPU capacities, and accessibility nodes;
+- executable `luna-ui-rust-qualification` fixture producing deterministic JSON evidence;
+- geometrically grown and explicitly capped retained GPU vertex/index buffers;
+- atlas upload reuse, retained-resource statistics, and memory-pressure trimming;
+- product-neutral packaged-resource discovery and a downstream resource-loading example;
+- relocatable Linux development bundle and tarball with Desktop Entry and AppStream metadata;
+- permanent `EDITOR_DEMO_COMMANDS.md` keyboard, pointer, runtime, and acceptance reference;
+- public API, Linux packaging, accessibility audit, qualification, and release-checklist documents;
+- M7 Linux blocking CI and expanded macOS advisory qualification.
 
 ## Architectural boundary
 
-Native hosts report lifecycle and dirty-state presentation but do not decide whether documents should
-be saved or discarded. AppleScript is confined to the dialog adapter. FSEvents delivery is confined
-to the workspace adapter. Platform state paths remain in the session adapter. The integration crate
-only groups existing application-selected adapters and does not introduce product semantics or a
-global service locator.
+Compatibility tier and error-code policy live in small contracts rather than application logic.
+Qualification uses deterministic structural evidence instead of unreliable shared-runner timing.
+GPU retention remains entirely inside the GPU leaf backend. Resource discovery finds application-
+owned files but does not choose product configuration. Linux packaging distributes the proof app and
+operator documentation without declaring a stable end-user product release.
 
 ## Validation status
 
-Static delimiter checks, TOML parsing, shell syntax, local dependency checks, Markdown-link checks,
-patch whitespace checks, SPDX checks, and archive reconstruction are performed in the delivery
-environment. That environment has no Rust 1.97.1 toolchain or graphical desktop and therefore cannot
-claim rustfmt, rustc, Clippy, tests, rustdoc, native dialogs, FSEvents, VoiceOver, Metal presentation,
-application signing, or graphical success.
+Static TOML, path, shell, Python, Markdown-link, SPDX, delimiter, whitespace, archive, overlay, and
+patch reconstruction checks are performed in the delivery environment. That environment has no
+Rust 1.97.1 toolchain or graphical desktop and therefore cannot claim rustfmt, rustc, strict Clippy,
+tests, rustdoc, Cargo metadata, qualification execution, package validators, GPU presentation, IME,
+accessibility, or macOS hardware success.
 
 Authoritative Linux/Pop!_OS gate:
 
 ```bash
 cargo fmt --all
-./scripts/test-m6.sh
+./scripts/test-m7.sh
 ```
 
 Advisory macOS gate:
@@ -56,12 +59,13 @@ Advisory macOS gate:
 ./scripts/test-macos.sh
 ```
 
-See [`M6_MACOS_INTEGRATION.md`](M6_MACOS_INTEGRATION.md) and
-[`MACOS_TESTING.md`](MACOS_TESTING.md) for runtime acceptance.
+See [`M7_RELEASE_QUALIFICATION.md`](M7_RELEASE_QUALIFICATION.md),
+[`EDITOR_DEMO_COMMANDS.md`](EDITOR_DEMO_COMMANDS.md), and
+[`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md).
 
 ## Next milestone
 
-M7 will concentrate on public API stabilization and release qualification: semver-facing contracts,
-resource retention, replay/performance thresholds, documentation examples, Linux packaging, repeated
-macOS hardware acceptance, and a decision on promoting macOS CI from advisory to blocking. Windows
-remains unofficial and non-blocking.
+M8 will consume the M7 evidence in a release-candidate cycle: retain API snapshots, qualify real
+Linux packages over repeated long sessions, record repeated macOS hardware results, expand
+product-neutral downstream examples, and resolve any API or resource-contract changes before a
+versioned development release. Windows remains unofficial and non-blocking.

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
+use luna_core::{CodedError, ErrorCode};
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::ops::Range;
@@ -368,6 +369,14 @@ impl Display for SelectionError {
 }
 
 impl Error for SelectionError {}
+impl CodedError for SelectionError {
+    fn error_code(&self) -> ErrorCode {
+        ErrorCode::new(match self {
+            Self::EmptySet => "editor.selection.empty_set",
+            Self::InvalidPrimaryIndex(_) => "editor.selection.invalid_primary_index",
+        })
+    }
+}
 
 fn previous_grapheme_boundary(text: &str, offset: usize) -> usize {
     text.grapheme_indices(true)

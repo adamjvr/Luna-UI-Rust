@@ -105,6 +105,8 @@ mkdir -p "${contents}/MacOS" "${contents}/Resources"
 cp "$binary" "${contents}/MacOS/${executable}"
 chmod +x "${contents}/MacOS/${executable}"
 
+install -m 0644 docs/EDITOR_DEMO_COMMANDS.md "${contents}/Resources/EDITOR_DEMO_COMMANDS.md"
+
 sed \
     -e "s|@DISPLAY_NAME@|${display_name_sed}|g" \
     -e "s|@EXECUTABLE@|${executable_sed}|g" \
@@ -117,6 +119,7 @@ cat > "${contents}/Resources/Luna-UI-Rust.txt" <<'NOTICE'
 Luna UI Rust editor integration proof.
 Linux is the primary target; macOS is the supported secondary target.
 The CPU renderer is the reference path. Set LUNA_RENDER_BACKEND=wgpu before launch to use Metal.
+See EDITOR_DEMO_COMMANDS.md in this Resources directory for the complete operator guide.
 NOTICE
 
 plutil -lint "${contents}/Info.plist"

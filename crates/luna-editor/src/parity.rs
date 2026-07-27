@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use crate::{ByteSelection, EditGroup, EditHistory, HistorySnapshot, SelectionError, SelectionSet};
+use luna_core::{CodedError, ErrorCode};
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 
@@ -220,6 +221,15 @@ impl Error for ParityError {
             Self::InvalidSelection { source, .. } => Some(source),
             Self::Mismatch { .. } => None,
         }
+    }
+}
+
+impl CodedError for ParityError {
+    fn error_code(&self) -> ErrorCode {
+        ErrorCode::new(match self {
+            Self::InvalidSelection { .. } => "editor.parity.invalid_selection",
+            Self::Mismatch { .. } => "editor.parity.mismatch",
+        })
     }
 }
 

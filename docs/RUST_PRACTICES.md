@@ -8,8 +8,10 @@ The minimum supported Rust version is encoded through `rust-version` rather than
 ## Error handling
 
 Recoverable failures return typed `Result` values. Production code must not use `unwrap`, `expect`,
-`panic`, `todo`, or `unimplemented`. At impossible internal boundaries, code should fail closed and
-emit a diagnostic until an invariant can be encoded more strongly in the type system.
+`panic`, `todo`, or `unimplemented`. Public boundary errors implement `luna_core::CodedError` so
+applications can use stable machine identity without parsing mutable `Display` text. At impossible
+internal boundaries, code should fail closed and emit a diagnostic until an invariant can be encoded
+more strongly in the type system.
 
 ## Public API
 
@@ -76,3 +78,18 @@ Windows is not an official support target. Do not add Windows-specific dependenc
 packaging policy, or public support promises unless the project explicitly changes this policy.
 Portable fixes are acceptable when they preserve Linux and macOS behavior and do not make Windows a
 release gate by implication.
+
+## M7 compatibility and qualification rules
+
+Every public library package must appear in both `api/public-api.toml` and
+`luna_qualification::CRATE_CONTRACTS`. Stable and provisional are project commitments, not synonyms
+for `pub`. New public errors implement `CodedError`; consumers branch on the code and display the
+ordinary error text rather than parsing prose.
+
+Performance regressions are blocked with deterministic structural budgets whenever possible. Counts,
+cache misses, scene batches, atlas bytes, and retained capacities are suitable CI contracts;
+wall-clock measurements on shared runners are diagnostics. GPU resource retention must expose caps,
+reuse, and trim behavior instead of growing invisibly for the life of the process.
+
+Run `python3 scripts/check-public-api.py` and `./scripts/test-m7.sh` whenever a public crate, error,
+resource layout, renderer allocation policy, package manifest, or operator command changes.

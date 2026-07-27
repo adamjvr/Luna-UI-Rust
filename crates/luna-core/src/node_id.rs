@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
+use crate::{CodedError, ErrorCode};
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 
@@ -94,6 +95,17 @@ impl Display for NodeIdError {
 }
 
 impl Error for NodeIdError {}
+
+impl CodedError for NodeIdError {
+    fn error_code(&self) -> ErrorCode {
+        ErrorCode::new(match self {
+            Self::Empty => "core.node_id.empty",
+            Self::EmptyChildSegment => "core.node_id.empty_child_segment",
+            Self::ContainsWhitespace(_) => "core.node_id.contains_whitespace",
+            Self::ChildSegmentContainsSeparator(_) => "core.node_id.child_contains_separator",
+        })
+    }
+}
 
 #[cfg(test)]
 mod tests {

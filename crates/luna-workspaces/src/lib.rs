@@ -7,6 +7,7 @@
 //! boundaries, and native-watcher delivery contracts. It intentionally does not own native dialogs,
 //! editor tabs, command policy, or application-specific confirmation behavior.
 
+use luna_core::{CodedError, ErrorCode};
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
@@ -1959,6 +1960,21 @@ impl Display for WorkspaceError {
 }
 
 impl Error for WorkspaceError {}
+
+impl CodedError for WorkspaceError {
+    fn error_code(&self) -> ErrorCode {
+        ErrorCode::new(match self.kind {
+            WorkspaceErrorKind::InvalidPath => "workspace.invalid_path",
+            WorkspaceErrorKind::NotFound => "workspace.not_found",
+            WorkspaceErrorKind::NotDirectory => "workspace.not_directory",
+            WorkspaceErrorKind::AlreadyExists => "workspace.already_exists",
+            WorkspaceErrorKind::InvalidName => "workspace.invalid_name",
+            WorkspaceErrorKind::PermissionDenied => "workspace.permission_denied",
+            WorkspaceErrorKind::InvalidSnapshot => "workspace.invalid_snapshot",
+            WorkspaceErrorKind::Io => "workspace.io",
+        })
+    }
+}
 
 fn build_std_snapshot(
     root: PathBuf,

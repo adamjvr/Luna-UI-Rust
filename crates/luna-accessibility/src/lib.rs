@@ -5,7 +5,7 @@
 //! Widgets describe meaning here at the same time they describe paint and hit testing. Host
 //! adapters will translate a validated tree into AccessKit and native platform accessibility APIs.
 
-use luna_core::{NodeId, RectI};
+use luna_core::{CodedError, ErrorCode, NodeId, RectI};
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
@@ -507,6 +507,17 @@ impl Display for AccessibilityTreeError {
 }
 
 impl Error for AccessibilityTreeError {}
+
+impl CodedError for AccessibilityTreeError {
+    fn error_code(&self) -> ErrorCode {
+        ErrorCode::new(match self {
+            Self::DuplicateNode(_) => "accessibility.duplicate_node",
+            Self::MissingRoot(_) => "accessibility.missing_root",
+            Self::MissingChild { .. } => "accessibility.missing_child",
+            Self::Cycle(_) => "accessibility.cycle",
+        })
+    }
+}
 
 #[cfg(test)]
 mod tests {

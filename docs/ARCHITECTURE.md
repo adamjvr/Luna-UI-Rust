@@ -548,3 +548,40 @@ future promotion to blocking status.
 Windows is not an official support target. Shared dependencies may continue to compile there and
 non-disruptive community fixes are welcome, but Luna-UI-Rust does not promise Windows CI, packaging,
 release artifacts, graphical acceptance, or support response times.
+
+## M7 qualification and compatibility pipeline
+
+```text
+Cargo workspace metadata + checked-in API manifest
+    -> public crate inventory and stability-tier audit
+    -> package description/license/MSRV/repository validation
+    -> stable CodedError identity audit
+
+real deterministic fixtures
+    -> editor operation replay
+    -> retained text scroll/cache counters
+    -> recursive pane and workspace snapshots
+    -> CPU display-list execution + headless GPU scene compilation
+    -> semantic accessibility-tree validation
+    -> checked-in structural budgets + deterministic JSON report
+
+GPU scene submission
+    -> geometrically retained vertex/index buffers within hard policy caps
+    -> fingerprinted atlas upload reuse
+    -> lifetime high-water diagnostics
+    -> explicit memory-pressure trim
+
+application resource request
+    -> normalized traversal-free relative path
+    -> environment, bundle, executable-relative, development, and system roots
+    -> application-owned resource bytes
+```
+
+`luna-qualification` owns evidence formats and budgets but imports no platform host. The executable
+fixture composes public Luna crates exactly as a downstream integration would. Release scripts may
+record wall-clock diagnostics, but shared-runner timing does not become a flaky blocking contract.
+
+Public error text remains descriptive and may improve; `ErrorCode` is the stable branch/telemetry
+identity. API stability tiers are explicit project policy rather than an accidental consequence of
+Rust visibility. Linux package layout and resource discovery are leaf integration concerns and do
+not move filesystem or product policy into widgets.

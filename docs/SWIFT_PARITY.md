@@ -4,7 +4,7 @@ This document records the functional relationship between Luna-UI-Rust and the o
 Luna UI implementation. It is a directional feature-inventory assessment, not a line-count or API
 percentage guarantee.
 
-## Current estimate after M6 implementation
+## Current estimate after M7 implementation
 
 ```text
 foundational architecture       86–92% parity
@@ -25,11 +25,11 @@ session restoration, a live recursive split-pane runtime, advanced tab policy an
 arbitrary-depth submenus, tab context menus, asynchronous completion delivery, richer find/replace,
 an interactive scrollbar, durable recursive sessions, native-first Linux/FSEvents workspace watching, five
 built-in color schemes, validated syntax spans, Sublime scheme import, transactional undo/redo,
-multiple selections, native IME composition, dynamic command state, actionable accessibility payloads, macOS lifecycle/state/packaging seams, and product-neutral downstream composition. Swift remains broader and closer to a complete reusable editor platform.
+multiple selections, native IME composition, dynamic command state, actionable accessibility payloads, macOS lifecycle/state/packaging seams, product-neutral downstream composition, explicit API stability tiers, stable error codes, deterministic release budgets, bounded GPU retention, and Linux development packaging. Swift remains broader and closer to a complete reusable editor platform.
 
 ## Capability matrix
 
-| Area | Luna-UI-Rust after M6 | Swift Luna UI | Relative state |
+| Area | Luna-UI-Rust after M7 | Swift Luna UI | Relative state |
 |---|---|---|---|
 | Core architecture | IDs, geometry, input, commands, layout, five theme presets, CPU/GPU rendering, accessibility, lifecycle, and host boundaries | Same broad spine with more downstream use | Near parity |
 | CPU rendering | Display lists, images, alpha composition, retained host/static layers, dirty-region restore | CPU framebuffer and proof-frame caching | Near parity |
@@ -54,6 +54,7 @@ multiple selections, native IME composition, dynamic command state, actionable a
 | Runtime scheduling | Typed invalidation, event-driven editor, retained animation lane, and resume/suspend/memory-warning delivery | Persistent semantic scheduler and presentation deadlines | Different strengths |
 | GPU renderer | Optional `wgpu` display-list backend and native proof host with batching, scissors, atlas upload, metrics, and recovery | Metal-oriented production path remains broader in paired applications | Rust proof path implemented; production integration still broader in Swift |
 | Downstream composition | Generic application-owned adapter bundle and support-tier report without product policy | Mature paired applications and product integration | Rust boundary implemented; Swift has broader real consumers |
+| Release qualification | Checked-in API tiers, coded errors, deterministic structural budgets, bounded GPU retention, Linux development package, operator and accessibility checklists | Broader mature downstream release history and product regression evidence | Rust framework evidence implemented; Swift ecosystem maturity ahead |
 | Moth integration | Not started | Used by paired Moth convergence work | Swift far ahead |
 
 ## Where Rust is strongest
@@ -123,7 +124,7 @@ regression coverage.
 
 ## Roadmap interpretation
 
-The versions are not aligned linearly. After M6, Rust resembles the reusable portion of Swift Phase
+The versions are not aligned linearly. After M7, Rust resembles the reusable portion of Swift Phase
 5A through early convergence work for visible editor functionality, while selected performance,
 accessibility, and GPU boundaries correspond to later Swift host/cache phases.
 
@@ -141,7 +142,8 @@ M3.3c -> durable pane/view sessions, async providers, popup depth, search histor
 M4    -> optional wgpu renderer/host, clip parity, CPU/GPU fixtures, and four theme presets
 M5    -> syntax spans, Sublime themes, undo/redo, multiple cursors, IME, and actions
 M6    -> macOS lifecycle/dialog/FSEvents/packaging seams, downstream adapters, and Different
-M7    -> public API stabilization and release qualification; Windows remains unofficial
+M7    -> public API contracts, deterministic qualification, GPU/resource limits, Linux packaging
+M8    -> release-candidate and ecosystem validation; Windows remains unofficial
 ```
 
 M3.3c provides durable recursive panes, deep desktop popup behavior, asynchronous completion, search
@@ -149,7 +151,8 @@ history/options, and native-first incremental workspace refresh on top of the re
 mutation, and session runtime. M4 adds the optional GPU proof path and four-palette visual matrix.
 M5 adds reusable styled syntax, history, multiple-selection, IME, dynamic command state, and editable
 action delivery. M6 adds the fifth preset plus macOS lifecycle, Application Support, dialogs,
-FSEvents, app-bundle packaging, and generic adapter composition. Richer language-aware editing, regex
+FSEvents, app-bundle packaging, and generic adapter composition. M7 adds release-facing API, error,
+qualification, retained-resource, packaging, and operator-documentation contracts. Richer language-aware editing, regex
 search, docking, repeated real-hardware macOS acceptance, production resource retention, and deeper
 product integrations remain the major gaps. Windows is
 not part of the official parity target.

@@ -7,9 +7,11 @@
 //! accessibility, tests, and alternate host backends.
 
 mod diagnostics;
+mod error_code;
 mod geometry;
 mod node_id;
 
 pub use diagnostics::{Diagnostic, DiagnosticSeverity, Diagnostics};
+pub use error_code::{CodedError, ErrorCode};
 pub use geometry::{InsetsI, PointI, RectI, SizeI};
 pub use node_id::{NodeId, NodeIdError};

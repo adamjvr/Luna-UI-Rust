@@ -2,6 +2,7 @@
 members = [
     "apps/luna-ui-rust-demo",
     "apps/luna-ui-rust-editor-demo",
+    "apps/luna-ui-rust-qualification",
     "apps/luna-ui-rust-native-demo",
     "apps/luna-ui-rust-proof-gallery",
     "apps/luna-ui-rust-text-demo",
@@ -19,6 +20,7 @@ members = [
     "crates/luna-integration",
     "crates/luna-layout",
     "crates/luna-panes",
+    "crates/luna-qualification",
     "crates/luna-render",
     "crates/luna-render-wgpu",
     "crates/luna-session",
@@ -49,6 +51,8 @@ rust-version = "1.97.1"
 license = "MPL-2.0"
 authors = ["Adam Vadala-Roth"]
 publish = false
+repository = "https://github.com/adamjvr/Luna-UI-Rust"
+readme = "README.md"
 
 [workspace.lints.rust]
 missing_docs = "deny"

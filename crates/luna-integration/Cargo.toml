@@ -7,11 +7,14 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 publish.workspace = true
+repository.workspace = true
+readme.workspace = true
 
 [lints]
 workspace = true
 
 [dependencies]
+luna-core = { path = "../luna-core" }
 luna-document-services = { path = "../luna-document-services" }
 luna-editor = { path = "../luna-editor" }
 luna-host-core = { path = "../luna-host-core" }

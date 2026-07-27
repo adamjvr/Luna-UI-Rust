@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use crate::{SyntaxRule, SyntaxStyle, SyntaxTheme};
+use luna_core::{CodedError, ErrorCode};
 use luna_theme::Rgba8;
 use std::collections::BTreeMap;
 use std::error::Error;
@@ -135,6 +136,18 @@ impl Display for ColorSchemeError {
 }
 
 impl Error for ColorSchemeError {}
+impl CodedError for ColorSchemeError {
+    fn error_code(&self) -> ErrorCode {
+        ErrorCode::new(match self {
+            Self::InvalidJson { .. } => "editor.color_scheme.invalid_json",
+            Self::MissingField(_) => "editor.color_scheme.missing_field",
+            Self::ExpectedObject(_) => "editor.color_scheme.expected_object",
+            Self::InvalidScope => "editor.color_scheme.invalid_scope",
+            Self::InvalidColor { .. } => "editor.color_scheme.invalid_color",
+            Self::UnterminatedComment => "editor.color_scheme.unterminated_comment",
+        })
+    }
+}
 
 fn color_field(
     object: &BTreeMap<String, JsonValue>,

@@ -34,6 +34,7 @@
 | Swift Phase 4C first-level menu behavior | `luna-ui::DropdownMenu` plus editor demo routing | M3.1d complete for first-level menus; submenus/mnemonics remain M3.3 |
 | GPU rendering | `luna-render-wgpu` plus `luna-host-wgpu` | M4 optional native backend, batching, scissor clips, atlas upload, metrics, and proof-gallery comparison implemented |
 | downstream adapter composition | `luna-integration` | Application-owned file/dialog/workspace/watcher/session/syntax/completion composition and support reporting implemented |
+| public API and release qualification | `luna-core::ErrorCode`, `luna-qualification`, API manifest, qualification app | Explicit compatibility tiers, deterministic budgets, bounded GPU retention, Linux packaging, and release evidence implemented |
 
 ## Porting rule
 
@@ -51,4 +52,6 @@ real recursive workspace tree, controlled workspace mutations, and persistent re
 restoration now exist. Recursive live panes, durable tab/view sessions, deep popups, async completion,
 and native-first watcher delivery now exist. M5 adds syntax/theme, transaction, multiple-selection, IME, command-state, and accessibility-action
 mechanics. M6 adds macOS lifecycle/dialog/session/watcher/packaging boundaries, downstream adapter
-composition, and the Different preset; Windows is not an official target.
+composition, and the Different preset. M7 adds explicit compatibility tiers, stable error codes,
+deterministic release budgets, retained GPU limits, resource discovery, Linux packaging, and the
+permanent editor command manual; Windows is not an official target.

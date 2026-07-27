@@ -20,11 +20,11 @@ jobs:
           rustup toolchain install 1.97.1 --profile minimal --component clippy,rustfmt
           rustup default 1.97.1
 
-      - name: Run M6 Linux gate
-        run: ./scripts/test-m6.sh
+      - name: Run M7 Linux release-qualification gate
+        run: ./scripts/test-m7.sh
 
   macos-advisory:
-    name: M6 macOS 15 Apple Silicon advisory
+    name: M7 macOS 15 Apple Silicon advisory
     runs-on: macos-15
     continue-on-error: true
     steps:

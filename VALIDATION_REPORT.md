@@ -1,61 +1,63 @@
-# M6 Validation Report
+# M7 Validation Report
 
 ## Baseline
 
-M6 is developed from committed and locally validated M5 at
-`b52685b7e528466b6257f1f48521746132764352`.
+M7 is developed from committed and locally validated M6 at
+`89da6a786357d84a1be4e32f46749fc3666b9f1c`.
 
 ## Change set
 
-- added native lifecycle, close-request, and unsaved-state host contracts;
-- mirrored dirty state into the macOS document-edited indicator;
-- persisted editor sessions on suspend, memory warning, and native close;
-- added macOS Application Support session paths and AppleScript dialogs;
-- added `notify` 8.2.0 FSEvents delivery with polling fallback;
-- added `luna-integration` for product-neutral downstream adapter composition;
-- added stable platform-support tiers while retaining Windows as best-effort;
-- added the **Different** late-1990s/early-2000s translucent desktop theme;
-- added macOS application-bundle creation, plist validation, ad-hoc signing, and verification;
-- added `docs/M6_MACOS_INTEGRATION.md`, `scripts/test-m6.sh`, and expanded macOS validation;
-- updated README, architecture, current status, roadmap, porting map, Swift parity, and practices.
+- added a checked-in public-library stability inventory and metadata audit;
+- added stable machine-readable error codes across public failure boundaries;
+- added deterministic structural release budgets and an executable qualification report;
+- added bounded retained GPU buffers, atlas-upload reuse, resource statistics, and memory-pressure
+  trimming;
+- added product-neutral packaged-resource resolution and a downstream example;
+- added Linux development packaging with Desktop Entry, AppStream metadata, and operator docs;
+- made the complete editor keyboard/mouse/runtime command set permanent documentation;
+- added API policy, accessibility audit, release checklist, packaging, and M7 qualification docs;
+- promoted CI and platform scripts to the M7 qualification gate.
+- M7.0.1 removes the Python 3.11-only `tomllib` assumption, encodes dotted menu command IDs into
+  valid accessibility-node segments, and uses Desktop Entry metadata accepted by the primary
+  Pop!_OS validator.
 
 ## Implemented invariants
 
-- lifecycle events are delivered identically by CPU and GPU hosts;
-- native close policy remains application-owned and can veto or accept termination;
-- the macOS edited indicator reflects application state without owning document policy;
-- reconstructible caches may be dropped on memory warning while durable state is persisted;
-- AppleScript, Linux helper, scripted, and memory dialogs implement the same neutral trait;
-- native watcher callbacks cross a channel and never mutate UI state;
-- watcher failures fall back to polling and request a safe rescan;
-- downstream adapters remain concrete application-owned values rather than globals;
-- `Different` is selected by stable ID and participates in normal theme/session/command projection;
+- every Cargo library package appears in both API contract inventories;
+- stable error identity is independent of mutable human-readable diagnostic text;
+- release budgets use deterministic counts/capacities rather than noisy wall-clock thresholds;
+- GPU scene buffers grow geometrically but never exceed explicit policy limits;
+- unchanged atlas content is not uploaded repeatedly;
+- memory-pressure delivery trims rebuildable GPU resources without discarding application state;
+- resource paths are normalized, relative, traversal-free, and searched in explicit priority order;
+- Linux packages remain relocatable development bundles and do not claim a stable distro release;
 - Linux is primary, macOS secondary/advisory, and Windows best-effort/non-blocking.
 
 ## Static validation performed in the delivery environment
 
-- all TOML files parse;
+- all 30 TOML files parse and all 29 workspace members are present;
 - every workspace member and local path dependency exists;
-- Rust lexical delimiter and duplicate-splice scans pass;
+- Python scripts compile;
 - shell scripts pass `bash -n`;
-- `git diff --check` reports no malformed whitespace;
+- Rust lexical delimiter and duplicate-splice scans pass;
 - changed Rust and shell files retain SPDX identifiers;
 - local Markdown links resolve;
-- generated archives pass `unzip -t`;
-- the repo-root overlay is reconstructed over the exact M5 full-source baseline and compared byte-for-byte;
+- `git diff --check` reports no malformed whitespace;
+- the Linux packaging script completed a structural archive/checksum exercise with a placeholder executable;
+- generated ZIP and patch payloads reconstruct the exact M7 delivery tree;
 - SHA-256 manifests are generated after final archive creation.
 
 ## Compiler and runtime boundary
 
 Rust 1.97.1 is unavailable in the artifact-building container. This report therefore does **not**
-claim Cargo resolution, lockfile refresh for `notify`, rustfmt, rustc, strict Clippy, tests, rustdoc,
-AppleScript dialogs, FSEvents, VoiceOver, Metal startup, graphical presentation, plist validation, or
-codesign were executed there.
+claim Cargo metadata, lockfile refresh, rustfmt, rustc, Clippy, tests, rustdoc, semver comparison,
+qualification execution, Linux desktop/AppStream validation, CPU/GPU startup, accessibility, IME,
+macOS hardware, or package launch were executed there.
 
 Authoritative Linux/Pop!_OS validation:
 
 ```bash
-./scripts/test-m6.sh
+./scripts/test-m7.sh
 ```
 
 Advisory macOS validation:
@@ -64,6 +66,6 @@ Advisory macOS validation:
 ./scripts/test-macos.sh
 ```
 
-Any Linux formatting, compilation, Clippy, test, rustdoc, CPU/GPU, theme, lifecycle, dialog, watcher,
-session, or integration regression blocks M6 acceptance. macOS failures remain advisory but must be
-recorded for M7 release qualification.
+Any Linux formatting, API-contract, compilation, Clippy, test, rustdoc, deterministic-budget,
+packaging, CPU/GPU, or operator-checklist regression blocks M7 acceptance. macOS remains advisory
+until repeated real-hardware acceptance supports promotion.

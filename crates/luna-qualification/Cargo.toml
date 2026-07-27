@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: MPL-2.0
+
+[package]
+name = "luna-qualification"
+description = "Public API contracts, deterministic budgets, and release qualification reports for Luna UI Rust."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+publish.workspace = true
+repository.workspace = true
+readme.workspace = true
+
+[dependencies]
+luna-core = { path = "../luna-core" }
+
+[lints]
+workspace = true

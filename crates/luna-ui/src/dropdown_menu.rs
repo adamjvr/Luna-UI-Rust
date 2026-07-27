@@ -949,7 +949,7 @@ fn panel_rows(
                 submenu_id: None,
                 node_id: Some(
                     id.child(&prefix)?
-                        .child(&format!("command-{}", command.id))?,
+                        .child(&menu_node_segment("command", &command.id))?,
                 ),
                 title: command.title.clone(),
                 shortcut: command.shortcut.clone(),
@@ -967,7 +967,7 @@ fn panel_rows(
                 submenu_id: Some(submenu.id.clone()),
                 node_id: Some(
                     id.child(&prefix)?
-                        .child(&format!("submenu-{}", submenu.id))?,
+                        .child(&menu_node_segment("submenu", &submenu.id))?,
                 ),
                 title: submenu.title.clone(),
                 shortcut: String::new(),
@@ -997,6 +997,19 @@ fn panel_rows(
         y = y.saturating_add(i32::try_from(row_height).unwrap_or(i32::MAX));
     }
     Ok(rows)
+}
+
+fn menu_node_segment(kind: &str, identifier: &str) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+
+    let mut segment = String::with_capacity(kind.len() + 1 + identifier.len().saturating_mul(2));
+    segment.push_str(kind);
+    segment.push('-');
+    for byte in identifier.bytes() {
+        segment.push(char::from(HEX[usize::from(byte >> 4)]));
+        segment.push(char::from(HEX[usize::from(byte & 0x0f)]));
+    }
+    segment
 }
 
 fn expand_rect(rect: RectI, margin: u32) -> RectI {
@@ -1197,6 +1210,39 @@ mod tests {
             state.activate_mnemonic(&definition, '1').as_deref(),
             Some("recent-one")
         );
+    }
+
+    #[test]
+    fn dotted_command_and_submenu_ids_produce_valid_accessibility_nodes()
+    -> Result<(), Box<dyn Error>> {
+        let definition = MenuDefinition::new(
+            "view",
+            "View",
+            vec![
+                MenuItem::command(MenuCommand::new("view.sidebar", "Sidebar", "Ctrl+B")),
+                MenuItem::submenu(MenuDefinition::new(
+                    "view.color-scheme",
+                    "Color Scheme",
+                    vec![MenuItem::command(MenuCommand::new(
+                        "theme:luna-dark",
+                        "Luna Dark",
+                        "",
+                    ))],
+                )),
+            ],
+        );
+        let menu = DropdownMenu::new(
+            NodeId::new("dropdown")?,
+            RectI::new(0, 0, 600, 400),
+            RectI::new(10, 0, 40, 28),
+            Theme::luna_dark(),
+            definition,
+            0,
+        )?;
+
+        assert_eq!(menu.layout().rows.len(), 2);
+        assert!(menu.layout().rows.iter().all(|row| row.node_id.is_some()));
+        Ok(())
     }
 
     #[test]

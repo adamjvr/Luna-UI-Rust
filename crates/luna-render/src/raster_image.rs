@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-use luna_core::SizeI;
+use luna_core::{CodedError, ErrorCode, SizeI};
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::sync::Arc;
@@ -92,6 +92,15 @@ impl Display for RasterImageError {
 }
 
 impl Error for RasterImageError {}
+
+impl CodedError for RasterImageError {
+    fn error_code(&self) -> ErrorCode {
+        ErrorCode::new(match self {
+            Self::SizeOverflow => "render.image.size_overflow",
+            Self::IncorrectByteLength { .. } => "render.image.incorrect_byte_length",
+        })
+    }
+}
 
 #[cfg(test)]
 mod tests {

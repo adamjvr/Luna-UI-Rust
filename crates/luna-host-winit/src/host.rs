@@ -4,7 +4,7 @@ use crate::WinitInputTranslator;
 use accesskit::{Action, ActionData};
 use accesskit_winit::{Adapter as AccessKitAdapter, Event as AccessKitEvent};
 use luna_accessibility_accesskit::AccessKitBridge;
-use luna_core::{NodeId, RectI, SizeI};
+use luna_core::{CodedError, ErrorCode, NodeId, RectI, SizeI};
 use luna_host_core::{FrameRuntime, FrameToken, InvalidationClass, InvalidationReason};
 use luna_input::InputEvent;
 use luna_render::{CpuRenderer, Framebuffer};
@@ -215,6 +215,12 @@ impl Display for HostError {
 }
 
 impl Error for HostError {}
+
+impl CodedError for HostError {
+    fn error_code(&self) -> ErrorCode {
+        ErrorCode::new("host.winit.runtime")
+    }
+}
 
 /// Runs a Luna application in a native winit window using the safe CPU reference renderer.
 ///

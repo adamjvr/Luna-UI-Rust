@@ -14,6 +14,7 @@
 //! deterministic adapters for unit tests. The dialog boundary also includes workspace-folder
 //! selection so products can compose document and project lifecycles without toolkit coupling.
 
+use luna_core::{CodedError, ErrorCode};
 use luna_documents::{FileIdentity, StorageInstance, StorageRevision, StorageSnapshot};
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, VecDeque};
@@ -265,6 +266,19 @@ impl Display for FileServiceError {
 }
 
 impl Error for FileServiceError {}
+
+impl CodedError for FileServiceError {
+    fn error_code(&self) -> ErrorCode {
+        ErrorCode::new(match self.kind {
+            FileServiceErrorKind::NotFound => "file.not_found",
+            FileServiceErrorKind::PermissionDenied => "file.permission_denied",
+            FileServiceErrorKind::InvalidUtf8 => "file.invalid_utf8",
+            FileServiceErrorKind::Conflict => "file.conflict",
+            FileServiceErrorKind::InvalidPath => "file.invalid_path",
+            FileServiceErrorKind::Io => "file.io",
+        })
+    }
+}
 
 /// Standard-library UTF-8 file adapter.
 #[derive(Clone, Copy, Debug, Default)]
@@ -663,6 +677,16 @@ impl Display for DialogError {
 }
 
 impl Error for DialogError {}
+
+impl CodedError for DialogError {
+    fn error_code(&self) -> ErrorCode {
+        ErrorCode::new(match self.kind {
+            DialogErrorKind::Unavailable => "dialog.unavailable",
+            DialogErrorKind::Io => "dialog.io",
+            DialogErrorKind::InvalidResponse => "dialog.invalid_response",
+        })
+    }
+}
 
 /// Native helper selected by [`SystemDialogService`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

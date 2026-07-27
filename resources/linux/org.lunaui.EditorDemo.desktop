@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MPL-2.0
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Luna UI Rust Editor Demo
+GenericName=UI Framework Editor Demo
+Comment=Exercise the Luna UI Rust editor integration framework
+TryExec=luna-ui-rust-editor-demo
+Exec=luna-ui-rust-editor-demo
+Icon=applications-development
+Terminal=false
+Categories=Development;Utility;TextEditor;
+Keywords=Rust;Framework;Accessibility;GPU;Unicode;

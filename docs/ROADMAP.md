@@ -199,7 +199,7 @@
 - Rendering-independent parity fixtures suitable for matching Swift or other implementations.
 - Advisory macOS build/test lane and documented Apple-Silicon graphical acceptance protocol.
 
-## M6 — macOS hardening and downstream integration — implemented; validation pending
+## M6 — macOS hardening and downstream integration — complete after local validation
 
 - Explicit Resumed, Suspended, MemoryWarning, close-request, and unsaved-state application contracts.
 - Native macOS document-edited indication without moving dirty-document policy into the host.
@@ -212,14 +212,27 @@
 - macOS CI remains advisory until repeated real-hardware CPU/Metal, IME, VoiceOver, watcher, dialog,
   lifecycle, and packaged-launch acceptance exists.
 
-## M7 — public API stabilization and release qualification
+## M7 — public API stabilization and release qualification — implemented; local validation pending
 
-- Audit public crate surfaces, naming, error contracts, and semver commitments.
-- Add replay/performance thresholds for text, panes, menus, workspaces, CPU, and GPU paths.
-- Harden retained GPU resources and long-session memory behavior.
-- Produce Linux development packages and downstream resource-loading examples.
-- Record repeated macOS real-hardware acceptance and decide whether advisory CI becomes blocking.
-- Expand API documentation, integration examples, accessibility audits, and release checklists.
+- Checked-in stable/provisional/internal crate contract inventory and package-metadata audit.
+- Stable machine-readable `ErrorCode`/`CodedError` contracts across public failure boundaries.
+- Deterministic editor, text, pane, menu, workspace, CPU, GPU, and accessibility budgets.
+- Executable JSON qualification report suitable for CI and retained release evidence.
+- Bounded geometric GPU buffer retention, atlas reuse, diagnostics, and memory-pressure trimming.
+- Product-neutral packaged-resource discovery and downstream loading example.
+- Relocatable Linux development bundle with Desktop Entry, AppStream metadata, and operator docs.
+- Permanent editor-demo keyboard, mouse, runtime, and acceptance command reference.
+- API policy, accessibility audit, release checklist, packaging, and qualification documentation.
+- M7 Linux blocking CI; macOS remains advisory pending repeated real-hardware acceptance.
+- Windows remains unofficial, best-effort, and non-blocking.
+
+## M8 — release-candidate and ecosystem validation
+
+- Retain and compare public API snapshots across versioned development releases.
+- Run repeated Linux long-session CPU/GPU, watcher, session, accessibility, and package acceptance.
+- Record repeated Apple-Silicon hardware results and decide whether macOS CI can become blocking.
+- Expand product-neutral downstream examples and packaged resource/theme loading.
+- Resolve remaining provisional API churn before a versioned development release candidate.
 - Windows remains unofficial, best-effort, and non-blocking.
 
 ## Swift parity checkpoints
@@ -232,4 +245,4 @@ native-first incremental workspace delivery. M4 adds the optional `wgpu` rendere
 four-palette comparison matrix. M5 adds reusable syntax/theme, history, multiple-selection, IME,
 command-state, and accessibility-action mechanics. M6 adds lifecycle/dirty-state host seams, native
 macOS dialogs/session paths/FSEvents/package tooling, downstream composition, and the fifth
-**Different** theme. M7 is public-API and release qualification. Windows is not an official target.
+**Different** theme. M7 adds enforceable API contracts, deterministic qualification, retained-resource limits, Linux packaging, and the permanent editor operator manual. M8 is release-candidate and ecosystem validation. Windows is not an official target.

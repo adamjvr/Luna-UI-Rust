@@ -32,7 +32,13 @@ Before submitting changes:
     Linux is primary, macOS is secondary, and Windows is best-effort only.
 16. Keep downstream service composition application-owned; do not turn `luna-integration` into a
     service locator or product-policy crate.
-17. Run `./scripts/validate.sh` and the current milestone-specific test script.
+17. Keep every public library in `api/public-api.toml` and `CRATE_CONTRACTS`; public errors must
+    implement `CodedError`.
+18. Update `docs/EDITOR_DEMO_COMMANDS.md` whenever editor keyboard, mouse, or acceptance behavior
+    changes.
+19. Preserve deterministic qualification budgets and explicit GPU/resource caps; do not replace
+    them with flaky shared-runner timing assertions.
+20. Run `./scripts/validate.sh` and the current milestone-specific test script.
 
 Add dependencies only in the narrowest adapter crate that needs them. A window backend does not
 belong in `luna-core`; a shaping cache does not belong in `luna-text`; a GPU backend does not belong

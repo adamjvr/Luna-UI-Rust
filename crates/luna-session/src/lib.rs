@@ -6,6 +6,7 @@
 //! document, or workspace-model crates. The standard adapter uses an atomic versioned text file;
 //! the memory adapter provides deterministic tests and product harnesses.
 
+use luna_core::{CodedError, ErrorCode};
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
@@ -328,6 +329,18 @@ pub struct SessionError {
 }
 
 impl SessionError {
+    /// Returns the stable operation label associated with this failure.
+    #[must_use]
+    pub const fn operation(&self) -> &'static str {
+        self.operation
+    }
+
+    /// Returns the affected persistence path, when one exists.
+    #[must_use]
+    pub fn path(&self) -> Option<&Path> {
+        self.path.as_deref()
+    }
+
     fn invalid_path(message: impl Into<String>) -> Self {
         Self {
             operation: "resolve session path",
@@ -377,6 +390,17 @@ impl Display for SessionError {
 }
 
 impl Error for SessionError {}
+
+impl CodedError for SessionError {
+    fn error_code(&self) -> ErrorCode {
+        ErrorCode::new(match self.operation {
+            "resolve session path" => "session.invalid_path",
+            "decode session" => "session.decode",
+            "encode session" => "session.encode",
+            _ => "session.io",
+        })
+    }
+}
 
 fn encode_state(state: &SessionState) -> String {
     let mut output = String::from(FORMAT_HEADER);

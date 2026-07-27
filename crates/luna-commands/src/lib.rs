@@ -7,7 +7,7 @@
 //! against those IDs. The registry remains deterministic and contains no callbacks, which keeps
 //! command resolution testable and avoids hidden ownership or thread-affinity requirements.
 
-use luna_core::NodeId;
+use luna_core::{CodedError, ErrorCode, NodeId};
 use luna_input::{Key, KeyboardEvent, Modifiers};
 use std::collections::BTreeMap;
 use std::error::Error;
@@ -70,6 +70,15 @@ impl Display for CommandIdError {
 }
 
 impl Error for CommandIdError {}
+
+impl CodedError for CommandIdError {
+    fn error_code(&self) -> ErrorCode {
+        ErrorCode::new(match self {
+            Self::Empty => "commands.id.empty",
+            Self::ContainsWhitespace(_) => "commands.id.contains_whitespace",
+        })
+    }
+}
 
 /// Static user-facing command metadata.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -350,6 +359,16 @@ impl Display for CommandRegistryError {
 }
 
 impl Error for CommandRegistryError {}
+
+impl CodedError for CommandRegistryError {
+    fn error_code(&self) -> ErrorCode {
+        ErrorCode::new(match self {
+            Self::DuplicateCommand(_) => "commands.registry.duplicate_command",
+            Self::UnknownCommand(_) => "commands.registry.unknown_command",
+            Self::DuplicateBinding(_) => "commands.registry.duplicate_binding",
+        })
+    }
+}
 
 #[cfg(test)]
 mod tests {

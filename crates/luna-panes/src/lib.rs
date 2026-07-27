@@ -7,7 +7,7 @@
 //! platform input. Applications associate each [`DocumentViewId`] with independent caret,
 //! selection, scroll, and presentation state while multiple views may share one document buffer.
 
-use luna_core::{PointI, RectI};
+use luna_core::{CodedError, ErrorCode, PointI, RectI};
 use luna_documents::DocumentViewId;
 use std::collections::BTreeSet;
 use std::error::Error;
@@ -352,6 +352,20 @@ impl Display for PaneError {
 }
 
 impl Error for PaneError {}
+
+impl CodedError for PaneError {
+    fn error_code(&self) -> ErrorCode {
+        ErrorCode::new(match self {
+            Self::UnknownPane(_) => "panes.unknown_pane",
+            Self::UnknownView(_) => "panes.unknown_view",
+            Self::CannotCloseLastPane => "panes.cannot_close_last_pane",
+            Self::EmptyPane => "panes.empty_pane",
+            Self::CannotPreviewPinned => "panes.cannot_preview_pinned",
+            Self::InvalidSnapshot(_) => "panes.invalid_snapshot",
+            Self::UnknownViewKey(_) => "panes.unknown_view_key",
+        })
+    }
+}
 
 /// Recursive pane topology and pane-local tab state.
 #[derive(Clone, Debug, Eq, PartialEq)]

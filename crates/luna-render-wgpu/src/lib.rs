@@ -9,7 +9,7 @@
 //! and fallback.
 
 use bytemuck::{Pod, Zeroable};
-use luna_core::{RectI, SizeI};
+use luna_core::{CodedError, ErrorCode, RectI, SizeI};
 use luna_render::{CpuRenderer, DisplayCommand, DisplayList, RasterImage};
 use luna_theme::Rgba8;
 use std::collections::BTreeMap;
@@ -17,11 +17,141 @@ use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::mem;
 use std::ops::Range;
-use wgpu::util::DeviceExt;
 
 const ATLAS_LIMIT: u32 = 4_096;
 const ATLAS_PADDING: u32 = 1;
 const BYTES_PER_PIXEL: usize = 4;
+const MIN_RETAINED_BUFFER_BYTES: usize = 4_096;
+const DEFAULT_MAX_VERTEX_BUFFER_BYTES: usize = 32 * 1_024 * 1_024;
+const DEFAULT_MAX_INDEX_BUFFER_BYTES: usize = 16 * 1_024 * 1_024;
+
+/// Bounded retained-resource policy for the runtime GPU renderer.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct WgpuResourcePolicy {
+    max_vertex_buffer_bytes: usize,
+    max_index_buffer_bytes: usize,
+}
+
+impl WgpuResourcePolicy {
+    /// Creates a policy with explicit retained-buffer limits.
+    ///
+    /// Limits smaller than Luna's minimum allocation quantum are raised to that quantum. This keeps
+    /// zero-sized buffers out of the runtime while preserving a hard upper bound.
+    #[must_use]
+    pub const fn new(max_vertex_buffer_bytes: usize, max_index_buffer_bytes: usize) -> Self {
+        Self {
+            max_vertex_buffer_bytes: if max_vertex_buffer_bytes < MIN_RETAINED_BUFFER_BYTES {
+                MIN_RETAINED_BUFFER_BYTES
+            } else {
+                max_vertex_buffer_bytes
+            },
+            max_index_buffer_bytes: if max_index_buffer_bytes < MIN_RETAINED_BUFFER_BYTES {
+                MIN_RETAINED_BUFFER_BYTES
+            } else {
+                max_index_buffer_bytes
+            },
+        }
+    }
+
+    /// Returns the maximum retained vertex-buffer capacity.
+    #[must_use]
+    pub const fn max_vertex_buffer_bytes(self) -> usize {
+        self.max_vertex_buffer_bytes
+    }
+
+    /// Returns the maximum retained index-buffer capacity.
+    #[must_use]
+    pub const fn max_index_buffer_bytes(self) -> usize {
+        self.max_index_buffer_bytes
+    }
+}
+
+impl Default for WgpuResourcePolicy {
+    fn default() -> Self {
+        Self::new(
+            DEFAULT_MAX_VERTEX_BUFFER_BYTES,
+            DEFAULT_MAX_INDEX_BUFFER_BYTES,
+        )
+    }
+}
+
+/// Lifetime counters and capacities for retained GPU resources.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct WgpuResourceStats {
+    vertex_capacity_bytes: usize,
+    index_capacity_bytes: usize,
+    atlas_capacity_bytes: usize,
+    buffer_reallocations: u64,
+    buffer_reuses: u64,
+    atlas_reallocations: u64,
+    atlas_uploads: u64,
+    atlas_upload_skips: u64,
+    trims: u64,
+}
+
+impl WgpuResourceStats {
+    /// Returns retained vertex-buffer capacity.
+    #[must_use]
+    pub const fn vertex_capacity_bytes(self) -> usize {
+        self.vertex_capacity_bytes
+    }
+
+    /// Returns retained index-buffer capacity.
+    #[must_use]
+    pub const fn index_capacity_bytes(self) -> usize {
+        self.index_capacity_bytes
+    }
+
+    /// Returns retained atlas texture capacity.
+    #[must_use]
+    pub const fn atlas_capacity_bytes(self) -> usize {
+        self.atlas_capacity_bytes
+    }
+
+    /// Returns the combined retained byte capacity visible to Luna.
+    #[must_use]
+    pub const fn retained_bytes(self) -> usize {
+        self.vertex_capacity_bytes
+            .saturating_add(self.index_capacity_bytes)
+            .saturating_add(self.atlas_capacity_bytes)
+    }
+
+    /// Returns buffer allocations caused by capacity growth.
+    #[must_use]
+    pub const fn buffer_reallocations(self) -> u64 {
+        self.buffer_reallocations
+    }
+
+    /// Returns retained vertex/index buffer reuse decisions.
+    #[must_use]
+    pub const fn buffer_reuses(self) -> u64 {
+        self.buffer_reuses
+    }
+
+    /// Returns atlas texture reallocations.
+    #[must_use]
+    pub const fn atlas_reallocations(self) -> u64 {
+        self.atlas_reallocations
+    }
+
+    /// Returns atlas uploads.
+    #[must_use]
+    pub const fn atlas_uploads(self) -> u64 {
+        self.atlas_uploads
+    }
+
+    /// Returns uploads skipped because atlas bytes were unchanged.
+    #[must_use]
+    pub const fn atlas_upload_skips(self) -> u64 {
+        self.atlas_upload_skips
+    }
+
+    /// Returns explicit retained-resource trims.
+    #[must_use]
+    pub const fn trims(self) -> u64 {
+        self.trims
+    }
+}
 
 /// Per-frame backend statistics used by proof fixtures and host diagnostics.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -41,6 +171,7 @@ pub struct WgpuRenderStats {
 }
 
 /// Failures produced while compiling or submitting a GPU scene.
+#[non_exhaustive]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum WgpuRenderError {
     /// The physical target had an empty or invalid extent.
@@ -54,6 +185,17 @@ pub enum WgpuRenderError {
     },
     /// Quad geometry exceeded the 32-bit index space used by WebGPU.
     IndexOverflow,
+    /// A retained buffer request exceeded its configured release limit.
+    ResourceBudgetExceeded {
+        /// Stable resource name.
+        resource: &'static str,
+        /// Requested byte count.
+        requested: usize,
+        /// Configured inclusive limit.
+        limit: usize,
+    },
+    /// A retained buffer was unexpectedly absent after allocation.
+    RetainedResourceUnavailable(&'static str),
 }
 
 impl Display for WgpuRenderError {
@@ -69,11 +211,34 @@ impl Display for WgpuRenderError {
                 "raster image {width}x{height} exceeds the {ATLAS_LIMIT}x{ATLAS_LIMIT} atlas"
             ),
             Self::IndexOverflow => formatter.write_str("wgpu scene exceeded u32 index capacity"),
+            Self::ResourceBudgetExceeded {
+                resource,
+                requested,
+                limit,
+            } => write!(
+                formatter,
+                "retained {resource} request of {requested} bytes exceeds the {limit}-byte limit"
+            ),
+            Self::RetainedResourceUnavailable(resource) => {
+                write!(formatter, "retained {resource} resource was unavailable")
+            }
         }
     }
 }
 
 impl Error for WgpuRenderError {}
+
+impl CodedError for WgpuRenderError {
+    fn error_code(&self) -> ErrorCode {
+        ErrorCode::new(match self {
+            Self::InvalidTargetSize(_) => "render.wgpu.invalid_target_size",
+            Self::AtlasOverflow { .. } => "render.wgpu.atlas_overflow",
+            Self::IndexOverflow => "render.wgpu.index_overflow",
+            Self::ResourceBudgetExceeded { .. } => "render.wgpu.resource_budget_exceeded",
+            Self::RetainedResourceUnavailable(_) => "render.wgpu.retained_resource_unavailable",
+        })
+    }
+}
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
@@ -297,12 +462,30 @@ pub struct WgpuRenderer {
     atlas_bind_group: wgpu::BindGroup,
     atlas_bind_group_layout: wgpu::BindGroupLayout,
     atlas_size: SizeI,
+    atlas_fingerprint: Option<u64>,
+    atlas_bytes: Vec<u8>,
+    vertex_buffer: Option<wgpu::Buffer>,
+    vertex_capacity_bytes: usize,
+    index_buffer: Option<wgpu::Buffer>,
+    index_capacity_bytes: usize,
+    resource_policy: WgpuResourcePolicy,
+    resource_stats: WgpuResourceStats,
 }
 
 impl WgpuRenderer {
     /// Creates rendering resources for one surface format.
     #[must_use]
     pub fn new(device: &wgpu::Device, target_format: wgpu::TextureFormat) -> Self {
+        Self::with_resource_policy(device, target_format, WgpuResourcePolicy::default())
+    }
+
+    /// Creates rendering resources with an explicit retained-buffer policy.
+    #[must_use]
+    pub fn with_resource_policy(
+        device: &wgpu::Device,
+        target_format: wgpu::TextureFormat,
+        resource_policy: WgpuResourcePolicy,
+    ) -> Self {
         let atlas_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("Luna WGPU atlas layout"),
@@ -386,6 +569,17 @@ impl WgpuRenderer {
             atlas_bind_group,
             atlas_bind_group_layout,
             atlas_size: SizeI::new(1, 1),
+            atlas_fingerprint: None,
+            atlas_bytes: vec![0, 0, 0, 0],
+            vertex_buffer: None,
+            vertex_capacity_bytes: 0,
+            index_buffer: None,
+            index_capacity_bytes: 0,
+            resource_policy,
+            resource_stats: WgpuResourceStats {
+                atlas_capacity_bytes: BYTES_PER_PIXEL,
+                ..WgpuResourceStats::default()
+            },
         }
     }
 
@@ -393,6 +587,46 @@ impl WgpuRenderer {
     #[must_use]
     pub const fn target_format(&self) -> wgpu::TextureFormat {
         self.target_format
+    }
+
+    /// Returns the active retained-resource policy.
+    #[must_use]
+    pub const fn resource_policy(&self) -> WgpuResourcePolicy {
+        self.resource_policy
+    }
+
+    /// Returns lifetime retained-resource counters and current capacities.
+    #[must_use]
+    pub const fn resource_stats(&self) -> WgpuResourceStats {
+        self.resource_stats
+    }
+
+    /// Releases retained scene buffers and resets the atlas to one transparent pixel.
+    ///
+    /// Native hosts call this during memory-pressure delivery. Pipelines and immutable shader state
+    /// remain alive so the next frame only recreates bounded scene resources.
+    pub fn trim_retained_resources(&mut self, device: &wgpu::Device) {
+        self.vertex_buffer = None;
+        self.vertex_capacity_bytes = 0;
+        self.index_buffer = None;
+        self.index_capacity_bytes = 0;
+        let (texture, view, bind_group) = create_atlas_resources(
+            device,
+            &self.atlas_bind_group_layout,
+            &self.sampler,
+            SizeI::new(1, 1),
+        );
+        self.atlas_texture = texture;
+        self._atlas_view = view;
+        self.atlas_bind_group = bind_group;
+        self.atlas_size = SizeI::new(1, 1);
+        self.atlas_fingerprint = None;
+        self.atlas_bytes.clear();
+        self.atlas_bytes.extend_from_slice(&[0, 0, 0, 0]);
+        self.resource_stats.vertex_capacity_bytes = 0;
+        self.resource_stats.index_capacity_bytes = 0;
+        self.resource_stats.atlas_capacity_bytes = BYTES_PER_PIXEL;
+        self.resource_stats.trims = self.resource_stats.trims.saturating_add(1);
     }
 
     /// Compiles and records one or more display-list layers in painter order.
@@ -430,16 +664,22 @@ impl WgpuRenderer {
             return Ok(stats_for_scene(&scene));
         }
 
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Luna WGPU scene vertices"),
-            contents: bytemuck::cast_slice(&scene.vertices),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
-        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Luna WGPU scene indices"),
-            contents: bytemuck::cast_slice(&scene.indices),
-            usage: wgpu::BufferUsages::INDEX,
-        });
+        let vertex_bytes = bytemuck::cast_slice(&scene.vertices);
+        let index_bytes = bytemuck::cast_slice(&scene.indices);
+        self.ensure_vertex_buffer(device, vertex_bytes.len())?;
+        self.ensure_index_buffer(device, index_bytes.len())?;
+        let vertex_buffer =
+            self.vertex_buffer
+                .as_ref()
+                .ok_or(WgpuRenderError::RetainedResourceUnavailable(
+                    "vertex buffer",
+                ))?;
+        let index_buffer = self
+            .index_buffer
+            .as_ref()
+            .ok_or(WgpuRenderError::RetainedResourceUnavailable("index buffer"))?;
+        queue.write_buffer(vertex_buffer, 0, vertex_bytes);
+        queue.write_buffer(index_buffer, 0, index_bytes);
 
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -479,6 +719,15 @@ impl WgpuRenderer {
     }
 
     fn upload_atlas(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, atlas: &AtlasImage) {
+        let fingerprint = atlas_fingerprint(atlas);
+        if self.atlas_size == atlas.size
+            && self.atlas_fingerprint == Some(fingerprint)
+            && self.atlas_bytes.as_slice() == atlas.bytes.as_slice()
+        {
+            self.resource_stats.atlas_upload_skips =
+                self.resource_stats.atlas_upload_skips.saturating_add(1);
+            return;
+        }
         if self.atlas_size != atlas.size {
             let (texture, view, bind_group) = create_atlas_resources(
                 device,
@@ -490,6 +739,9 @@ impl WgpuRenderer {
             self._atlas_view = view;
             self.atlas_bind_group = bind_group;
             self.atlas_size = atlas.size;
+            self.resource_stats.atlas_reallocations =
+                self.resource_stats.atlas_reallocations.saturating_add(1);
+            self.resource_stats.atlas_capacity_bytes = atlas.bytes.len();
         }
         queue.write_texture(
             self.atlas_texture.as_image_copy(),
@@ -505,7 +757,97 @@ impl WgpuRenderer {
                 depth_or_array_layers: 1,
             },
         );
+        self.atlas_fingerprint = Some(fingerprint);
+        self.atlas_bytes.clone_from(&atlas.bytes);
+        self.resource_stats.atlas_uploads = self.resource_stats.atlas_uploads.saturating_add(1);
     }
+
+    fn ensure_vertex_buffer(
+        &mut self,
+        device: &wgpu::Device,
+        requested: usize,
+    ) -> Result<(), WgpuRenderError> {
+        if self.vertex_capacity_bytes >= requested && self.vertex_buffer.is_some() {
+            self.resource_stats.buffer_reuses = self.resource_stats.buffer_reuses.saturating_add(1);
+            return Ok(());
+        }
+        let capacity = retained_capacity(
+            "vertex buffer",
+            requested,
+            self.resource_policy.max_vertex_buffer_bytes,
+        )?;
+        self.vertex_buffer = Some(device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Luna WGPU retained scene vertices"),
+            size: u64::try_from(capacity).unwrap_or(u64::MAX),
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        }));
+        self.vertex_capacity_bytes = capacity;
+        self.resource_stats.vertex_capacity_bytes = capacity;
+        self.resource_stats.buffer_reallocations =
+            self.resource_stats.buffer_reallocations.saturating_add(1);
+        Ok(())
+    }
+
+    fn ensure_index_buffer(
+        &mut self,
+        device: &wgpu::Device,
+        requested: usize,
+    ) -> Result<(), WgpuRenderError> {
+        if self.index_capacity_bytes >= requested && self.index_buffer.is_some() {
+            self.resource_stats.buffer_reuses = self.resource_stats.buffer_reuses.saturating_add(1);
+            return Ok(());
+        }
+        let capacity = retained_capacity(
+            "index buffer",
+            requested,
+            self.resource_policy.max_index_buffer_bytes,
+        )?;
+        self.index_buffer = Some(device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Luna WGPU retained scene indices"),
+            size: u64::try_from(capacity).unwrap_or(u64::MAX),
+            usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        }));
+        self.index_capacity_bytes = capacity;
+        self.resource_stats.index_capacity_bytes = capacity;
+        self.resource_stats.buffer_reallocations =
+            self.resource_stats.buffer_reallocations.saturating_add(1);
+        Ok(())
+    }
+}
+
+fn retained_capacity(
+    resource: &'static str,
+    requested: usize,
+    limit: usize,
+) -> Result<usize, WgpuRenderError> {
+    if requested > limit {
+        return Err(WgpuRenderError::ResourceBudgetExceeded {
+            resource,
+            requested,
+            limit,
+        });
+    }
+    let requested = requested.max(MIN_RETAINED_BUFFER_BYTES);
+    let capacity = requested.checked_next_power_of_two().unwrap_or(limit);
+    Ok(capacity.min(limit))
+}
+
+fn atlas_fingerprint(atlas: &AtlasImage) -> u64 {
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    for byte in atlas
+        .size
+        .width
+        .to_le_bytes()
+        .into_iter()
+        .chain(atlas.size.height.to_le_bytes())
+        .chain(atlas.bytes.iter().copied())
+    {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
 }
 
 fn stats_for_scene(scene: &CompiledScene) -> WgpuRenderStats {
@@ -880,5 +1222,34 @@ mod tests {
         assert_eq!(stats.vertices, 4);
         assert_eq!(stats.batches, 1);
         Ok(())
+    }
+
+    #[test]
+    fn retained_capacity_grows_geometrically_within_limit() -> Result<(), Box<dyn Error>> {
+        assert_eq!(super::retained_capacity("vertex", 1, 16_384)?, 4_096);
+        assert_eq!(super::retained_capacity("vertex", 4_097, 16_384)?, 8_192);
+        assert!(matches!(
+            super::retained_capacity("vertex", 16_385, 16_384),
+            Err(WgpuRenderError::ResourceBudgetExceeded { .. })
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn atlas_fingerprint_changes_with_pixels_or_extent() {
+        let first = super::AtlasImage {
+            size: SizeI::new(1, 1),
+            bytes: vec![1, 2, 3, 4],
+            unique_images: 1,
+        };
+        let second = super::AtlasImage {
+            size: SizeI::new(1, 1),
+            bytes: vec![1, 2, 3, 5],
+            unique_images: 1,
+        };
+        assert_ne!(
+            super::atlas_fingerprint(&first),
+            super::atlas_fingerprint(&second)
+        );
     }
 }

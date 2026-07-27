@@ -12,7 +12,7 @@
 use cosmic_text::{
     Attrs, Buffer, Color, Cursor, Family, FontSystem, Metrics, Scroll, Shaping, SwashCache, Wrap,
 };
-use luna_core::{PointI, RectI, SizeI};
+use luna_core::{CodedError, ErrorCode, PointI, RectI, SizeI};
 use luna_render::{Framebuffer, FramebufferError, RasterImage, RasterImageError};
 use luna_text::{TextDocument, TextLocation, TextRange};
 use luna_theme::Rgba8;
@@ -860,6 +860,19 @@ impl From<FramebufferError> for TextLayoutError {
 impl From<RasterImageError> for TextLayoutError {
     fn from(value: RasterImageError) -> Self {
         Self::RasterImage(value)
+    }
+}
+
+impl CodedError for TextLayoutError {
+    fn error_code(&self) -> ErrorCode {
+        ErrorCode::new(match self {
+            Self::InvalidFontSize => "text.layout.invalid_font_size",
+            Self::InvalidLineHeight => "text.layout.invalid_line_height",
+            Self::InvalidColorSpan(_) => "text.layout.invalid_color_span",
+            Self::InvalidCacheState => "text.layout.invalid_cache_state",
+            Self::Framebuffer(_) => "text.layout.framebuffer",
+            Self::RasterImage(_) => "text.layout.raster_image",
+        })
     }
 }
 

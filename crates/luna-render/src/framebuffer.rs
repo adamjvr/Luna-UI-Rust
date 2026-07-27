@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use crate::{RasterImage, RasterImageError};
-use luna_core::{RectI, SizeI};
+use luna_core::{CodedError, ErrorCode, RectI, SizeI};
 use luna_theme::Rgba8;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
@@ -365,6 +365,12 @@ impl Display for FramebufferError {
 }
 
 impl Error for FramebufferError {}
+
+impl CodedError for FramebufferError {
+    fn error_code(&self) -> ErrorCode {
+        ErrorCode::new("render.framebuffer.size_overflow")
+    }
+}
 
 #[cfg(test)]
 mod tests {

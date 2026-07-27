@@ -10,13 +10,13 @@
 use accesskit::{Action, ActionData};
 use accesskit_winit::{Adapter as AccessKitAdapter, Event as AccessKitEvent};
 use luna_accessibility_accesskit::AccessKitBridge;
-use luna_core::{RectI, SizeI};
+use luna_core::{CodedError, ErrorCode, RectI, SizeI};
 use luna_host_core::{FrameRuntime, InvalidationReason};
 use luna_host_winit::{
     AccessibilityActionData, AccessibilityActionKind, AccessibilityActionRequest, HostControl,
     NativeApplication, NativeLifecycleEvent, WindowConfig, WinitInputTranslator,
 };
-use luna_render_wgpu::{WgpuRenderError, WgpuRenderStats, WgpuRenderer};
+use luna_render_wgpu::{WgpuRenderError, WgpuRenderStats, WgpuRenderer, WgpuResourceStats};
 use luna_ui::UiFrame;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
@@ -56,6 +56,12 @@ impl Display for WgpuHostError {
 }
 
 impl Error for WgpuHostError {}
+
+impl CodedError for WgpuHostError {
+    fn error_code(&self) -> ErrorCode {
+        ErrorCode::new("host.wgpu.runtime")
+    }
+}
 
 /// Runs a Luna application in a native winit window using the `wgpu` renderer.
 ///
@@ -192,6 +198,7 @@ struct GpuMetrics {
     total_frames: u64,
     timing: GpuTiming,
     renderer: WgpuRenderStats,
+    resources: WgpuResourceStats,
     surface_reconfigurations: u64,
     device_recoveries: u64,
 }
@@ -204,12 +211,18 @@ impl GpuMetrics {
             total_frames: 0,
             timing: GpuTiming::default(),
             renderer: WgpuRenderStats::default(),
+            resources: WgpuResourceStats::default(),
             surface_reconfigurations: 0,
             device_recoveries: 0,
         }
     }
 
-    fn record(&mut self, timing: GpuTiming, renderer: WgpuRenderStats) {
+    fn record(
+        &mut self,
+        timing: GpuTiming,
+        renderer: WgpuRenderStats,
+        resources: WgpuResourceStats,
+    ) {
         self.frames = self.frames.saturating_add(1);
         self.total_frames = self.total_frames.saturating_add(1);
         self.timing.application_build += timing.application_build;
@@ -229,11 +242,12 @@ impl GpuMetrics {
             .renderer
             .atlas_bytes
             .saturating_add(renderer.atlas_bytes);
+        self.resources = resources;
 
         if self.total_frames == 1 || self.started_at.elapsed() >= Duration::from_secs(1) {
             let divisor = self.frames.max(1) as f64;
             eprintln!(
-                "[luna-wgpu metrics] frames={} total_frames={} avg_ms={{app:{:.3}, encode:{:.3}, present:{:.3}, accessibility:{:.3}, total:{:.3}}} avg_scene={{commands:{:.1}, batches:{:.1}, vertices:{:.1}, indices:{:.1}, atlas_images:{:.1}, atlas_kib:{:.1}}} recoveries={{surface:{}, device:{}}}",
+                "[luna-wgpu metrics] frames={} total_frames={} avg_ms={{app:{:.3}, encode:{:.3}, present:{:.3}, accessibility:{:.3}, total:{:.3}}} avg_scene={{commands:{:.1}, batches:{:.1}, vertices:{:.1}, indices:{:.1}, atlas_images:{:.1}, atlas_kib:{:.1}}} retained={{kib:{:.1}, vertex_kib:{:.1}, index_kib:{:.1}, atlas_kib:{:.1}, reallocations:{}, reuses:{}, upload_skips:{}, trims:{}}} recoveries={{surface:{}, device:{}}}",
                 self.frames,
                 self.total_frames,
                 millis(self.timing.application_build, divisor),
@@ -247,6 +261,14 @@ impl GpuMetrics {
                 self.renderer.indices as f64 / divisor,
                 self.renderer.atlas_images as f64 / divisor,
                 self.renderer.atlas_bytes as f64 / divisor / 1024.0,
+                self.resources.retained_bytes() as f64 / 1024.0,
+                self.resources.vertex_capacity_bytes() as f64 / 1024.0,
+                self.resources.index_capacity_bytes() as f64 / 1024.0,
+                self.resources.atlas_capacity_bytes() as f64 / 1024.0,
+                self.resources.buffer_reallocations(),
+                self.resources.buffer_reuses(),
+                self.resources.atlas_upload_skips(),
+                self.resources.trims(),
                 self.surface_reconfigurations,
                 self.device_recoveries,
             );
@@ -524,6 +546,7 @@ impl<A: NativeApplication> WgpuHost<A> {
                 scale_factor,
             )
             .map_err(map_render_error)?;
+        let resource_stats = gpu.renderer.resource_stats();
         gpu.queue.submit([encoder.finish()]);
         let encode = encode_started.elapsed();
 
@@ -546,6 +569,7 @@ impl<A: NativeApplication> WgpuHost<A> {
                 total: total_started.elapsed(),
             },
             renderer_stats,
+            resource_stats,
         );
         Ok(())
     }
@@ -689,6 +713,9 @@ impl<A: NativeApplication> ApplicationHandler<HostEvent> for WgpuHost<A> {
 
     fn memory_warning(&mut self, event_loop: &ActiveEventLoop) {
         self.last_frame = None;
+        if let Some(gpu) = self.gpu.as_mut() {
+            gpu.renderer.trim_retained_resources(&gpu.device);
+        }
         let control = self
             .application
             .handle_lifecycle(NativeLifecycleEvent::MemoryWarning);

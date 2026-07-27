@@ -8,32 +8,35 @@ This is not a mechanical Swift-to-Rust translation. The rewrite preserves Luna's
 contracts while expressing them through Rust ownership, explicit errors, immutable frame snapshots,
 small workspace crates, strict compiler tooling, and platform-specific leaf adapters.
 
-## M6 status
+## M7 status
 
 M0 established the deterministic core, M1 added the native host, M2 added editor-grade text, M3
 added the twin proof-gallery/editor applications, M3.1 made the CPU path incremental, M3.2 completed
 real file/workspace/session behavior, M3.3 completed durable recursive panes and hardened desktop
-interaction, M4 added the optional `wgpu` backend, and M5 completed the first broad editor-mechanics
-parity pass. M5 has been locally accepted on Pop!_OS.
+interaction, M4 added the optional `wgpu` backend, M5 added broader editor mechanics, and M6
+completed the first macOS/downstream integration hardening pass. M6 has been locally accepted on
+Pop!_OS and committed.
 
-M6 hardens macOS and demonstrates downstream composition without assigning Luna to a particular
-product rewrite:
+M7 establishes enforceable public API and release-qualification evidence:
 
-- CPU and GPU hosts expose resume, suspend, memory-warning, close-veto, dirty-document, IME, and
-  accessibility contracts through the same `NativeApplication` boundary;
-- macOS receives native document-edited indication, Application Support session paths, AppleScript
-  file/folder/confirmation dialogs, and FSEvents-backed workspace delivery with safe polling fallback;
-- `scripts/package-macos.sh` produces an ad-hoc signed `.app` bundle for Apple-Silicon acceptance;
-- `luna-integration` demonstrates application-owned composition of file, dialog, workspace, watcher,
-  session, syntax, and completion adapters without creating a global service locator;
-- the shared preset catalog now contains Luna Dark, Luna Light, Amber Monitor, Green Terminal, and
-  **Different**, a cool translucent fruit-era desktop palette inspired by late-1990s and early-2000s
-  personal-computer interfaces;
-- Linux remains the primary blocking platform, macOS is the supported secondary target under
-  real-hardware hardening, and Windows remains unofficial and best-effort.
+- `api/public-api.toml` and `luna-qualification` classify every public library crate as stable,
+  provisional, or internal;
+- public boundary errors expose stable `ErrorCode` values without freezing human-readable text;
+- `luna-ui-rust-qualification` exercises real editor replay, retained text, pane, workspace, CPU/GPU,
+  and accessibility structures against deterministic budgets;
+- the `wgpu` backend now retains scene buffers geometrically within explicit caps, skips unchanged
+  atlas uploads, exposes resource statistics, and trims rebuildable resources on memory pressure;
+- `ResourceLocator` and its downstream example define product-neutral development and packaged
+  resource lookup;
+- `scripts/package-linux.sh` creates a relocatable Linux development bundle and tarball;
+- [`docs/EDITOR_DEMO_COMMANDS.md`](docs/EDITOR_DEMO_COMMANDS.md) permanently records the complete
+  keyboard, mouse, runtime, and acceptance command set;
+- Linux remains the blocking primary target, macOS remains the supported secondary/advisory target,
+  and Windows remains unofficial and best-effort.
 
-See `docs/M6_MACOS_INTEGRATION.md`, `docs/MACOS_TESTING.md`, `docs/ROADMAP.md`, and
-`docs/SWIFT_PARITY.md`.
+See `docs/M7_RELEASE_QUALIFICATION.md`, `docs/PUBLIC_API_POLICY.md`,
+`docs/EDITOR_DEMO_COMMANDS.md`, `docs/LINUX_PACKAGING.md`, `docs/ACCESSIBILITY_AUDIT.md`,
+`docs/RELEASE_CHECKLIST.md`, `docs/ROADMAP.md`, and `docs/SWIFT_PARITY.md`.
 
 ## Build and validate
 
@@ -44,10 +47,17 @@ cargo fmt --all
 ./scripts/validate.sh
 ```
 
-M6 includes the focused platform/integration gate and runtime checklist:
+M7 includes the public API, deterministic qualification, packaging, and runtime gate:
 
 ```bash
-./scripts/test-m6.sh
+./scripts/test-m7.sh
+```
+
+Build deterministic qualification evidence and the Linux development bundle:
+
+```bash
+cargo run --release -p luna-ui-rust-qualification -- --output /tmp/luna-m7-qualification.json
+./scripts/package-linux.sh
 ```
 
 On macOS, run the secondary-platform gate and optionally package the editor proof:
@@ -84,6 +94,9 @@ Run the same editor through the GPU backend:
 ```bash
 LUNA_RENDER_BACKEND=wgpu cargo run --release -p luna-ui-rust-editor-demo
 ```
+
+The complete editor operator reference is maintained in
+[`docs/EDITOR_DEMO_COMMANDS.md`](docs/EDITOR_DEMO_COMMANDS.md).
 
 Editor menu behavior:
 
@@ -198,7 +211,9 @@ Moth-specific product policy. See `docs/ARCHITECTURE.md`, `docs/PORTING_MAP.md`,
 `docs/M3_2E_WORKSPACE_OPERATIONS_SESSION.md`, `docs/M3_3A_SPLIT_PANES.md`,
 `docs/M3_3B_ADVANCED_TABS_POPUPS.md`, `docs/M3_3C_DESKTOP_HARDENING.md`,
 `docs/M4_GPU_RENDERING.md`, `docs/M5_EDITOR_COMPONENT_PARITY.md`,
-`docs/M6_MACOS_INTEGRATION.md`, `docs/MACOS_TESTING.md`, and `docs/SWIFT_PARITY.md`.
+`docs/M6_MACOS_INTEGRATION.md`, `docs/M7_RELEASE_QUALIFICATION.md`,
+`docs/EDITOR_DEMO_COMMANDS.md`, `docs/PUBLIC_API_POLICY.md`, `docs/LINUX_PACKAGING.md`,
+`docs/MACOS_TESTING.md`, and `docs/SWIFT_PARITY.md`.
 
 ## License
 

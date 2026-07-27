@@ -2,7 +2,7 @@
 
 use crate::Widget;
 use luna_accessibility::{AccessibilityTree, AccessibilityTreeError};
-use luna_core::RectI;
+use luna_core::{CodedError, ErrorCode, RectI};
 use luna_render::DisplayList;
 use luna_theme::Rgba8;
 use std::error::Error;
@@ -126,6 +126,14 @@ impl Error for UiFrameError {
         match self {
             Self::Accessibility(error) => Some(error),
         }
+    }
+}
+
+impl CodedError for UiFrameError {
+    fn error_code(&self) -> ErrorCode {
+        ErrorCode::new(match self {
+            Self::Accessibility(_) => "ui.frame.accessibility",
+        })
     }
 }
 

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: CC0-1.0 -->
+<component type="desktop-application">
+  <id>org.lunaui.EditorDemo</id>
+  <name>Luna UI Rust Editor Demo</name>
+  <summary>Editor integration proof for the Luna UI Rust framework</summary>
+  <developer id="org.lunaui">
+    <name>Luna UI contributors</name>
+  </developer>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MPL-2.0</project_license>
+  <description>
+    <p>
+      A product-neutral development application that exercises Luna UI Rust text, document,
+      workspace, pane, command, accessibility, CPU rendering, and optional GPU rendering systems.
+    </p>
+  </description>
+  <launchable type="desktop-id">org.lunaui.EditorDemo.desktop</launchable>
+  <provides>
+    <binary>luna-ui-rust-editor-demo</binary>
+  </provides>
+  <categories>
+    <category>Development</category>
+    <category>TextEditor</category>
+  </categories>
+  <url type="homepage">https://github.com/adamjvr/Luna-UI-Rust</url>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-07-26">
+      <description>
+        <p>M7 development qualification package.</p>
+      </description>
+    </release>
+  </releases>
+</component>

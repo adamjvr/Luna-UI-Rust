@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
+use luna_core::{CodedError, ErrorCode};
 use luna_theme::Rgba8;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
@@ -368,6 +369,15 @@ impl Display for SyntaxError {
 }
 
 impl Error for SyntaxError {}
+impl CodedError for SyntaxError {
+    fn error_code(&self) -> ErrorCode {
+        ErrorCode::new(match self {
+            Self::OutOfBounds(_) => "editor.syntax.out_of_bounds",
+            Self::InvalidUtf8Boundary(_) => "editor.syntax.invalid_utf8_boundary",
+            Self::OverlappingSpans { .. } => "editor.syntax.overlapping_spans",
+        })
+    }
+}
 
 fn validate_spans(text: &str, spans: &[SyntaxSpan]) -> Result<(), SyntaxError> {
     let mut previous: Option<&SyntaxSpan> = None;
