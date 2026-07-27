@@ -57,6 +57,21 @@ is not treated as an accepted M7 stable surface.
 
 Each crate receives a retained log plus one machine-readable `semver-summary.json`.
 
+## Reviewed provisional migration
+
+The M7-to-M8.1 comparison includes one intentional source-breaking change in the provisional
+`luna-editor` crate. `ParityError::Mismatch` now stores `expected` and `actual` as
+`Box<ParityResult>` instead of inline `ParityResult` values. Boxing bounds the enum size and satisfies
+the strict all-target Clippy gate without changing parity behavior.
+
+Downstream migration:
+
+- construction changes from `expected: result` to `expected: Box::new(result)` and likewise for
+  `actual`;
+- destructuring now yields boxed values, so callers may borrow through the box or move the inner value
+  with `*expected` and `*actual`;
+- no stable Luna crate changes in this migration.
+
 ## Gate
 
 Run the phase through the safe child-shell wrapper:

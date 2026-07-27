@@ -16,6 +16,12 @@
       "package": "luna-clipboard",
       "classification": "compatible",
       "rationale": "M8.1a adds a new provisional clipboard crate without removing or changing any accepted M7 public symbol."
+    },
+    {
+      "kind": "symbols-changed",
+      "package": "luna-editor",
+      "classification": "intentionally-breaking",
+      "rationale": "M8.0 changes the provisional public ParityError::Mismatch expected and actual payloads from ParityResult to Box<ParityResult> to bound enum size under strict Clippy. Downstream code that constructs this variant must wrap payloads with Box::new, and code that destructures it must handle boxed values."
     }
   ]
 }
