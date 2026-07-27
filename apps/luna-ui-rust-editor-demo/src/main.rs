@@ -836,10 +836,11 @@ impl EditorDemoApplication {
                         Err(error) if error.kind() == FileServiceErrorKind::NotFound => None,
                         Err(error) => return Err(error.into()),
                     };
-                    if persisted_storage.is_none() && !is_dirty {
-                        if let Some(file) = &loaded {
-                            editor = EditableText::new(file.text());
-                        }
+                    if persisted_storage.is_none()
+                        && !is_dirty
+                        && let Some(file) = &loaded
+                    {
+                        editor = EditableText::new(file.text());
                     }
                     let saved_edit_revision = if is_dirty {
                         u64::MAX
@@ -6200,12 +6201,11 @@ impl NativeApplication for EditorDemoApplication {
                 if let Some(text) = keyboard.text.as_deref().or(logical_fallback)
                     && !text.is_empty()
                     && !text.chars().all(char::is_control)
-                {
-                    if self.apply_multi_selection_edit(EditGroup::Typing, |document, selections| {
+                    && self.apply_multi_selection_edit(EditGroup::Typing, |document, selections| {
                         selections.replace_all(document, text)
-                    }) {
-                        return HostControl::Invalidate(InvalidationClass::TextLayout);
-                    }
+                    })
+                {
+                    return HostControl::Invalidate(InvalidationClass::TextLayout);
                 }
             }
             InputEvent::Text(text) => {
@@ -7022,6 +7022,7 @@ impl NativeApplication for EditorDemoApplication {
 #[cfg(test)]
 mod tests {
     use super::{EditorDemoApplication, apply_selection_set_to_editor};
+    use luna_clipboard::MemoryClipboardService;
     use luna_core::{PointI, RectI};
     use luna_document_services::{
         DirtyCloseChoice, MemoryTextFileService, SaveConflictChoice, ScriptedDialogService,
