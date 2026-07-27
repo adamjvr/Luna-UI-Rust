@@ -71,11 +71,9 @@ Any Linux formatting, API-contract, compilation, Clippy, test, rustdoc, determin
 packaging, CPU/GPU, or operator-checklist regression blocks an M8 candidate. macOS remains advisory
 until repeated real-hardware acceptance supports promotion.
 
-## M8.0 Known Follow-Up
+## M8.1a Clipboard Candidate
 
-- Edit > Copy and Edit > Paste remain disabled in both the CPU and `wgpu`
-  editor-demo backends.
-- The matching behavior across renderers indicates a shared command-enablement
-  or platform-clipboard integration gap rather than a renderer defect.
-- This is accepted for the M8.0 baseline commit but must be resolved before
-  the `0.2.0-rc.1` release candidate.
+- A provisional `luna-clipboard` service boundary now supplies native and deterministic memory adapters.
+- Edit > Cut, Copy, and Paste plus Ctrl+X/C/V share one editor command path across CPU and `wgpu` hosts.
+- The candidate remains unaccepted until `scripts/test-m8-1.sh`, cross-application clipboard transfer,
+  multi-selection behavior, undo, and extracted-package operation pass locally.

@@ -123,6 +123,9 @@ Editor menu behavior:
 Editor shortcuts:
 
 - **Control-P** — command palette;
+- **Control-X** — cut every non-empty active selection after a successful clipboard write;
+- **Control-C** — copy active selections in document order;
+- **Control-V** — paste clipboard text at every active caret or selection;
 - **Control-F** — find panel;
 - **Control-H** — find/replace panel;
 - **Control-O** — open a UTF-8 text file through a native file chooser;
@@ -171,6 +174,8 @@ Current document, workspace, pane, popup, and rendering behavior:
 - syntax scopes are supplied through a product-neutral provider and styled through an imported
   Sublime color scheme;
 - completion acceptance replaces the active identifier prefix as one undoable transaction;
+- Cut/Copy/Paste use a product-neutral clipboard service and behave identically through CPU and `wgpu` hosts;
+- multiple copied selections are joined with newlines and Paste replaces every active selection as one undoable transaction;
 - find/replace supports case and whole-word filters plus undoable current/all replacement;
 - multiple cursors insert, replace, and delete simultaneously while retaining one primary cursor;
 - IME pre-edit remains transient, anchors native candidate UI to the caret, and commits once;

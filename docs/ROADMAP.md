@@ -229,6 +229,7 @@
 ## M8 — release-candidate and ecosystem validation — active
 
 - M8.0 closes M7.0.1, freezes its API baseline, corrects documentation drift, and captures evidence.
+- M8.1a introduces the provisional clipboard boundary, enables Cut/Copy/Paste, and classifies the additive crate-contract change.
 - M8.1 retains and compares public API snapshots and classifies every compatibility difference.
 - M8.2 builds a separate product-neutral downstream consumer using only public Luna APIs.
 - M8.3 runs repeated Linux CPU/GPU, watcher, session, accessibility, resource, and package workloads.

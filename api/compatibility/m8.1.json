@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "baseline": "M7.0.1",
+  "current_phase": "M8.1a",
+  "changes": [
+    {
+      "kind": "crate-added",
+      "package": "luna-clipboard",
+      "classification": "compatible",
+      "rationale": "Adds a provisional product-neutral clipboard boundary without changing any accepted M7 stable crate contract."
+    }
+  ]
+}

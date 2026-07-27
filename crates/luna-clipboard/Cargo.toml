@@ -1,0 +1,18 @@
+[package]
+name = "luna-clipboard"
+description = "Product-neutral text clipboard services and the desktop system adapter for Luna UI Rust."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+publish.workspace = true
+repository.workspace = true
+readme.workspace = true
+
+[dependencies]
+arboard.workspace = true
+luna-core = { path = "../luna-core" }
+
+[lints]
+workspace = true

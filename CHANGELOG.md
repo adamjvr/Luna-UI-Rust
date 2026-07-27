@@ -7,6 +7,10 @@ commitments are governed by `api/public-api.toml` and `docs/PUBLIC_API_POLICY.md
 
 ### Added
 
+- provisional product-neutral `luna-clipboard` text clipboard services;
+- native and deterministic memory clipboard adapters;
+- Cut, Copy, and Paste command integration for the editor demo;
+- M8.1 crate-contract difference classification and gate;
 - retained M7 public-API baseline metadata;
 - release-evidence capture tooling;
 - M8 release-candidate qualification gate;

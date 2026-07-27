@@ -23,6 +23,9 @@ qualification and downstream-consumption phase, not a broad feature-expansion ph
 
 ## M8.1 — API compatibility cycle
 
+M8.1a first closes the known clipboard command gap with a provisional product-neutral clipboard crate
+and classifies that additive crate-contract change before symbol-level snapshot work continues.
+
 - generate a deterministic public API snapshot for every public library crate;
 - compare the current snapshot with the accepted M7 snapshot;
 - classify every difference as compatible, intentionally breaking, or accidental;

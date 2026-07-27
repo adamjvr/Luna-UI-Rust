@@ -44,3 +44,16 @@ Windows is not a release blocker and receives no official package or support com
 - [ ] external downstream consumer builds and packages
 - [ ] provisional API changes classified with migration notes
 - [ ] `0.2.0-rc.1` known limitations recorded
+
+## M8.1a clipboard acceptance
+
+- [ ] `scripts/test-m8-1.sh` passes through the safe child-shell runner
+- [ ] `luna-clipboard` memory tests pass
+- [ ] M7-to-M8.1 crate-contract difference is fully classified
+- [ ] CPU editor Cut/Copy/Paste menu and Ctrl+X/C/V pass
+- [ ] `wgpu` editor Cut/Copy/Paste menu and Ctrl+X/C/V pass
+- [ ] copy from Luna into another desktop application passes
+- [ ] paste from another desktop application into Luna passes
+- [ ] multi-selection copy joins selections in document order
+- [ ] multi-caret Paste inserts once per caret and is undoable
+- [ ] extracted Linux package retains clipboard operation

@@ -66,6 +66,11 @@ pub const CRATE_CONTRACTS: &[CrateContract] = &[
         responsibility: "typed command and binding contracts",
     },
     CrateContract {
+        package: "luna-clipboard",
+        stability: ApiStability::Provisional,
+        responsibility: "product-neutral text clipboard services",
+    },
+    CrateContract {
         package: "luna-core",
         stability: ApiStability::Stable,
         responsibility: "identity, geometry, diagnostics, and error codes",

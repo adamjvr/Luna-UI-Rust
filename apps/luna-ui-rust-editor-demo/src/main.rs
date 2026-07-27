@@ -24,6 +24,11 @@
 //! and Escape clears secondary cursors, closes the active menu/overlay, or exits.
 
 use luna_accessibility::{AccessibilityNode, AccessibilityRole};
+use luna_clipboard::ClipboardService;
+#[cfg(test)]
+use luna_clipboard::MemoryClipboardService;
+#[cfg(not(test))]
+use luna_clipboard::SystemClipboardService;
 use luna_core::{InsetsI, NodeId, PointI, RectI, SizeI};
 use luna_document_services::{
     DirtyCloseChoice, DocumentDialogService, FileObservation, FileServiceError,
@@ -215,6 +220,17 @@ fn apply_selection_set_to_editor(editor: &mut EditableText, selections: &Selecti
 
 fn history_snapshot_from_editor(editor: &EditableText) -> HistorySnapshot {
     HistorySnapshot::new(editor.document().text(), selection_set_from_editor(editor))
+}
+
+fn default_clipboard_service() -> Box<dyn ClipboardService> {
+    #[cfg(test)]
+    {
+        Box::new(MemoryClipboardService::default())
+    }
+    #[cfg(not(test))]
+    {
+        Box::new(SystemClipboardService::detect())
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -525,6 +541,7 @@ struct EditorDemoApplication {
     view_registry: DocumentViewRegistry,
     pane_tree: PaneTree,
     pane_views: Vec<PaneViewState>,
+    clipboard: Box<dyn ClipboardService>,
     file_service: Box<dyn TextFileService>,
     dialog_service: Box<dyn DocumentDialogService>,
     workspace_service: Box<dyn WorkspaceRuntimeService>,
@@ -651,6 +668,7 @@ impl EditorDemoApplication {
             view_registry,
             pane_tree,
             pane_views,
+            clipboard: default_clipboard_service(),
             file_service,
             dialog_service,
             workspace_service,
@@ -1107,6 +1125,93 @@ impl EditorDemoApplication {
     fn refresh_active_selection_set_from_editor(&mut self) {
         let selections = selection_set_from_editor(&self.active_view().editor);
         self.active_view_mut().selections = selections;
+    }
+
+    fn has_selected_text(&self) -> bool {
+        self.active_view()
+            .selections
+            .selections()
+            .iter()
+            .any(|selection| !selection.is_collapsed())
+    }
+
+    fn selected_text_for_clipboard(&self) -> Option<String> {
+        let document = self.active_view().editor.document().text();
+        let mut fragments = Vec::new();
+        for selection in self.active_view().selections.selections() {
+            let range = selection.normalized_range();
+            if range.is_empty() {
+                continue;
+            }
+            if let Some(fragment) = document.get(range) {
+                fragments.push(fragment);
+            }
+        }
+        (!fragments.is_empty()).then(|| fragments.join("\n"))
+    }
+
+    fn copy_selection(&mut self) -> bool {
+        let Some(text) = self.selected_text_for_clipboard() else {
+            self.lifecycle_notice = Some("Select text before copying".to_owned());
+            return false;
+        };
+        let selection_count = self
+            .active_view()
+            .selections
+            .selections()
+            .iter()
+            .filter(|selection| !selection.is_collapsed())
+            .count();
+        match self.clipboard.write_text(&text) {
+            Ok(()) => {
+                self.lifecycle_notice = Some(if selection_count == 1 {
+                    "Copied selection".to_owned()
+                } else {
+                    format!("Copied {selection_count} selections")
+                });
+                true
+            }
+            Err(error) => {
+                self.lifecycle_notice = Some(format!("Copy failed: {error}"));
+                false
+            }
+        }
+    }
+
+    fn cut_selection(&mut self) -> bool {
+        if !self.copy_selection() {
+            return false;
+        }
+        let changed = self
+            .apply_multi_selection_edit(EditGroup::Deletion, |document, selections| {
+                selections.replace_all(document, "")
+            });
+        if changed {
+            self.lifecycle_notice = Some("Cut selection".to_owned());
+        }
+        changed
+    }
+
+    fn paste_clipboard(&mut self) -> bool {
+        let text = match self.clipboard.read_text() {
+            Ok(Some(text)) => text,
+            Ok(None) => {
+                self.lifecycle_notice = Some("Clipboard contains no text".to_owned());
+                return false;
+            }
+            Err(error) => {
+                self.lifecycle_notice = Some(format!("Paste failed: {error}"));
+                return false;
+            }
+        };
+        let changed = self
+            .apply_multi_selection_edit(EditGroup::Replacement, |document, selections| {
+                selections.replace_all(document, &text)
+            });
+        if changed {
+            self.lifecycle_notice = Some("Pasted clipboard text".to_owned());
+        }
+        changed
     }
 
     fn record_active_history(&mut self, before: HistorySnapshot, group: EditGroup) {
@@ -1660,6 +1765,8 @@ impl EditorDemoApplication {
             )
         });
         let find_navigation_is_enabled = self.find.is_some() && !self.find_matches.is_empty();
+        let clipboard_is_available = self.clipboard.is_available();
+        let selection_is_available = self.has_selected_text();
         let selected_workspace = self.selected_workspace_entry();
         let workspace_mutation_is_enabled = self.workspace.is_some();
         let workspace_entry_mutation_is_enabled = selected_workspace
@@ -1819,12 +1926,17 @@ impl EditorDemoApplication {
                             .with_enabled(self.can_redo_active()),
                     ),
                     MenuItem::Separator,
-                    MenuItem::command(MenuCommand::new("cut", "Cut", "Ctrl+X").with_enabled(false)),
                     MenuItem::command(
-                        MenuCommand::new("copy", "Copy", "Ctrl+C").with_enabled(false),
+                        MenuCommand::new("cut", "Cut", "Ctrl+X")
+                            .with_enabled(clipboard_is_available && selection_is_available),
                     ),
                     MenuItem::command(
-                        MenuCommand::new("paste", "Paste", "Ctrl+V").with_enabled(false),
+                        MenuCommand::new("copy", "Copy", "Ctrl+C")
+                            .with_enabled(clipboard_is_available && selection_is_available),
+                    ),
+                    MenuItem::command(
+                        MenuCommand::new("paste", "Paste", "Ctrl+V")
+                            .with_enabled(clipboard_is_available),
                     ),
                     MenuItem::Separator,
                     MenuItem::command(
@@ -3179,6 +3291,24 @@ impl EditorDemoApplication {
             "focus-previous-pane" => {
                 self.focus_relative_pane(-1);
                 InvalidationClass::WidgetLayout
+            }
+            "copy" => {
+                let _ = self.copy_selection();
+                InvalidationClass::TextOverlay
+            }
+            "cut" => {
+                if self.cut_selection() {
+                    InvalidationClass::TextLayout
+                } else {
+                    InvalidationClass::TextOverlay
+                }
+            }
+            "paste" => {
+                if self.paste_clipboard() {
+                    InvalidationClass::TextLayout
+                } else {
+                    InvalidationClass::TextOverlay
+                }
             }
             "undo" if self.undo_active() => InvalidationClass::TextLayout,
             "redo" if self.redo_active() => InvalidationClass::TextLayout,
@@ -5985,6 +6115,9 @@ impl NativeApplication for EditorDemoApplication {
                             Some("add-cursor-below")
                         }
                         Key::Character(value) if value == " " => Some("show-completions"),
+                        Key::Character(value) if value.eq_ignore_ascii_case("x") => Some("cut"),
+                        Key::Character(value) if value.eq_ignore_ascii_case("c") => Some("copy"),
+                        Key::Character(value) if value.eq_ignore_ascii_case("v") => Some("paste"),
                         Key::Character(value) if value.eq_ignore_ascii_case("p") => {
                             Some("command-palette")
                         }
@@ -8792,6 +8925,110 @@ mod tests {
             "accessible text"
         );
         assert!(application.can_undo_active());
+        Ok(())
+    }
+
+    #[test]
+    fn clipboard_menu_enables_selection_commands_and_pastes_as_one_transaction() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let mut application = test_application(&files, &dialogs)?;
+        application.new_document();
+        {
+            let view = application.active_view_mut();
+            view.editor.synchronize_document("alpha beta", 1);
+            view.selections = SelectionSet::new(
+                view.editor.document().text(),
+                [ByteSelection::new(0, 5), ByteSelection::new(6, 10)],
+                0,
+            )?;
+            apply_selection_set_to_editor(&mut view.editor, &view.selections);
+        }
+        application.commit_active_view_to_buffer();
+
+        let edit_menu = application
+            .menu_definitions()
+            .into_iter()
+            .find(|menu| menu.id == "edit")
+            .ok_or_else(|| std::io::Error::other("Edit menu missing"))?;
+        for command_id in ["cut", "copy", "paste"] {
+            assert!(edit_menu.items.iter().any(|item| {
+                item.as_command()
+                    .is_some_and(|command| command.id == command_id && command.is_enabled)
+            }));
+        }
+
+        assert!(application.copy_selection());
+        application.new_document();
+        assert!(application.paste_clipboard());
+        assert_eq!(
+            application.active_view().editor.document().text(),
+            "alpha\nbeta"
+        );
+        assert!(application.undo_active());
+        assert_eq!(application.active_view().editor.document().text(), "");
+        Ok(())
+    }
+
+    #[test]
+    fn cut_writes_clipboard_before_deleting_and_can_be_pasted_back() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let mut application = test_application(&files, &dialogs)?;
+        application.new_document();
+        {
+            let view = application.active_view_mut();
+            view.editor.synchronize_document("cut me", 1);
+            view.selections =
+                SelectionSet::new(view.editor.document().text(), [ByteSelection::new(0, 3)], 0)?;
+            apply_selection_set_to_editor(&mut view.editor, &view.selections);
+        }
+        application.commit_active_view_to_buffer();
+
+        assert!(application.cut_selection());
+        assert_eq!(application.active_view().editor.document().text(), " me");
+        assert!(application.paste_clipboard());
+        assert_eq!(application.active_view().editor.document().text(), "cut me");
+        assert!(application.undo_active());
+        assert_eq!(application.active_view().editor.document().text(), " me");
+        Ok(())
+    }
+
+    #[test]
+    fn unavailable_clipboard_disables_commands_and_preserves_cut_text() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let mut application = test_application(&files, &dialogs)?;
+        application.new_document();
+        application.clipboard = Box::new(MemoryClipboardService::unavailable());
+        {
+            let view = application.active_view_mut();
+            view.editor.synchronize_document("keep me", 1);
+            view.selections =
+                SelectionSet::new(view.editor.document().text(), [ByteSelection::new(0, 4)], 0)?;
+            apply_selection_set_to_editor(&mut view.editor, &view.selections);
+        }
+        application.commit_active_view_to_buffer();
+
+        let edit_menu = application
+            .menu_definitions()
+            .into_iter()
+            .find(|menu| menu.id == "edit")
+            .ok_or_else(|| std::io::Error::other("Edit menu missing"))?;
+        for command_id in ["cut", "copy", "paste"] {
+            assert!(edit_menu.items.iter().any(|item| {
+                item.as_command()
+                    .is_some_and(|command| command.id == command_id && !command.is_enabled)
+            }));
+        }
+        assert!(!application.cut_selection());
+        assert_eq!(
+            application.active_view().editor.document().text(),
+            "keep me"
+        );
+        assert!(
+            application
+                .lifecycle_notice
+                .as_deref()
+                .is_some_and(|notice| notice.starts_with("Copy failed:"))
+        );
         Ok(())
     }
 }
