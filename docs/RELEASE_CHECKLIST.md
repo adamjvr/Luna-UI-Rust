@@ -16,10 +16,10 @@
 
 ## Advisory compatibility evidence
 
-- [ ] `cargo-semver-checks` reviewed against the selected baseline when available
-- [ ] public API manifest and crate-contract inventory agree
-- [ ] every public error implements `CodedError`
-- [ ] downstream resource-loading example builds
+- [x] `cargo-semver-checks` reviewed against the selected baseline when available
+- [x] public API manifest and crate-contract inventory agree
+- [x] every public error implements `CodedError`
+- [x] downstream resource-loading example builds
 
 ## macOS secondary acceptance
 
@@ -36,13 +36,13 @@ Windows is not a release blocker and receives no official package or support com
 
 ## M8 retained evidence
 
-- [ ] accepted M7 API snapshot retained
-- [ ] current API snapshot compared with the accepted baseline
-- [ ] qualification JSON retained with commit and environment metadata
-- [ ] Linux bundle checksum retained
+- [x] accepted M7 API snapshot retained
+- [x] current API snapshot compared with the accepted baseline
+- [x] qualification JSON retained with commit and environment metadata
+- [x] Linux bundle checksum retained
 - [ ] repeated CPU/GPU long-session evidence recorded
-- [ ] external downstream consumer builds and packages
-- [ ] provisional API changes classified with migration notes
+- [x] external downstream consumer builds and packages
+- [x] provisional API changes classified with migration notes
 - [ ] `0.2.0-rc.1` known limitations recorded
 
 ## M8.1a clipboard acceptance
@@ -73,13 +73,31 @@ Windows is not a release blocker and receives no official package or support com
 
 ## M8.2 external downstream consumer acceptance
 
-- [ ] consumer Cargo metadata proves a separate workspace outside the root dependency graph
-- [ ] root workspace format, API-contract, check, strict Clippy, tests, rustdoc, and release demo builds pass
-- [ ] external consumer format, check, strict Clippy, tests, rustdoc, and release build pass
-- [ ] source-tree `--self-test` finishes with `m8_2_self_test=passed`
-- [ ] CPU consumer editing, controls, workspace reload, theme cycling, and accessibility pass
-- [ ] `wgpu` consumer repeats the CPU operator pass
-- [ ] session text, caret/selection/scroll, and workspace state survive close/relaunch
-- [ ] Linux downstream ZIP and SHA-256 checksum are produced under ignored `dist/m8.2`
-- [ ] extracted package discovers executable-relative resources without `LUNA_RESOURCE_ROOT`
-- [ ] extracted package launches and self-tests from an unrelated working directory
+- [x] consumer Cargo metadata proves a separate workspace outside the root dependency graph
+- [x] root workspace format, API-contract, check, strict Clippy, tests, rustdoc, and release demo builds pass
+- [x] external consumer format, check, strict Clippy, tests, rustdoc, and release build pass
+- [x] source-tree `--self-test` finishes with `m8_2_self_test=passed`
+- [x] CPU consumer editing, controls, workspace reload, theme cycling, and accessibility pass
+- [x] `wgpu` consumer repeats the CPU operator pass
+- [x] session text, caret/selection/scroll, and workspace state survive close/relaunch
+- [x] Linux downstream ZIP and SHA-256 checksum are produced under ignored `dist/m8.2`
+- [x] extracted package discovers executable-relative resources without `LUNA_RESOURCE_ROOT`
+- [x] extracted package launches and self-tests from an unrelated working directory
+
+## M8.3 repeated long-session acceptance
+
+- [ ] `scripts/test-m8-3.sh` re-runs the complete accepted M8.2 gate
+- [ ] private M8.3 qualification binary passes strict workspace Clippy, tests, and rustdoc
+- [ ] document open/edit/save/close workload completes the configured cycle count
+- [ ] large-document workload demonstrates retained layout and raster reuse
+- [ ] pane/tab workload preserves ownership, partitions, snapshots, and collapse invariants
+- [ ] workspace mutation bursts coalesce and refresh without escaping the active root
+- [ ] session save/load/resave loops preserve complete validated state
+- [ ] CPU/GPU scene analysis stays below deterministic command, batch, atlas, and framebuffer limits
+- [ ] lifecycle workload covers resume, suspend, theme, resize/DPI, and memory-pressure transitions
+- [ ] source and extracted package self-tests pass repeatedly from isolated state directories
+- [ ] source and extracted `welcome.txt` resources remain identical across every cycle
+- [ ] two normalized M8.3 JSON reports are byte-for-byte deterministic
+- [ ] CPU editor and consumer complete the long-session operator protocol
+- [ ] `wgpu` editor and consumer repeat the long-session operator protocol
+- [ ] extracted consumer completes both backend passes without `LUNA_RESOURCE_ROOT`

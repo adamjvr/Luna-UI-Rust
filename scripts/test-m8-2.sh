@@ -32,15 +32,15 @@ fail() {
     return 1
 }
 
-for command_name in cargo rustc python3 unzip zip sha256sum; do
+for command_name in cargo rustc python3 unzip zip sha256sum find grep tee; do
     command -v "$command_name" >/dev/null 2>&1 || fail "Required command is missing: $command_name"
 done
 
 cd -- "$repo_root"
 
-step "Verifying the M8.2 candidate documentation"
+step "Verifying the M8.2 acceptance documentation"
 grep -qF "M8.2 external downstream reference consumer" CHANGELOG.md
-grep -qF "## M8.2 external downstream consumer candidate" docs/CURRENT_STATUS.md
+grep -qF "## M8.2 external downstream consumer acceptance" docs/CURRENT_STATUS.md
 grep -qF "## M8.2 external downstream consumer acceptance" docs/RELEASE_CHECKLIST.md
 grep -qF "# M8.2 External Downstream Consumer Proof" docs/M8_2_DOWNSTREAM_CONSUMER.md
 

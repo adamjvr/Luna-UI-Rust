@@ -1,6 +1,6 @@
 # Current Status
 
-**Milestone:** M8 release-candidate and ecosystem validation — active
+**Milestone:** M8.3 repeated long-session qualification — candidate
 
 ## Baseline
 
@@ -27,7 +27,7 @@ application-owned downstream service composition, bounded platform support tiers
 - product-neutral packaged-resource discovery and a downstream resource-loading example;
 - relocatable Linux development bundle and tarball with Desktop Entry and AppStream metadata;
 - permanent `EDITOR_DEMO_COMMANDS.md` keyboard, pointer, runtime, and acceptance reference;
-- public API, Linux packaging, accessibility audit, qualification, and release-checklist documents;
+- public API, Linux packaging, accessibility audit, release checklist, packaging, and qualification documentation;
 - M7 Linux blocking CI and expanded macOS advisory qualification.
 
 ## Architectural boundary
@@ -35,8 +35,8 @@ application-owned downstream service composition, bounded platform support tiers
 Compatibility tier and error-code policy live in small contracts rather than application logic.
 Qualification uses deterministic structural evidence instead of unreliable shared-runner timing.
 GPU retention remains entirely inside the GPU leaf backend. Resource discovery finds application-
-owned files but does not choose product configuration. Linux packaging distributes the proof app and
-operator documentation without declaring a stable end-user product release.
+owned files but does not choose product configuration. Linux packaging distributes proof applications
+and operator documentation without declaring a stable end-user product release.
 
 ## Validation status
 
@@ -80,11 +80,19 @@ accepted M7 and current public crate, every difference was explicitly classified
 passed, and `cargo-semver-checks` completed across every stable crate shared with the baseline. The
 accepted comparison contains no unclassified or accidental change.
 
-## M8.2 external downstream consumer candidate
+## M8.2 external downstream consumer acceptance
 
-A separate `luna-reference-consumer` Cargo workspace now composes public Luna packages into one
-product-neutral native application. The candidate exercises CPU and `wgpu` presentation, reusable
-controls, editable text, workspace scanning, session save/restore, packaged resources, deterministic
-headless frame construction, and extracted Linux ZIP launching without repository-relative paths.
-Acceptance remains pending `scripts/test-m8-2.sh`, CPU and `wgpu` operator passes, session relaunch,
-and the extracted-package operator pass documented in `M8_2_DOWNSTREAM_CONSUMER.md`.
+The separate `luna-reference-consumer` Cargo workspace is accepted on the blocking Linux/Pop!_OS
+lane. Root and consumer format/check/strict-Clippy/test/rustdoc gates passed; every Luna demo built in
+release mode; source-tree and extracted-package self-tests passed; CPU and `wgpu` operator checks
+completed; edited text and view/workspace state survived session relaunch; and the extracted Linux ZIP
+loaded resources without a repository-relative path.
+
+## M8.3 repeated long-session qualification candidate
+
+M8.3 adds a private qualification binary rather than changing a public Luna crate. Seven deterministic
+workloads cover document open/edit/save/close cycles, large-text layout/raster reuse, pane/tab churn,
+workspace mutations and watcher bursts, session round-trips, CPU/GPU scene and lifecycle transitions,
+and source/extracted resource loading. The gate repeats both package modes and compares two reports
+after removing diagnostic-only timing fields. Acceptance remains pending the automated gate and the
+real CPU/`wgpu` long-session operator protocol in `M8_3_LONG_SESSION_QUALIFICATION.md`.

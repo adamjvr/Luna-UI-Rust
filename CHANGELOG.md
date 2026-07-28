@@ -7,6 +7,8 @@ commitments are governed by `api/public-api.toml` and `docs/PUBLIC_API_POLICY.md
 
 ### Added
 
+- M8.3 deterministic repeated long-session qualification with subsystem-specific structural reports;
+- repeated source-tree and extracted-package self-test loops with normalized report comparison;
 - M8.2 external downstream reference consumer with separate Cargo-workspace qualification;
 - M8.2 source-tree and extracted-ZIP public-API self-tests;
 - provisional product-neutral `luna-clipboard` text clipboard services;
@@ -20,6 +22,8 @@ commitments are governed by `api/public-api.toml` and `docs/PUBLIC_API_POLICY.md
 
 ### Changed
 
+- M8.2 is accepted on the blocking Linux/Pop!_OS lane after CPU, `wgpu`, session-relaunch, and
+  extracted-package operator passes;
 - the provisional `SearchHistory::next()` API is renamed to `SearchHistory::next_newer()`; downstream callers must update the method name;
 - the provisional `ParityError::Mismatch` payloads are boxed; downstream constructors must use `Box::new` and destructuring code must handle `Box<ParityResult>`;
 - M7.0.1 is the accepted implementation baseline for M8;

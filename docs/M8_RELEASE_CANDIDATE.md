@@ -51,6 +51,9 @@ The reference consumer remains product-neutral. It is not Moth Text and must not
 commands, compatibility policy, settings policy, language-server policy, or product identity into
 Luna crates.
 
+M8.2 is accepted on the blocking Linux/Pop!_OS lane after the independent workspace gate, CPU and
+`wgpu` operator passes, session relaunch, and extracted-package resource and launch checks completed.
+
 ## M8.3 — repeated long-session qualification
 
 Retain evidence for repeated workloads covering:
@@ -63,6 +66,13 @@ Retain evidence for repeated workloads covering:
 - theme, DPI, resize, suspend/resume, and memory-pressure transitions;
 - GPU resource reconstruction and retained-capacity trimming;
 - extracted-package and executable-relative resource loading.
+
+M8.3 implements a private qualification binary inside the existing qualification application package.
+It adds no public Luna API and reports seven subsystem-specific workloads in stable JSON order. The
+automated gate repeats source and extracted package self-tests, runs the structural harness twice, and
+compares normalized reports after removing diagnostic-only timing fields. Real CPU and `wgpu` devices
+remain subject to the documented operator protocol; headless scene analysis does not claim to replace
+native host acceptance.
 
 Blocking limits remain deterministic counts, capacities, and high-water marks. Wall-clock timings are
 diagnostic only.

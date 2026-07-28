@@ -10,17 +10,22 @@ authors.workspace = true
 repository.workspace = true
 readme.workspace = true
 publish.workspace = true
-description = "Deterministic M7 release-qualification executable for Luna UI Rust"
+description = "Deterministic release-qualification executables for Luna UI Rust"
+default-run = "luna-ui-rust-qualification"
 
 [dependencies]
 luna-accessibility = { path = "../../crates/luna-accessibility" }
 luna-core = { path = "../../crates/luna-core" }
+luna-document-services = { path = "../../crates/luna-document-services" }
 luna-documents = { path = "../../crates/luna-documents" }
 luna-editor = { path = "../../crates/luna-editor" }
+luna-host-winit = { path = "../../crates/luna-host-winit" }
+luna-integration = { path = "../../crates/luna-integration" }
 luna-panes = { path = "../../crates/luna-panes" }
 luna-qualification = { path = "../../crates/luna-qualification" }
 luna-render = { path = "../../crates/luna-render" }
 luna-render-wgpu = { path = "../../crates/luna-render-wgpu" }
+luna-session = { path = "../../crates/luna-session" }
 luna-text = { path = "../../crates/luna-text" }
 luna-text-cosmic = { path = "../../crates/luna-text-cosmic" }
 luna-theme = { path = "../../crates/luna-theme" }
