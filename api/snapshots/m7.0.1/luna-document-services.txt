@@ -1,0 +1,175 @@
+pub mod luna_document_services
+pub enum luna_document_services::DialogErrorKind
+pub luna_document_services::DialogErrorKind::InvalidResponse
+pub luna_document_services::DialogErrorKind::Io
+pub luna_document_services::DialogErrorKind::Unavailable
+pub enum luna_document_services::DirtyCloseChoice
+pub luna_document_services::DirtyCloseChoice::Cancel
+pub luna_document_services::DirtyCloseChoice::Discard
+pub luna_document_services::DirtyCloseChoice::Save
+pub enum luna_document_services::FileObservation
+pub luna_document_services::FileObservation::Missing
+pub luna_document_services::FileObservation::Present(luna_documents::StorageSnapshot)
+pub enum luna_document_services::FileServiceErrorKind
+pub luna_document_services::FileServiceErrorKind::Conflict
+pub luna_document_services::FileServiceErrorKind::InvalidPath
+pub luna_document_services::FileServiceErrorKind::InvalidUtf8
+pub luna_document_services::FileServiceErrorKind::Io
+pub luna_document_services::FileServiceErrorKind::NotFound
+pub luna_document_services::FileServiceErrorKind::PermissionDenied
+pub enum luna_document_services::SaveConflictChoice
+pub luna_document_services::SaveConflictChoice::Cancel
+pub luna_document_services::SaveConflictChoice::Overwrite
+pub luna_document_services::SaveConflictChoice::Reload
+pub enum luna_document_services::SystemDialogBackend
+pub luna_document_services::SystemDialogBackend::AppleScript
+pub luna_document_services::SystemDialogBackend::KDialog
+pub luna_document_services::SystemDialogBackend::Unavailable
+pub luna_document_services::SystemDialogBackend::Zenity
+pub enum luna_document_services::WorkspaceCollisionChoice
+pub luna_document_services::WorkspaceCollisionChoice::Cancel
+pub luna_document_services::WorkspaceCollisionChoice::Replace
+pub enum luna_document_services::WorkspaceDeleteChoice
+pub luna_document_services::WorkspaceDeleteChoice::Cancel
+pub luna_document_services::WorkspaceDeleteChoice::Delete
+pub enum luna_document_services::WorkspaceDirtyDeleteChoice
+pub luna_document_services::WorkspaceDirtyDeleteChoice::Cancel
+pub luna_document_services::WorkspaceDirtyDeleteChoice::DiscardAndClose
+pub luna_document_services::WorkspaceDirtyDeleteChoice::KeepOpen
+pub enum luna_document_services::WritePrecondition
+pub luna_document_services::WritePrecondition::Any
+pub luna_document_services::WritePrecondition::Matches(luna_documents::StorageSnapshot)
+pub luna_document_services::WritePrecondition::Missing
+pub struct luna_document_services::DialogError
+impl luna_document_services::DialogError
+pub const fn luna_document_services::DialogError::kind(&self) -> luna_document_services::DialogErrorKind
+impl core::error::Error for luna_document_services::DialogError
+impl core::fmt::Display for luna_document_services::DialogError
+pub fn luna_document_services::DialogError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl luna_core::error_code::CodedError for luna_document_services::DialogError
+pub fn luna_document_services::DialogError::error_code(&self) -> luna_core::error_code::ErrorCode
+pub struct luna_document_services::FileServiceError
+impl luna_document_services::FileServiceError
+pub const fn luna_document_services::FileServiceError::expected_revision(&self) -> core::option::Option<luna_documents::StorageRevision>
+pub const fn luna_document_services::FileServiceError::kind(&self) -> luna_document_services::FileServiceErrorKind
+pub const fn luna_document_services::FileServiceError::observed_revision(&self) -> core::option::Option<luna_documents::StorageRevision>
+pub const fn luna_document_services::FileServiceError::operation(&self) -> &'static str
+pub fn luna_document_services::FileServiceError::path(&self) -> &std::path::Path
+impl core::error::Error for luna_document_services::FileServiceError
+impl core::fmt::Display for luna_document_services::FileServiceError
+pub fn luna_document_services::FileServiceError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl luna_core::error_code::CodedError for luna_document_services::FileServiceError
+pub fn luna_document_services::FileServiceError::error_code(&self) -> luna_core::error_code::ErrorCode
+pub struct luna_document_services::LoadedTextFile
+impl luna_document_services::LoadedTextFile
+pub const fn luna_document_services::LoadedTextFile::identity(&self) -> &luna_documents::FileIdentity
+pub fn luna_document_services::LoadedTextFile::into_text(self) -> alloc::string::String
+pub const fn luna_document_services::LoadedTextFile::revision(&self) -> luna_documents::StorageRevision
+pub const fn luna_document_services::LoadedTextFile::snapshot(&self) -> luna_documents::StorageSnapshot
+pub fn luna_document_services::LoadedTextFile::text(&self) -> &str
+pub struct luna_document_services::MemoryTextFileService
+impl luna_document_services::MemoryTextFileService
+pub fn luna_document_services::MemoryTextFileService::bytes(&self, &std::path::Path) -> core::result::Result<core::option::Option<alloc::vec::Vec<u8>>, luna_document_services::FileServiceError>
+pub fn luna_document_services::MemoryTextFileService::insert_bytes(&self, &std::path::Path, alloc::vec::Vec<u8>) -> core::result::Result<(), luna_document_services::FileServiceError>
+pub fn luna_document_services::MemoryTextFileService::insert_utf8(&self, &std::path::Path, &str) -> core::result::Result<(), luna_document_services::FileServiceError>
+pub fn luna_document_services::MemoryTextFileService::modify_utf8_in_place(&self, &std::path::Path, &str) -> core::result::Result<(), luna_document_services::FileServiceError>
+pub fn luna_document_services::MemoryTextFileService::new(impl core::convert::Into<std::path::PathBuf>) -> core::result::Result<Self, luna_document_services::FileServiceError>
+pub fn luna_document_services::MemoryTextFileService::remove_file(&self, &std::path::Path) -> core::result::Result<bool, luna_document_services::FileServiceError>
+impl luna_document_services::TextFileService for luna_document_services::MemoryTextFileService
+pub fn luna_document_services::MemoryTextFileService::identity_for_save(&self, &std::path::Path) -> core::result::Result<luna_documents::FileIdentity, luna_document_services::FileServiceError>
+pub fn luna_document_services::MemoryTextFileService::load_utf8(&self, &std::path::Path) -> core::result::Result<luna_document_services::LoadedTextFile, luna_document_services::FileServiceError>
+pub fn luna_document_services::MemoryTextFileService::observe_file(&self, &std::path::Path) -> core::result::Result<luna_document_services::FileObservation, luna_document_services::FileServiceError>
+pub fn luna_document_services::MemoryTextFileService::write_utf8_atomic(&self, &std::path::Path, &str, luna_document_services::WritePrecondition) -> core::result::Result<luna_document_services::WrittenTextFile, luna_document_services::FileServiceError>
+pub struct luna_document_services::ScriptedDialogService
+impl luna_document_services::ScriptedDialogService
+pub fn luna_document_services::ScriptedDialogService::push_dirty_close(&self, luna_document_services::DirtyCloseChoice)
+pub fn luna_document_services::ScriptedDialogService::push_open_file(&self, core::option::Option<std::path::PathBuf>)
+pub fn luna_document_services::ScriptedDialogService::push_open_folder(&self, core::option::Option<std::path::PathBuf>)
+pub fn luna_document_services::ScriptedDialogService::push_save_conflict(&self, luna_document_services::SaveConflictChoice)
+pub fn luna_document_services::ScriptedDialogService::push_save_file(&self, core::option::Option<std::path::PathBuf>)
+pub fn luna_document_services::ScriptedDialogService::push_workspace_collision(&self, luna_document_services::WorkspaceCollisionChoice)
+pub fn luna_document_services::ScriptedDialogService::push_workspace_delete(&self, luna_document_services::WorkspaceDeleteChoice)
+pub fn luna_document_services::ScriptedDialogService::push_workspace_dirty_delete(&self, luna_document_services::WorkspaceDirtyDeleteChoice)
+pub fn luna_document_services::ScriptedDialogService::push_workspace_name(&self, core::option::Option<alloc::string::String>)
+impl luna_document_services::DocumentDialogService for luna_document_services::ScriptedDialogService
+pub fn luna_document_services::ScriptedDialogService::choose_open_file(&mut self) -> core::result::Result<core::option::Option<std::path::PathBuf>, luna_document_services::DialogError>
+pub fn luna_document_services::ScriptedDialogService::choose_open_folder(&mut self) -> core::result::Result<core::option::Option<std::path::PathBuf>, luna_document_services::DialogError>
+pub fn luna_document_services::ScriptedDialogService::choose_save_file(&mut self, &str, core::option::Option<&std::path::Path>) -> core::result::Result<core::option::Option<std::path::PathBuf>, luna_document_services::DialogError>
+pub fn luna_document_services::ScriptedDialogService::confirm_dirty_close(&mut self, &str) -> core::result::Result<luna_document_services::DirtyCloseChoice, luna_document_services::DialogError>
+pub fn luna_document_services::ScriptedDialogService::confirm_workspace_delete(&mut self, &std::path::Path, bool) -> core::result::Result<luna_document_services::WorkspaceDeleteChoice, luna_document_services::DialogError>
+pub fn luna_document_services::ScriptedDialogService::confirm_workspace_replace(&mut self, &std::path::Path) -> core::result::Result<luna_document_services::WorkspaceCollisionChoice, luna_document_services::DialogError>
+pub fn luna_document_services::ScriptedDialogService::prompt_workspace_name(&mut self, &str, &str, &str) -> core::result::Result<core::option::Option<alloc::string::String>, luna_document_services::DialogError>
+pub fn luna_document_services::ScriptedDialogService::resolve_dirty_workspace_delete(&mut self, &str, &std::path::Path) -> core::result::Result<luna_document_services::WorkspaceDirtyDeleteChoice, luna_document_services::DialogError>
+pub fn luna_document_services::ScriptedDialogService::resolve_save_conflict(&mut self, &str, &std::path::Path) -> core::result::Result<luna_document_services::SaveConflictChoice, luna_document_services::DialogError>
+pub struct luna_document_services::StdTextFileService
+impl luna_document_services::TextFileService for luna_document_services::StdTextFileService
+pub fn luna_document_services::StdTextFileService::identity_for_save(&self, &std::path::Path) -> core::result::Result<luna_documents::FileIdentity, luna_document_services::FileServiceError>
+pub fn luna_document_services::StdTextFileService::load_utf8(&self, &std::path::Path) -> core::result::Result<luna_document_services::LoadedTextFile, luna_document_services::FileServiceError>
+pub fn luna_document_services::StdTextFileService::observe_file(&self, &std::path::Path) -> core::result::Result<luna_document_services::FileObservation, luna_document_services::FileServiceError>
+pub fn luna_document_services::StdTextFileService::write_utf8_atomic(&self, &std::path::Path, &str, luna_document_services::WritePrecondition) -> core::result::Result<luna_document_services::WrittenTextFile, luna_document_services::FileServiceError>
+pub struct luna_document_services::SystemDialogService
+impl luna_document_services::SystemDialogService
+pub const fn luna_document_services::SystemDialogService::backend(self) -> luna_document_services::SystemDialogBackend
+pub fn luna_document_services::SystemDialogService::detect() -> Self
+impl core::default::Default for luna_document_services::SystemDialogService
+pub fn luna_document_services::SystemDialogService::default() -> Self
+impl luna_document_services::DocumentDialogService for luna_document_services::SystemDialogService
+pub fn luna_document_services::SystemDialogService::choose_open_file(&mut self) -> core::result::Result<core::option::Option<std::path::PathBuf>, luna_document_services::DialogError>
+pub fn luna_document_services::SystemDialogService::choose_open_folder(&mut self) -> core::result::Result<core::option::Option<std::path::PathBuf>, luna_document_services::DialogError>
+pub fn luna_document_services::SystemDialogService::choose_save_file(&mut self, &str, core::option::Option<&std::path::Path>) -> core::result::Result<core::option::Option<std::path::PathBuf>, luna_document_services::DialogError>
+pub fn luna_document_services::SystemDialogService::confirm_dirty_close(&mut self, &str) -> core::result::Result<luna_document_services::DirtyCloseChoice, luna_document_services::DialogError>
+pub fn luna_document_services::SystemDialogService::confirm_workspace_delete(&mut self, &std::path::Path, bool) -> core::result::Result<luna_document_services::WorkspaceDeleteChoice, luna_document_services::DialogError>
+pub fn luna_document_services::SystemDialogService::confirm_workspace_replace(&mut self, &std::path::Path) -> core::result::Result<luna_document_services::WorkspaceCollisionChoice, luna_document_services::DialogError>
+pub fn luna_document_services::SystemDialogService::prompt_workspace_name(&mut self, &str, &str, &str) -> core::result::Result<core::option::Option<alloc::string::String>, luna_document_services::DialogError>
+pub fn luna_document_services::SystemDialogService::resolve_dirty_workspace_delete(&mut self, &str, &std::path::Path) -> core::result::Result<luna_document_services::WorkspaceDirtyDeleteChoice, luna_document_services::DialogError>
+pub fn luna_document_services::SystemDialogService::resolve_save_conflict(&mut self, &str, &std::path::Path) -> core::result::Result<luna_document_services::SaveConflictChoice, luna_document_services::DialogError>
+pub struct luna_document_services::WrittenTextFile
+impl luna_document_services::WrittenTextFile
+pub const fn luna_document_services::WrittenTextFile::identity(&self) -> &luna_documents::FileIdentity
+pub const fn luna_document_services::WrittenTextFile::revision(&self) -> luna_documents::StorageRevision
+pub const fn luna_document_services::WrittenTextFile::snapshot(&self) -> luna_documents::StorageSnapshot
+pub trait luna_document_services::DocumentDialogService
+pub fn luna_document_services::DocumentDialogService::choose_open_file(&mut self) -> core::result::Result<core::option::Option<std::path::PathBuf>, luna_document_services::DialogError>
+pub fn luna_document_services::DocumentDialogService::choose_open_folder(&mut self) -> core::result::Result<core::option::Option<std::path::PathBuf>, luna_document_services::DialogError>
+pub fn luna_document_services::DocumentDialogService::choose_save_file(&mut self, &str, core::option::Option<&std::path::Path>) -> core::result::Result<core::option::Option<std::path::PathBuf>, luna_document_services::DialogError>
+pub fn luna_document_services::DocumentDialogService::confirm_dirty_close(&mut self, &str) -> core::result::Result<luna_document_services::DirtyCloseChoice, luna_document_services::DialogError>
+pub fn luna_document_services::DocumentDialogService::confirm_workspace_delete(&mut self, &std::path::Path, bool) -> core::result::Result<luna_document_services::WorkspaceDeleteChoice, luna_document_services::DialogError>
+pub fn luna_document_services::DocumentDialogService::confirm_workspace_replace(&mut self, &std::path::Path) -> core::result::Result<luna_document_services::WorkspaceCollisionChoice, luna_document_services::DialogError>
+pub fn luna_document_services::DocumentDialogService::prompt_workspace_name(&mut self, &str, &str, &str) -> core::result::Result<core::option::Option<alloc::string::String>, luna_document_services::DialogError>
+pub fn luna_document_services::DocumentDialogService::resolve_dirty_workspace_delete(&mut self, &str, &std::path::Path) -> core::result::Result<luna_document_services::WorkspaceDirtyDeleteChoice, luna_document_services::DialogError>
+pub fn luna_document_services::DocumentDialogService::resolve_save_conflict(&mut self, &str, &std::path::Path) -> core::result::Result<luna_document_services::SaveConflictChoice, luna_document_services::DialogError>
+impl luna_document_services::DocumentDialogService for luna_document_services::ScriptedDialogService
+pub fn luna_document_services::ScriptedDialogService::choose_open_file(&mut self) -> core::result::Result<core::option::Option<std::path::PathBuf>, luna_document_services::DialogError>
+pub fn luna_document_services::ScriptedDialogService::choose_open_folder(&mut self) -> core::result::Result<core::option::Option<std::path::PathBuf>, luna_document_services::DialogError>
+pub fn luna_document_services::ScriptedDialogService::choose_save_file(&mut self, &str, core::option::Option<&std::path::Path>) -> core::result::Result<core::option::Option<std::path::PathBuf>, luna_document_services::DialogError>
+pub fn luna_document_services::ScriptedDialogService::confirm_dirty_close(&mut self, &str) -> core::result::Result<luna_document_services::DirtyCloseChoice, luna_document_services::DialogError>
+pub fn luna_document_services::ScriptedDialogService::confirm_workspace_delete(&mut self, &std::path::Path, bool) -> core::result::Result<luna_document_services::WorkspaceDeleteChoice, luna_document_services::DialogError>
+pub fn luna_document_services::ScriptedDialogService::confirm_workspace_replace(&mut self, &std::path::Path) -> core::result::Result<luna_document_services::WorkspaceCollisionChoice, luna_document_services::DialogError>
+pub fn luna_document_services::ScriptedDialogService::prompt_workspace_name(&mut self, &str, &str, &str) -> core::result::Result<core::option::Option<alloc::string::String>, luna_document_services::DialogError>
+pub fn luna_document_services::ScriptedDialogService::resolve_dirty_workspace_delete(&mut self, &str, &std::path::Path) -> core::result::Result<luna_document_services::WorkspaceDirtyDeleteChoice, luna_document_services::DialogError>
+pub fn luna_document_services::ScriptedDialogService::resolve_save_conflict(&mut self, &str, &std::path::Path) -> core::result::Result<luna_document_services::SaveConflictChoice, luna_document_services::DialogError>
+impl luna_document_services::DocumentDialogService for luna_document_services::SystemDialogService
+pub fn luna_document_services::SystemDialogService::choose_open_file(&mut self) -> core::result::Result<core::option::Option<std::path::PathBuf>, luna_document_services::DialogError>
+pub fn luna_document_services::SystemDialogService::choose_open_folder(&mut self) -> core::result::Result<core::option::Option<std::path::PathBuf>, luna_document_services::DialogError>
+pub fn luna_document_services::SystemDialogService::choose_save_file(&mut self, &str, core::option::Option<&std::path::Path>) -> core::result::Result<core::option::Option<std::path::PathBuf>, luna_document_services::DialogError>
+pub fn luna_document_services::SystemDialogService::confirm_dirty_close(&mut self, &str) -> core::result::Result<luna_document_services::DirtyCloseChoice, luna_document_services::DialogError>
+pub fn luna_document_services::SystemDialogService::confirm_workspace_delete(&mut self, &std::path::Path, bool) -> core::result::Result<luna_document_services::WorkspaceDeleteChoice, luna_document_services::DialogError>
+pub fn luna_document_services::SystemDialogService::confirm_workspace_replace(&mut self, &std::path::Path) -> core::result::Result<luna_document_services::WorkspaceCollisionChoice, luna_document_services::DialogError>
+pub fn luna_document_services::SystemDialogService::prompt_workspace_name(&mut self, &str, &str, &str) -> core::result::Result<core::option::Option<alloc::string::String>, luna_document_services::DialogError>
+pub fn luna_document_services::SystemDialogService::resolve_dirty_workspace_delete(&mut self, &str, &std::path::Path) -> core::result::Result<luna_document_services::WorkspaceDirtyDeleteChoice, luna_document_services::DialogError>
+pub fn luna_document_services::SystemDialogService::resolve_save_conflict(&mut self, &str, &std::path::Path) -> core::result::Result<luna_document_services::SaveConflictChoice, luna_document_services::DialogError>
+pub trait luna_document_services::TextFileService
+pub fn luna_document_services::TextFileService::identity_for_save(&self, &std::path::Path) -> core::result::Result<luna_documents::FileIdentity, luna_document_services::FileServiceError>
+pub fn luna_document_services::TextFileService::load_utf8(&self, &std::path::Path) -> core::result::Result<luna_document_services::LoadedTextFile, luna_document_services::FileServiceError>
+pub fn luna_document_services::TextFileService::observe_file(&self, &std::path::Path) -> core::result::Result<luna_document_services::FileObservation, luna_document_services::FileServiceError>
+pub fn luna_document_services::TextFileService::write_utf8_atomic(&self, &std::path::Path, &str, luna_document_services::WritePrecondition) -> core::result::Result<luna_document_services::WrittenTextFile, luna_document_services::FileServiceError>
+impl luna_document_services::TextFileService for luna_document_services::MemoryTextFileService
+pub fn luna_document_services::MemoryTextFileService::identity_for_save(&self, &std::path::Path) -> core::result::Result<luna_documents::FileIdentity, luna_document_services::FileServiceError>
+pub fn luna_document_services::MemoryTextFileService::load_utf8(&self, &std::path::Path) -> core::result::Result<luna_document_services::LoadedTextFile, luna_document_services::FileServiceError>
+pub fn luna_document_services::MemoryTextFileService::observe_file(&self, &std::path::Path) -> core::result::Result<luna_document_services::FileObservation, luna_document_services::FileServiceError>
+pub fn luna_document_services::MemoryTextFileService::write_utf8_atomic(&self, &std::path::Path, &str, luna_document_services::WritePrecondition) -> core::result::Result<luna_document_services::WrittenTextFile, luna_document_services::FileServiceError>
+impl luna_document_services::TextFileService for luna_document_services::StdTextFileService
+pub fn luna_document_services::StdTextFileService::identity_for_save(&self, &std::path::Path) -> core::result::Result<luna_documents::FileIdentity, luna_document_services::FileServiceError>
+pub fn luna_document_services::StdTextFileService::load_utf8(&self, &std::path::Path) -> core::result::Result<luna_document_services::LoadedTextFile, luna_document_services::FileServiceError>
+pub fn luna_document_services::StdTextFileService::observe_file(&self, &std::path::Path) -> core::result::Result<luna_document_services::FileObservation, luna_document_services::FileServiceError>
+pub fn luna_document_services::StdTextFileService::write_utf8_atomic(&self, &std::path::Path, &str, luna_document_services::WritePrecondition) -> core::result::Result<luna_document_services::WrittenTextFile, luna_document_services::FileServiceError>

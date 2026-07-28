@@ -1,0 +1,59 @@
+pub mod luna_host_winit
+pub use luna_host_winit::InvalidationClass
+pub enum luna_host_winit::AccessibilityActionData
+pub luna_host_winit::AccessibilityActionData::None
+pub luna_host_winit::AccessibilityActionData::Value(alloc::string::String)
+pub enum luna_host_winit::AccessibilityActionKind
+pub luna_host_winit::AccessibilityActionKind::Click
+pub luna_host_winit::AccessibilityActionKind::Decrement
+pub luna_host_winit::AccessibilityActionKind::Focus
+pub luna_host_winit::AccessibilityActionKind::Increment
+pub luna_host_winit::AccessibilityActionKind::Other
+pub luna_host_winit::AccessibilityActionKind::ReplaceSelectedText
+pub luna_host_winit::AccessibilityActionKind::SetValue
+pub luna_host_winit::AccessibilityActionKind::ShowContextMenu
+pub enum luna_host_winit::HostControl
+pub luna_host_winit::HostControl::Continue
+pub luna_host_winit::HostControl::Exit
+pub luna_host_winit::HostControl::Invalidate(luna_host_core::InvalidationClass)
+pub luna_host_winit::HostControl::Redraw
+pub enum luna_host_winit::NativeLifecycleEvent
+pub luna_host_winit::NativeLifecycleEvent::MemoryWarning
+pub luna_host_winit::NativeLifecycleEvent::Resumed
+pub luna_host_winit::NativeLifecycleEvent::Suspended
+pub struct luna_host_winit::AccessibilityActionRequest
+pub luna_host_winit::AccessibilityActionRequest::data: luna_host_winit::AccessibilityActionData
+pub luna_host_winit::AccessibilityActionRequest::kind: luna_host_winit::AccessibilityActionKind
+pub luna_host_winit::AccessibilityActionRequest::target: core::option::Option<luna_core::node_id::NodeId>
+pub struct luna_host_winit::HostError
+impl core::error::Error for luna_host_winit::HostError
+impl core::fmt::Display for luna_host_winit::HostError
+pub fn luna_host_winit::HostError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl luna_core::error_code::CodedError for luna_host_winit::HostError
+pub fn luna_host_winit::HostError::error_code(&self) -> luna_core::error_code::ErrorCode
+pub struct luna_host_winit::WindowConfig
+pub luna_host_winit::WindowConfig::initial_size: luna_core::geometry::SizeI
+pub luna_host_winit::WindowConfig::minimum_size: core::option::Option<luna_core::geometry::SizeI>
+pub luna_host_winit::WindowConfig::title: alloc::string::String
+impl core::default::Default for luna_host_winit::WindowConfig
+pub fn luna_host_winit::WindowConfig::default() -> Self
+pub struct luna_host_winit::WinitInputTranslator
+impl luna_host_winit::WinitInputTranslator
+pub fn luna_host_winit::WinitInputTranslator::new() -> Self
+pub fn luna_host_winit::WinitInputTranslator::translate(&mut self, &winit::event::WindowEvent, f64) -> core::option::Option<luna_input::InputEvent>
+impl core::default::Default for luna_host_winit::WinitInputTranslator
+pub fn luna_host_winit::WinitInputTranslator::default() -> Self
+pub trait luna_host_winit::NativeApplication
+pub fn luna_host_winit::NativeApplication::accepts_text_input(&self) -> bool
+pub fn luna_host_winit::NativeApplication::build_frame(&mut self, luna_core::geometry::RectI) -> core::result::Result<luna_ui::frame::UiFrame, luna_host_winit::ApplicationError>
+pub fn luna_host_winit::NativeApplication::frame_interval(&self) -> core::option::Option<core::time::Duration>
+pub fn luna_host_winit::NativeApplication::handle_accessibility_action(&mut self, luna_host_winit::AccessibilityActionRequest) -> luna_host_winit::HostControl
+pub fn luna_host_winit::NativeApplication::handle_input(&mut self, luna_input::InputEvent) -> luna_host_winit::HostControl
+pub fn luna_host_winit::NativeApplication::handle_lifecycle(&mut self, luna_host_winit::NativeLifecycleEvent) -> luna_host_winit::HostControl
+pub fn luna_host_winit::NativeApplication::has_unsaved_changes(&self) -> bool
+pub fn luna_host_winit::NativeApplication::ime_cursor_area(&self) -> core::option::Option<luna_core::geometry::RectI>
+pub fn luna_host_winit::NativeApplication::request_close(&mut self) -> luna_host_winit::HostControl
+pub fn luna_host_winit::NativeApplication::update(&mut self, core::time::Duration) -> luna_host_winit::HostControl
+pub fn luna_host_winit::NativeApplication::window_config(&self) -> luna_host_winit::WindowConfig
+pub fn luna_host_winit::run_native(impl luna_host_winit::NativeApplication + 'static) -> core::result::Result<(), luna_host_winit::HostError>
+pub type luna_host_winit::ApplicationError = alloc::boxed::Box<(dyn core::error::Error + core::marker::Send + core::marker::Sync + 'static)>

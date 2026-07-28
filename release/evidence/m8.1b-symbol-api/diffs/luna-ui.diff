@@ -1,0 +1,11 @@
+--- m7.0.1/luna-ui.txt
++++ m8.1b/luna-ui.txt
+@@ -540,7 +540,7 @@
+ impl luna_ui::SearchHistory
+ pub fn luna_ui::SearchHistory::entries(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = &str>
+ pub fn luna_ui::SearchHistory::new(usize) -> Self
+-pub fn luna_ui::SearchHistory::next(&mut self) -> core::option::Option<&str>
++pub fn luna_ui::SearchHistory::next_newer(&mut self) -> core::option::Option<&str>
+ pub fn luna_ui::SearchHistory::previous(&mut self) -> core::option::Option<&str>
+ pub fn luna_ui::SearchHistory::record(&mut self, impl core::convert::Into<alloc::string::String>) -> bool
+ pub fn luna_ui::SearchHistory::reset_navigation(&mut self)

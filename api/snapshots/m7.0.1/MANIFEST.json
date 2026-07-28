@@ -1,0 +1,40 @@
+{
+  "crate_count": 23,
+  "crates": {
+    "luna-accessibility": "stable",
+    "luna-accessibility-accesskit": "provisional",
+    "luna-commands": "stable",
+    "luna-core": "stable",
+    "luna-document-services": "provisional",
+    "luna-documents": "stable",
+    "luna-editor": "provisional",
+    "luna-host-core": "stable",
+    "luna-host-wgpu": "provisional",
+    "luna-host-winit": "provisional",
+    "luna-input": "stable",
+    "luna-integration": "provisional",
+    "luna-layout": "stable",
+    "luna-panes": "provisional",
+    "luna-qualification": "provisional",
+    "luna-render": "stable",
+    "luna-render-wgpu": "provisional",
+    "luna-session": "provisional",
+    "luna-text": "stable",
+    "luna-text-cosmic": "provisional",
+    "luna-theme": "stable",
+    "luna-ui": "provisional",
+    "luna-workspaces": "provisional"
+  },
+  "generated_utc": "2026-07-28T00:47:25+00:00",
+  "nightly": "nightly-2026-07-10",
+  "schema_version": 1,
+  "source_commit": "e696df0cedaeda7ac5c0892cf8f709f8325eff8b",
+  "source_kind": "accepted-baseline",
+  "tools": {
+    "cargo": "cargo 1.99.0-nightly (59800466c 2026-07-07)",
+    "cargo_public_api": "cargo-public-api 0.52.0",
+    "rustc": "rustc 1.99.0-nightly (af3d95584 2026-07-09)"
+  },
+  "working_tree_dirty": false,
+  "working_tree_status_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

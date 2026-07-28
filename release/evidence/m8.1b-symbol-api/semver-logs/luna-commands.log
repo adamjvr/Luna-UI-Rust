@@ -1,0 +1,15 @@
+$ cargo +stable semver-checks --package luna-commands --baseline-rev e696df0cedaeda7ac5c0892cf8f709f8325eff8b --all-features
+
+     Cloning e696df0cedaeda7ac5c0892cf8f709f8325eff8b
+    Building luna-commands v0.1.0 (current)
+       Built [   0.292s] (current)
+     Parsing luna-commands v0.1.0 (current)
+      Parsed [   0.002s] (current)
+    Building luna-commands v0.1.0 (baseline)
+       Built [   0.300s] (baseline)
+     Parsing luna-commands v0.1.0 (baseline)
+      Parsed [   0.002s] (baseline)
+    Checking luna-commands v0.1.0 -> v0.1.0 (no change; assume minor)
+     Checked [   0.004s] 196 checks: 196 pass, 57 skip
+     Summary no semver update required
+    Finished [   0.749s] luna-commands

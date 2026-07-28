@@ -1,0 +1,79 @@
+pub mod luna_accessibility
+pub enum luna_accessibility::AccessibilityAction
+pub luna_accessibility::AccessibilityAction::Click
+pub luna_accessibility::AccessibilityAction::Decrement
+pub luna_accessibility::AccessibilityAction::Focus
+pub luna_accessibility::AccessibilityAction::Increment
+pub luna_accessibility::AccessibilityAction::ReplaceSelectedText
+pub luna_accessibility::AccessibilityAction::SetTextSelection
+pub luna_accessibility::AccessibilityAction::SetValue
+pub luna_accessibility::AccessibilityAction::ShowContextMenu
+pub enum luna_accessibility::AccessibilityRole
+pub luna_accessibility::AccessibilityRole::Button
+pub luna_accessibility::AccessibilityRole::CheckBox
+pub luna_accessibility::AccessibilityRole::Dialog
+pub luna_accessibility::AccessibilityRole::Group
+pub luna_accessibility::AccessibilityRole::Label
+pub luna_accessibility::AccessibilityRole::List
+pub luna_accessibility::AccessibilityRole::ListItem
+pub luna_accessibility::AccessibilityRole::Menu
+pub luna_accessibility::AccessibilityRole::MenuBar
+pub luna_accessibility::AccessibilityRole::MenuItem
+pub luna_accessibility::AccessibilityRole::ProgressIndicator
+pub luna_accessibility::AccessibilityRole::Status
+pub luna_accessibility::AccessibilityRole::Tab
+pub luna_accessibility::AccessibilityRole::TabList
+pub luna_accessibility::AccessibilityRole::TextArea
+pub luna_accessibility::AccessibilityRole::TextField
+pub luna_accessibility::AccessibilityRole::Tree
+pub luna_accessibility::AccessibilityRole::TreeItem
+pub luna_accessibility::AccessibilityRole::Window
+pub enum luna_accessibility::AccessibilityTreeError
+pub luna_accessibility::AccessibilityTreeError::Cycle(luna_core::node_id::NodeId)
+pub luna_accessibility::AccessibilityTreeError::DuplicateNode(luna_core::node_id::NodeId)
+pub luna_accessibility::AccessibilityTreeError::MissingChild
+pub luna_accessibility::AccessibilityTreeError::MissingChild::child: luna_core::node_id::NodeId
+pub luna_accessibility::AccessibilityTreeError::MissingChild::parent: luna_core::node_id::NodeId
+pub luna_accessibility::AccessibilityTreeError::MissingRoot(luna_core::node_id::NodeId)
+impl core::error::Error for luna_accessibility::AccessibilityTreeError
+impl core::fmt::Display for luna_accessibility::AccessibilityTreeError
+pub fn luna_accessibility::AccessibilityTreeError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl luna_core::error_code::CodedError for luna_accessibility::AccessibilityTreeError
+pub fn luna_accessibility::AccessibilityTreeError::error_code(&self) -> luna_core::error_code::ErrorCode
+pub struct luna_accessibility::AccessibilityNode
+pub luna_accessibility::AccessibilityNode::actions: alloc::vec::Vec<luna_accessibility::AccessibilityAction>
+pub luna_accessibility::AccessibilityNode::bounds: luna_core::geometry::RectI
+pub luna_accessibility::AccessibilityNode::caret_range: core::option::Option<luna_accessibility::AccessibilityTextRange>
+pub luna_accessibility::AccessibilityNode::children: alloc::vec::Vec<luna_core::node_id::NodeId>
+pub luna_accessibility::AccessibilityNode::id: luna_core::node_id::NodeId
+pub luna_accessibility::AccessibilityNode::is_disabled: bool
+pub luna_accessibility::AccessibilityNode::is_editable: bool
+pub luna_accessibility::AccessibilityNode::is_focused: bool
+pub luna_accessibility::AccessibilityNode::label: core::option::Option<alloc::string::String>
+pub luna_accessibility::AccessibilityNode::role: luna_accessibility::AccessibilityRole
+pub luna_accessibility::AccessibilityNode::selected_range: core::option::Option<luna_accessibility::AccessibilityTextRange>
+pub luna_accessibility::AccessibilityNode::text_range: core::option::Option<luna_accessibility::AccessibilityTextRange>
+pub luna_accessibility::AccessibilityNode::value: core::option::Option<alloc::string::String>
+pub luna_accessibility::AccessibilityNode::visible_range: core::option::Option<luna_accessibility::AccessibilityTextRange>
+impl luna_accessibility::AccessibilityNode
+pub fn luna_accessibility::AccessibilityNode::new(luna_core::node_id::NodeId, luna_accessibility::AccessibilityRole, luna_core::geometry::RectI) -> Self
+pub fn luna_accessibility::AccessibilityNode::with_actions(self, impl core::iter::traits::collect::IntoIterator<Item = luna_accessibility::AccessibilityAction>) -> Self
+pub fn luna_accessibility::AccessibilityNode::with_children(self, alloc::vec::Vec<luna_core::node_id::NodeId>) -> Self
+pub const fn luna_accessibility::AccessibilityNode::with_disabled(self, bool) -> Self
+pub const fn luna_accessibility::AccessibilityNode::with_editable(self, bool) -> Self
+pub const fn luna_accessibility::AccessibilityNode::with_focused(self, bool) -> Self
+pub fn luna_accessibility::AccessibilityNode::with_label(self, impl core::convert::Into<alloc::string::String>) -> Self
+pub const fn luna_accessibility::AccessibilityNode::with_text_ranges(self, core::option::Option<luna_accessibility::AccessibilityTextRange>, core::option::Option<luna_accessibility::AccessibilityTextRange>, core::option::Option<luna_accessibility::AccessibilityTextRange>, core::option::Option<luna_accessibility::AccessibilityTextRange>) -> Self
+pub fn luna_accessibility::AccessibilityNode::with_value(self, impl core::convert::Into<alloc::string::String>) -> Self
+pub struct luna_accessibility::AccessibilityTextRange
+pub luna_accessibility::AccessibilityTextRange::utf8_length: usize
+pub luna_accessibility::AccessibilityTextRange::utf8_offset: usize
+impl luna_accessibility::AccessibilityTextRange
+pub const fn luna_accessibility::AccessibilityTextRange::new(usize, usize) -> Self
+pub struct luna_accessibility::AccessibilityTree
+impl luna_accessibility::AccessibilityTree
+pub const fn luna_accessibility::AccessibilityTree::fingerprint(&self) -> u64
+pub fn luna_accessibility::AccessibilityTree::new(luna_core::node_id::NodeId, impl core::iter::traits::collect::IntoIterator<Item = luna_accessibility::AccessibilityNode>) -> core::result::Result<Self, luna_accessibility::AccessibilityTreeError>
+pub fn luna_accessibility::AccessibilityTree::node(&self, &luna_core::node_id::NodeId) -> core::option::Option<&luna_accessibility::AccessibilityNode>
+pub fn luna_accessibility::AccessibilityTree::nodes(&self) -> impl core::iter::traits::iterator::Iterator<Item = &luna_accessibility::AccessibilityNode>
+pub const fn luna_accessibility::AccessibilityTree::root(&self) -> &luna_core::node_id::NodeId

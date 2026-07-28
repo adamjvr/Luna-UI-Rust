@@ -1,0 +1,75 @@
+pub mod luna_commands
+pub enum luna_commands::CommandIdError
+pub luna_commands::CommandIdError::ContainsWhitespace(alloc::string::String)
+pub luna_commands::CommandIdError::Empty
+impl core::error::Error for luna_commands::CommandIdError
+impl core::fmt::Display for luna_commands::CommandIdError
+pub fn luna_commands::CommandIdError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl luna_core::error_code::CodedError for luna_commands::CommandIdError
+pub fn luna_commands::CommandIdError::error_code(&self) -> luna_core::error_code::ErrorCode
+pub enum luna_commands::CommandRegistryError
+pub luna_commands::CommandRegistryError::DuplicateBinding(luna_commands::KeyChord)
+pub luna_commands::CommandRegistryError::DuplicateCommand(luna_commands::CommandId)
+pub luna_commands::CommandRegistryError::UnknownCommand(luna_commands::CommandId)
+impl core::error::Error for luna_commands::CommandRegistryError
+impl core::fmt::Display for luna_commands::CommandRegistryError
+pub fn luna_commands::CommandRegistryError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl luna_core::error_code::CodedError for luna_commands::CommandRegistryError
+pub fn luna_commands::CommandRegistryError::error_code(&self) -> luna_core::error_code::ErrorCode
+pub enum luna_commands::CommandSource
+pub luna_commands::CommandSource::Accessibility
+pub luna_commands::CommandSource::Application
+pub luna_commands::CommandSource::KeyBinding(luna_commands::KeyChord)
+pub luna_commands::CommandSource::Widget(luna_core::node_id::NodeId)
+pub struct luna_commands::CommandDefinition
+pub luna_commands::CommandDefinition::description: core::option::Option<alloc::string::String>
+pub luna_commands::CommandDefinition::id: luna_commands::CommandId
+pub luna_commands::CommandDefinition::title: alloc::string::String
+impl luna_commands::CommandDefinition
+pub fn luna_commands::CommandDefinition::new(luna_commands::CommandId, impl core::convert::Into<alloc::string::String>) -> Self
+pub fn luna_commands::CommandDefinition::with_description(self, impl core::convert::Into<alloc::string::String>) -> Self
+pub struct luna_commands::CommandId(_)
+impl luna_commands::CommandId
+pub fn luna_commands::CommandId::as_str(&self) -> &str
+pub fn luna_commands::CommandId::new(impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, luna_commands::CommandIdError>
+impl core::fmt::Display for luna_commands::CommandId
+pub fn luna_commands::CommandId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct luna_commands::CommandRegistry
+impl luna_commands::CommandRegistry
+pub fn luna_commands::CommandRegistry::command(&self, &luna_commands::CommandId) -> core::option::Option<&luna_commands::CommandDefinition>
+pub fn luna_commands::CommandRegistry::commands(&self) -> impl core::iter::traits::iterator::Iterator<Item = &luna_commands::CommandDefinition>
+pub fn luna_commands::CommandRegistry::new() -> Self
+pub fn luna_commands::CommandRegistry::register_binding(&mut self, luna_commands::KeyBinding) -> core::result::Result<(), luna_commands::CommandRegistryError>
+pub fn luna_commands::CommandRegistry::register_command(&mut self, luna_commands::CommandDefinition) -> core::result::Result<(), luna_commands::CommandRegistryError>
+pub fn luna_commands::CommandRegistry::resolve_keyboard(&self, &luna_input::KeyboardEvent) -> core::option::Option<luna_commands::CommandRequest>
+pub fn luna_commands::CommandRegistry::resolve_keyboard_with(&self, &luna_input::KeyboardEvent, impl core::ops::function::FnOnce(&luna_commands::CommandId) -> luna_commands::CommandState) -> core::option::Option<luna_commands::CommandRequest>
+pub struct luna_commands::CommandRequest
+pub luna_commands::CommandRequest::command: luna_commands::CommandId
+pub luna_commands::CommandRequest::source: luna_commands::CommandSource
+pub luna_commands::CommandRequest::target: core::option::Option<luna_core::node_id::NodeId>
+impl luna_commands::CommandRequest
+pub fn luna_commands::CommandRequest::new(luna_commands::CommandId, luna_commands::CommandSource) -> Self
+pub fn luna_commands::CommandRequest::with_target(self, luna_core::node_id::NodeId) -> Self
+pub struct luna_commands::CommandState
+pub luna_commands::CommandState::checked: bool
+pub luna_commands::CommandState::enabled: bool
+impl luna_commands::CommandState
+pub const luna_commands::CommandState::DISABLED: Self
+pub const luna_commands::CommandState::ENABLED: Self
+pub const fn luna_commands::CommandState::checked(bool) -> Self
+impl core::default::Default for luna_commands::CommandState
+pub fn luna_commands::CommandState::default() -> Self
+pub struct luna_commands::KeyBinding
+pub luna_commands::KeyBinding::allow_repeat: bool
+pub luna_commands::KeyBinding::chord: luna_commands::KeyChord
+pub luna_commands::KeyBinding::command: luna_commands::CommandId
+impl luna_commands::KeyBinding
+pub fn luna_commands::KeyBinding::new(luna_commands::KeyChord, luna_commands::CommandId) -> Self
+pub fn luna_commands::KeyBinding::with_repeat(self, bool) -> Self
+pub struct luna_commands::KeyChord
+pub luna_commands::KeyChord::key: luna_input::Key
+pub luna_commands::KeyChord::modifiers: luna_input::Modifiers
+impl luna_commands::KeyChord
+pub fn luna_commands::KeyChord::new(luna_input::Key, luna_input::Modifiers) -> Self
+pub trait luna_commands::CommandStateProvider
+pub fn luna_commands::CommandStateProvider::command_state(&self, &luna_commands::CommandId) -> luna_commands::CommandState

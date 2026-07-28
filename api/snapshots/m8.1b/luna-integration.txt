@@ -1,0 +1,54 @@
+pub mod luna_integration
+pub enum luna_integration::IntegrationError
+pub luna_integration::IntegrationError::EmptyApplicationId
+pub luna_integration::IntegrationError::EmptyDisplayName
+impl core::error::Error for luna_integration::IntegrationError
+impl core::fmt::Display for luna_integration::IntegrationError
+pub fn luna_integration::IntegrationError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl luna_core::error_code::CodedError for luna_integration::IntegrationError
+pub fn luna_integration::IntegrationError::error_code(&self) -> luna_core::error_code::ErrorCode
+#[non_exhaustive] pub enum luna_integration::ResourceError
+pub luna_integration::ResourceError::InvalidRelativePath(std::path::PathBuf)
+pub luna_integration::ResourceError::InvalidUtf8
+pub luna_integration::ResourceError::InvalidUtf8::message: alloc::string::String
+pub luna_integration::ResourceError::InvalidUtf8::path: std::path::PathBuf
+pub luna_integration::ResourceError::Io
+pub luna_integration::ResourceError::Io::message: alloc::string::String
+pub luna_integration::ResourceError::Io::path: std::path::PathBuf
+pub luna_integration::ResourceError::NotFound(std::path::PathBuf)
+impl core::error::Error for luna_integration::ResourceError
+impl core::fmt::Display for luna_integration::ResourceError
+pub fn luna_integration::ResourceError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl luna_core::error_code::CodedError for luna_integration::ResourceError
+pub fn luna_integration::ResourceError::error_code(&self) -> luna_core::error_code::ErrorCode
+pub struct luna_integration::DownstreamServices<F, D, W, Watch, S, Syntax, Completion>
+pub luna_integration::DownstreamServices::completion: Completion
+pub luna_integration::DownstreamServices::descriptor: luna_integration::IntegrationDescriptor
+pub luna_integration::DownstreamServices::dialogs: D
+pub luna_integration::DownstreamServices::files: F
+pub luna_integration::DownstreamServices::sessions: S
+pub luna_integration::DownstreamServices::syntax: Syntax
+pub luna_integration::DownstreamServices::watcher: Watch
+pub luna_integration::DownstreamServices::workspace: W
+impl<F, D, W, Watch, S, Syntax, Completion> luna_integration::DownstreamServices<F, D, W, Watch, S, Syntax, Completion>
+pub fn luna_integration::DownstreamServices<F, D, W, Watch, S, Syntax, Completion>::new(luna_integration::IntegrationDescriptor, F, D, W, Watch, S, Syntax, Completion) -> Self
+pub const fn luna_integration::DownstreamServices<F, D, W, Watch, S, Syntax, Completion>::platform_report(&self) -> luna_integration::IntegrationPlatformReport
+pub struct luna_integration::IntegrationDescriptor
+pub luna_integration::IntegrationDescriptor::application_id: alloc::string::String
+pub luna_integration::IntegrationDescriptor::display_name: alloc::string::String
+impl luna_integration::IntegrationDescriptor
+pub fn luna_integration::IntegrationDescriptor::new(impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, luna_integration::IntegrationError>
+pub struct luna_integration::IntegrationPlatformReport
+pub luna_integration::IntegrationPlatformReport::platform: luna_host_core::NativePlatform
+pub luna_integration::IntegrationPlatformReport::support_tier: luna_host_core::PlatformSupportTier
+impl luna_integration::IntegrationPlatformReport
+pub const fn luna_integration::IntegrationPlatformReport::current() -> Self
+pub struct luna_integration::ResourceLocator
+impl luna_integration::ResourceLocator
+pub fn luna_integration::ResourceLocator::application_id(&self) -> &str
+pub fn luna_integration::ResourceLocator::discover(impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, luna_integration::IntegrationError>
+pub fn luna_integration::ResourceLocator::new(impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, luna_integration::IntegrationError>
+pub fn luna_integration::ResourceLocator::push_root(&mut self, impl core::convert::Into<std::path::PathBuf>)
+pub fn luna_integration::ResourceLocator::read_utf8(&self, &std::path::Path) -> core::result::Result<alloc::string::String, luna_integration::ResourceError>
+pub fn luna_integration::ResourceLocator::resolve(&self, &std::path::Path) -> core::result::Result<std::path::PathBuf, luna_integration::ResourceError>
+pub fn luna_integration::ResourceLocator::roots(&self) -> &[std::path::PathBuf]

@@ -1,0 +1,131 @@
+pub mod luna_documents
+pub enum luna_documents::CloseRequirement
+pub luna_documents::CloseRequirement::Safe
+pub luna_documents::CloseRequirement::SaveOrDiscard
+pub enum luna_documents::DocumentError
+pub luna_documents::DocumentError::DuplicateUntitledSequence(u32)
+pub luna_documents::DocumentError::EmptyVirtualKey
+pub luna_documents::DocumentError::FileAlreadyOpen
+pub luna_documents::DocumentError::FileAlreadyOpen::existing: luna_documents::DocumentId
+pub luna_documents::DocumentError::FileAlreadyOpen::identity: luna_documents::FileIdentity
+pub luna_documents::DocumentError::InvalidUntitledSequence(u32)
+pub luna_documents::DocumentError::NonCanonicalPath(std::path::PathBuf)
+pub luna_documents::DocumentError::NotFileBacked(luna_documents::DocumentId)
+pub luna_documents::DocumentError::UnknownDocument(luna_documents::DocumentId)
+impl core::error::Error for luna_documents::DocumentError
+impl core::fmt::Display for luna_documents::DocumentError
+pub fn luna_documents::DocumentError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl luna_core::error_code::CodedError for luna_documents::DocumentError
+pub fn luna_documents::DocumentError::error_code(&self) -> luna_core::error_code::ErrorCode
+pub enum luna_documents::DocumentSource
+pub luna_documents::DocumentSource::File(luna_documents::FileIdentity)
+pub luna_documents::DocumentSource::Untitled
+pub luna_documents::DocumentSource::Untitled::sequence: u32
+pub luna_documents::DocumentSource::Virtual
+pub luna_documents::DocumentSource::Virtual::key: alloc::string::String
+pub enum luna_documents::ExternalState
+pub luna_documents::ExternalState::InSync
+pub luna_documents::ExternalState::Missing
+pub luna_documents::ExternalState::Modified
+pub luna_documents::ExternalState::Modified::observed: luna_documents::StorageSnapshot
+pub luna_documents::ExternalState::Recreated
+pub luna_documents::ExternalState::Recreated::observed: luna_documents::StorageSnapshot
+pub luna_documents::ExternalState::Replaced
+pub luna_documents::ExternalState::Replaced::observed: luna_documents::StorageSnapshot
+pub enum luna_documents::OpenFileOutcome
+pub luna_documents::OpenFileOutcome::AlreadyOpen(luna_documents::DocumentId)
+pub luna_documents::OpenFileOutcome::Opened(luna_documents::DocumentId)
+pub enum luna_documents::SaveRequirement
+pub luna_documents::SaveRequirement::None
+pub luna_documents::SaveRequirement::SaveAs
+pub luna_documents::SaveRequirement::Unsupported
+pub luna_documents::SaveRequirement::WriteFile
+pub luna_documents::SaveRequirement::WriteFile::expected_storage_snapshot: core::option::Option<luna_documents::StorageSnapshot>
+pub luna_documents::SaveRequirement::WriteFile::external_state: luna_documents::ExternalState
+pub luna_documents::SaveRequirement::WriteFile::identity: luna_documents::FileIdentity
+pub struct luna_documents::DocumentId(_)
+impl luna_documents::DocumentId
+pub fn luna_documents::DocumentId::stable_key(self) -> alloc::string::String
+pub const fn luna_documents::DocumentId::value(self) -> u64
+impl core::fmt::Display for luna_documents::DocumentId
+pub fn luna_documents::DocumentId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct luna_documents::DocumentRecord
+impl luna_documents::DocumentRecord
+pub const fn luna_documents::DocumentRecord::close_requirement(&self, u64) -> luna_documents::CloseRequirement
+pub const fn luna_documents::DocumentRecord::external_state(&self) -> luna_documents::ExternalState
+pub const fn luna_documents::DocumentRecord::id(&self) -> luna_documents::DocumentId
+pub const fn luna_documents::DocumentRecord::is_dirty(&self, u64) -> bool
+pub fn luna_documents::DocumentRecord::mark_saved(&mut self, u64, core::option::Option<luna_documents::StorageSnapshot>)
+pub fn luna_documents::DocumentRecord::observe_missing_file(&mut self)
+pub fn luna_documents::DocumentRecord::observe_storage_snapshot(&mut self, luna_documents::StorageSnapshot)
+pub fn luna_documents::DocumentRecord::save_requirement(&self, u64) -> luna_documents::SaveRequirement
+pub const fn luna_documents::DocumentRecord::saved_edit_revision(&self) -> u64
+pub const fn luna_documents::DocumentRecord::source(&self) -> &luna_documents::DocumentSource
+pub const fn luna_documents::DocumentRecord::storage_revision(&self) -> core::option::Option<luna_documents::StorageRevision>
+pub const fn luna_documents::DocumentRecord::storage_snapshot(&self) -> core::option::Option<luna_documents::StorageSnapshot>
+pub fn luna_documents::DocumentRecord::title(&self) -> &str
+pub struct luna_documents::DocumentRegistry
+impl luna_documents::DocumentRegistry
+pub fn luna_documents::DocumentRegistry::assign_file(&mut self, luna_documents::DocumentId, luna_documents::FileIdentity, impl core::convert::Into<alloc::string::String>, u64, core::option::Option<luna_documents::StorageSnapshot>) -> core::result::Result<(), luna_documents::DocumentError>
+pub fn luna_documents::DocumentRegistry::create_untitled(&mut self, u64) -> luna_documents::DocumentId
+pub fn luna_documents::DocumentRegistry::detach_file_to_untitled(&mut self, luna_documents::DocumentId) -> core::result::Result<(), luna_documents::DocumentError>
+pub fn luna_documents::DocumentRegistry::document_for_file(&self, &luna_documents::FileIdentity) -> core::option::Option<luna_documents::DocumentId>
+pub fn luna_documents::DocumentRegistry::get(&self, luna_documents::DocumentId) -> core::option::Option<&luna_documents::DocumentRecord>
+pub fn luna_documents::DocumentRegistry::get_mut(&mut self, luna_documents::DocumentId) -> core::option::Option<&mut luna_documents::DocumentRecord>
+pub fn luna_documents::DocumentRegistry::new() -> Self
+pub fn luna_documents::DocumentRegistry::records(&self) -> &[luna_documents::DocumentRecord]
+pub fn luna_documents::DocumentRegistry::register_file(&mut self, luna_documents::FileIdentity, impl core::convert::Into<alloc::string::String>, u64, core::option::Option<luna_documents::StorageSnapshot>) -> luna_documents::OpenFileOutcome
+pub fn luna_documents::DocumentRegistry::register_virtual(&mut self, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>, u64) -> core::result::Result<luna_documents::DocumentId, luna_documents::DocumentError>
+pub fn luna_documents::DocumentRegistry::relocate_file(&mut self, luna_documents::DocumentId, luna_documents::FileIdentity, impl core::convert::Into<alloc::string::String>, core::option::Option<luna_documents::StorageSnapshot>) -> core::result::Result<(), luna_documents::DocumentError>
+pub fn luna_documents::DocumentRegistry::remove(&mut self, luna_documents::DocumentId) -> core::option::Option<luna_documents::DocumentRecord>
+pub fn luna_documents::DocumentRegistry::restore_untitled(&mut self, u32, impl core::convert::Into<alloc::string::String>, u64) -> core::result::Result<luna_documents::DocumentId, luna_documents::DocumentError>
+impl core::default::Default for luna_documents::DocumentRegistry
+pub fn luna_documents::DocumentRegistry::default() -> Self
+pub struct luna_documents::DocumentViewId(_)
+impl luna_documents::DocumentViewId
+pub fn luna_documents::DocumentViewId::stable_key(self) -> alloc::string::String
+pub const fn luna_documents::DocumentViewId::value(self) -> u64
+pub struct luna_documents::DocumentViewRecord
+impl luna_documents::DocumentViewRecord
+pub const fn luna_documents::DocumentViewRecord::document_id(self) -> luna_documents::DocumentId
+pub const fn luna_documents::DocumentViewRecord::id(self) -> luna_documents::DocumentViewId
+pub struct luna_documents::DocumentViewRegistry
+impl luna_documents::DocumentViewRegistry
+pub fn luna_documents::DocumentViewRegistry::create_view(&mut self, luna_documents::DocumentId) -> luna_documents::DocumentViewId
+pub const fn luna_documents::DocumentViewRegistry::new() -> Self
+pub fn luna_documents::DocumentViewRegistry::remove_view(&mut self, luna_documents::DocumentViewId) -> core::option::Option<luna_documents::DocumentViewRecord>
+pub fn luna_documents::DocumentViewRegistry::view(&self, luna_documents::DocumentViewId) -> core::option::Option<luna_documents::DocumentViewRecord>
+pub fn luna_documents::DocumentViewRegistry::views(&self) -> &[luna_documents::DocumentViewRecord]
+pub fn luna_documents::DocumentViewRegistry::views_for_document(&self, luna_documents::DocumentId) -> impl core::iter::traits::iterator::Iterator<Item = luna_documents::DocumentViewRecord> + '_
+impl core::default::Default for luna_documents::DocumentViewRegistry
+pub fn luna_documents::DocumentViewRegistry::default() -> Self
+pub struct luna_documents::FileIdentity
+impl luna_documents::FileIdentity
+pub fn luna_documents::FileIdentity::from_canonical_path(impl core::convert::Into<std::path::PathBuf>) -> core::result::Result<Self, luna_documents::DocumentError>
+pub fn luna_documents::FileIdentity::path(&self) -> &std::path::Path
+pub struct luna_documents::RecentFileEntry
+impl luna_documents::RecentFileEntry
+pub const fn luna_documents::RecentFileEntry::identity(&self) -> &luna_documents::FileIdentity
+pub fn luna_documents::RecentFileEntry::title(&self) -> &str
+pub struct luna_documents::RecentFileList
+impl luna_documents::RecentFileList
+pub fn luna_documents::RecentFileList::clear(&mut self)
+pub fn luna_documents::RecentFileList::entries(&self) -> &[luna_documents::RecentFileEntry]
+pub const fn luna_documents::RecentFileList::new(usize) -> Self
+pub fn luna_documents::RecentFileList::record(&mut self, luna_documents::FileIdentity, impl core::convert::Into<alloc::string::String>)
+pub fn luna_documents::RecentFileList::relocate(&mut self, &luna_documents::FileIdentity, luna_documents::FileIdentity, impl core::convert::Into<alloc::string::String>)
+pub fn luna_documents::RecentFileList::remove(&mut self, &luna_documents::FileIdentity)
+pub fn luna_documents::RecentFileList::restore(&mut self, impl core::iter::traits::collect::IntoIterator<Item = (luna_documents::FileIdentity, alloc::string::String)>)
+pub struct luna_documents::StorageInstance(_)
+impl luna_documents::StorageInstance
+pub const fn luna_documents::StorageInstance::new(u128) -> Self
+pub const fn luna_documents::StorageInstance::value(self) -> u128
+pub struct luna_documents::StorageRevision(_)
+impl luna_documents::StorageRevision
+pub const fn luna_documents::StorageRevision::new(u64) -> Self
+pub const fn luna_documents::StorageRevision::value(self) -> u64
+pub struct luna_documents::StorageSnapshot
+impl luna_documents::StorageSnapshot
+pub const fn luna_documents::StorageSnapshot::instance(self) -> luna_documents::StorageInstance
+pub const fn luna_documents::StorageSnapshot::new(luna_documents::StorageRevision, luna_documents::StorageInstance) -> Self
+pub const fn luna_documents::StorageSnapshot::revision(self) -> luna_documents::StorageRevision

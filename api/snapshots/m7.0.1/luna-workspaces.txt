@@ -1,0 +1,205 @@
+pub mod luna_workspaces
+pub enum luna_workspaces::HiddenFilePolicy
+pub luna_workspaces::HiddenFilePolicy::Exclude
+pub luna_workspaces::HiddenFilePolicy::Include
+pub enum luna_workspaces::SymlinkPolicy
+pub luna_workspaces::SymlinkPolicy::Exclude
+pub luna_workspaces::SymlinkPolicy::ShowAsLeaf
+pub enum luna_workspaces::WorkspaceCollisionPolicy
+pub luna_workspaces::WorkspaceCollisionPolicy::FailIfExists
+pub luna_workspaces::WorkspaceCollisionPolicy::ReplaceFile
+pub enum luna_workspaces::WorkspaceErrorKind
+pub luna_workspaces::WorkspaceErrorKind::AlreadyExists
+pub luna_workspaces::WorkspaceErrorKind::InvalidName
+pub luna_workspaces::WorkspaceErrorKind::InvalidPath
+pub luna_workspaces::WorkspaceErrorKind::InvalidSnapshot
+pub luna_workspaces::WorkspaceErrorKind::Io
+pub luna_workspaces::WorkspaceErrorKind::NotDirectory
+pub luna_workspaces::WorkspaceErrorKind::NotFound
+pub luna_workspaces::WorkspaceErrorKind::PermissionDenied
+pub enum luna_workspaces::WorkspaceNodeKind
+pub luna_workspaces::WorkspaceNodeKind::Directory
+pub luna_workspaces::WorkspaceNodeKind::File
+pub luna_workspaces::WorkspaceNodeKind::Symlink
+pub enum luna_workspaces::WorkspaceNodeStatus
+pub luna_workspaces::WorkspaceNodeStatus::Available
+pub luna_workspaces::WorkspaceNodeStatus::DepthLimit
+pub luna_workspaces::WorkspaceNodeStatus::PermissionDenied
+pub luna_workspaces::WorkspaceNodeStatus::Unreadable(alloc::string::String)
+impl luna_workspaces::WorkspaceNodeStatus
+pub const fn luna_workspaces::WorkspaceNodeStatus::is_available(&self) -> bool
+pub enum luna_workspaces::WorkspaceRefreshScope
+pub luna_workspaces::WorkspaceRefreshScope::Full
+pub luna_workspaces::WorkspaceRefreshScope::Subtree(std::path::PathBuf)
+pub enum luna_workspaces::WorkspaceWatchKind
+pub luna_workspaces::WorkspaceWatchKind::Created
+pub luna_workspaces::WorkspaceWatchKind::Modified
+pub luna_workspaces::WorkspaceWatchKind::Removed
+pub luna_workspaces::WorkspaceWatchKind::Renamed
+pub luna_workspaces::WorkspaceWatchKind::RescanRequired
+pub struct luna_workspaces::LinuxWorkspaceWatchService
+impl core::default::Default for luna_workspaces::LinuxWorkspaceWatchService
+pub fn luna_workspaces::LinuxWorkspaceWatchService::default() -> Self
+impl luna_workspaces::WorkspaceWatchService for luna_workspaces::LinuxWorkspaceWatchService
+pub fn luna_workspaces::LinuxWorkspaceWatchService::drain_events(&mut self) -> core::result::Result<alloc::vec::Vec<luna_workspaces::WorkspaceWatchEvent>, luna_workspaces::WorkspaceError>
+pub fn luna_workspaces::LinuxWorkspaceWatchService::watch(&mut self, &std::path::Path) -> core::result::Result<(), luna_workspaces::WorkspaceError>
+pub struct luna_workspaces::MemoryWorkspaceService
+impl luna_workspaces::MemoryWorkspaceService
+pub fn luna_workspaces::MemoryWorkspaceService::insert_directory(&self, &std::path::Path) -> core::result::Result<(), luna_workspaces::WorkspaceError>
+pub fn luna_workspaces::MemoryWorkspaceService::insert_file(&self, &std::path::Path) -> core::result::Result<(), luna_workspaces::WorkspaceError>
+pub fn luna_workspaces::MemoryWorkspaceService::insert_symlink(&self, &std::path::Path) -> core::result::Result<(), luna_workspaces::WorkspaceError>
+pub fn luna_workspaces::MemoryWorkspaceService::new(impl core::convert::Into<std::path::PathBuf>) -> core::result::Result<Self, luna_workspaces::WorkspaceError>
+pub fn luna_workspaces::MemoryWorkspaceService::remove(&self, &std::path::Path) -> core::result::Result<bool, luna_workspaces::WorkspaceError>
+pub fn luna_workspaces::MemoryWorkspaceService::set_status(&self, &std::path::Path, luna_workspaces::WorkspaceNodeStatus) -> core::result::Result<(), luna_workspaces::WorkspaceError>
+impl luna_workspaces::WorkspaceMutationService for luna_workspaces::MemoryWorkspaceService
+pub fn luna_workspaces::MemoryWorkspaceService::create_directory(&self, &std::path::Path, &str) -> core::result::Result<luna_workspaces::WorkspaceMutationOutcome, luna_workspaces::WorkspaceError>
+pub fn luna_workspaces::MemoryWorkspaceService::create_file(&self, &std::path::Path, &str, luna_workspaces::WorkspaceCollisionPolicy) -> core::result::Result<luna_workspaces::WorkspaceMutationOutcome, luna_workspaces::WorkspaceError>
+pub fn luna_workspaces::MemoryWorkspaceService::delete(&self, &std::path::Path) -> core::result::Result<(), luna_workspaces::WorkspaceError>
+pub fn luna_workspaces::MemoryWorkspaceService::rename(&self, &std::path::Path, &str, luna_workspaces::WorkspaceCollisionPolicy) -> core::result::Result<luna_workspaces::WorkspaceMutationOutcome, luna_workspaces::WorkspaceError>
+impl luna_workspaces::WorkspaceService for luna_workspaces::MemoryWorkspaceService
+pub fn luna_workspaces::MemoryWorkspaceService::scan(&self, &std::path::Path, luna_workspaces::WorkspaceScanOptions) -> core::result::Result<luna_workspaces::WorkspaceSnapshot, luna_workspaces::WorkspaceError>
+pub struct luna_workspaces::MemoryWorkspaceWatchService
+impl luna_workspaces::MemoryWorkspaceWatchService
+pub fn luna_workspaces::MemoryWorkspaceWatchService::push(&mut self, luna_workspaces::WorkspaceWatchEvent)
+impl luna_workspaces::WorkspaceWatchService for luna_workspaces::MemoryWorkspaceWatchService
+pub fn luna_workspaces::MemoryWorkspaceWatchService::drain_events(&mut self) -> core::result::Result<alloc::vec::Vec<luna_workspaces::WorkspaceWatchEvent>, luna_workspaces::WorkspaceError>
+pub fn luna_workspaces::MemoryWorkspaceWatchService::watch(&mut self, &std::path::Path) -> core::result::Result<(), luna_workspaces::WorkspaceError>
+pub struct luna_workspaces::NotifyWorkspaceWatchService
+impl core::fmt::Debug for luna_workspaces::NotifyWorkspaceWatchService
+pub fn luna_workspaces::NotifyWorkspaceWatchService::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl luna_workspaces::WorkspaceWatchService for luna_workspaces::NotifyWorkspaceWatchService
+pub fn luna_workspaces::NotifyWorkspaceWatchService::drain_events(&mut self) -> core::result::Result<alloc::vec::Vec<luna_workspaces::WorkspaceWatchEvent>, luna_workspaces::WorkspaceError>
+pub fn luna_workspaces::NotifyWorkspaceWatchService::watch(&mut self, &std::path::Path) -> core::result::Result<(), luna_workspaces::WorkspaceError>
+pub struct luna_workspaces::PlatformWorkspaceWatchService
+impl core::default::Default for luna_workspaces::PlatformWorkspaceWatchService
+pub fn luna_workspaces::PlatformWorkspaceWatchService::default() -> Self
+impl luna_workspaces::WorkspaceWatchService for luna_workspaces::PlatformWorkspaceWatchService
+pub fn luna_workspaces::PlatformWorkspaceWatchService::drain_events(&mut self) -> core::result::Result<alloc::vec::Vec<luna_workspaces::WorkspaceWatchEvent>, luna_workspaces::WorkspaceError>
+pub fn luna_workspaces::PlatformWorkspaceWatchService::watch(&mut self, &std::path::Path) -> core::result::Result<(), luna_workspaces::WorkspaceError>
+pub struct luna_workspaces::PollingWorkspaceWatchService
+impl luna_workspaces::WorkspaceWatchService for luna_workspaces::PollingWorkspaceWatchService
+pub fn luna_workspaces::PollingWorkspaceWatchService::drain_events(&mut self) -> core::result::Result<alloc::vec::Vec<luna_workspaces::WorkspaceWatchEvent>, luna_workspaces::WorkspaceError>
+pub fn luna_workspaces::PollingWorkspaceWatchService::watch(&mut self, &std::path::Path) -> core::result::Result<(), luna_workspaces::WorkspaceError>
+pub struct luna_workspaces::StdWorkspaceService
+impl luna_workspaces::WorkspaceMutationService for luna_workspaces::StdWorkspaceService
+pub fn luna_workspaces::StdWorkspaceService::create_directory(&self, &std::path::Path, &str) -> core::result::Result<luna_workspaces::WorkspaceMutationOutcome, luna_workspaces::WorkspaceError>
+pub fn luna_workspaces::StdWorkspaceService::create_file(&self, &std::path::Path, &str, luna_workspaces::WorkspaceCollisionPolicy) -> core::result::Result<luna_workspaces::WorkspaceMutationOutcome, luna_workspaces::WorkspaceError>
+pub fn luna_workspaces::StdWorkspaceService::delete(&self, &std::path::Path) -> core::result::Result<(), luna_workspaces::WorkspaceError>
+pub fn luna_workspaces::StdWorkspaceService::rename(&self, &std::path::Path, &str, luna_workspaces::WorkspaceCollisionPolicy) -> core::result::Result<luna_workspaces::WorkspaceMutationOutcome, luna_workspaces::WorkspaceError>
+impl luna_workspaces::WorkspaceService for luna_workspaces::StdWorkspaceService
+pub fn luna_workspaces::StdWorkspaceService::scan(&self, &std::path::Path, luna_workspaces::WorkspaceScanOptions) -> core::result::Result<luna_workspaces::WorkspaceSnapshot, luna_workspaces::WorkspaceError>
+pub struct luna_workspaces::WorkspaceError
+impl luna_workspaces::WorkspaceError
+pub const fn luna_workspaces::WorkspaceError::is_not_found(&self) -> bool
+pub const fn luna_workspaces::WorkspaceError::kind(&self) -> luna_workspaces::WorkspaceErrorKind
+pub const fn luna_workspaces::WorkspaceError::operation(&self) -> &'static str
+pub fn luna_workspaces::WorkspaceError::path(&self) -> &std::path::Path
+impl core::error::Error for luna_workspaces::WorkspaceError
+impl core::fmt::Display for luna_workspaces::WorkspaceError
+pub fn luna_workspaces::WorkspaceError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl luna_core::error_code::CodedError for luna_workspaces::WorkspaceError
+pub fn luna_workspaces::WorkspaceError::error_code(&self) -> luna_core::error_code::ErrorCode
+pub struct luna_workspaces::WorkspaceModel
+impl luna_workspaces::WorkspaceModel
+pub fn luna_workspaces::WorkspaceModel::expanded_paths(&self) -> alloc::vec::Vec<std::path::PathBuf>
+pub const fn luna_workspaces::WorkspaceModel::generation(&self) -> u64
+pub fn luna_workspaces::WorkspaceModel::is_expanded(&self, &luna_workspaces::WorkspaceNodeId) -> bool
+pub fn luna_workspaces::WorkspaceModel::new(luna_workspaces::WorkspaceSnapshot) -> Self
+pub fn luna_workspaces::WorkspaceModel::refresh(&mut self, luna_workspaces::WorkspaceSnapshot) -> bool
+pub fn luna_workspaces::WorkspaceModel::refresh_from_events<S>(&mut self, &S, &[luna_workspaces::WorkspaceWatchEvent], luna_workspaces::WorkspaceScanOptions) -> core::result::Result<bool, luna_workspaces::WorkspaceError> where S: luna_workspaces::WorkspaceService + ?core::marker::Sized
+pub fn luna_workspaces::WorkspaceModel::restore_tree_state(&mut self, &[std::path::PathBuf], core::option::Option<&std::path::Path>) -> bool
+pub fn luna_workspaces::WorkspaceModel::reveal(&mut self, &luna_workspaces::WorkspaceNodeId) -> bool
+pub fn luna_workspaces::WorkspaceModel::select(&mut self, core::option::Option<luna_workspaces::WorkspaceNodeId>) -> bool
+pub const fn luna_workspaces::WorkspaceModel::selected(&self) -> core::option::Option<&luna_workspaces::WorkspaceNodeId>
+pub const fn luna_workspaces::WorkspaceModel::snapshot(&self) -> &luna_workspaces::WorkspaceSnapshot
+pub fn luna_workspaces::WorkspaceModel::toggle_expanded(&mut self, &luna_workspaces::WorkspaceNodeId) -> bool
+pub fn luna_workspaces::WorkspaceModel::visible_rows(&self) -> alloc::vec::Vec<luna_workspaces::WorkspaceVisibleRow>
+pub struct luna_workspaces::WorkspaceMutationOutcome
+impl luna_workspaces::WorkspaceMutationOutcome
+pub const fn luna_workspaces::WorkspaceMutationOutcome::kind(&self) -> luna_workspaces::WorkspaceNodeKind
+pub fn luna_workspaces::WorkspaceMutationOutcome::path(&self) -> &std::path::Path
+pub struct luna_workspaces::WorkspaceNode
+impl luna_workspaces::WorkspaceNode
+pub fn luna_workspaces::WorkspaceNode::children(&self) -> &[luna_workspaces::WorkspaceNodeId]
+pub const fn luna_workspaces::WorkspaceNode::id(&self) -> &luna_workspaces::WorkspaceNodeId
+pub const fn luna_workspaces::WorkspaceNode::kind(&self) -> luna_workspaces::WorkspaceNodeKind
+pub fn luna_workspaces::WorkspaceNode::path(&self) -> &std::path::Path
+pub fn luna_workspaces::WorkspaceNode::relative_path(&self) -> &std::path::Path
+pub const fn luna_workspaces::WorkspaceNode::status(&self) -> &luna_workspaces::WorkspaceNodeStatus
+pub fn luna_workspaces::WorkspaceNode::title(&self) -> &str
+pub struct luna_workspaces::WorkspaceNodeId(_)
+impl luna_workspaces::WorkspaceNodeId
+pub fn luna_workspaces::WorkspaceNodeId::from_absolute_path(&std::path::Path) -> core::result::Result<Self, luna_workspaces::WorkspaceError>
+pub fn luna_workspaces::WorkspaceNodeId::stable_key(&self) -> &str
+pub struct luna_workspaces::WorkspaceScanOptions
+pub luna_workspaces::WorkspaceScanOptions::hidden_files: luna_workspaces::HiddenFilePolicy
+pub luna_workspaces::WorkspaceScanOptions::maximum_depth: u16
+pub luna_workspaces::WorkspaceScanOptions::symlinks: luna_workspaces::SymlinkPolicy
+impl core::default::Default for luna_workspaces::WorkspaceScanOptions
+pub fn luna_workspaces::WorkspaceScanOptions::default() -> Self
+pub struct luna_workspaces::WorkspaceSnapshot
+impl luna_workspaces::WorkspaceSnapshot
+pub fn luna_workspaces::WorkspaceSnapshot::contains(&self, &luna_workspaces::WorkspaceNodeId) -> bool
+pub const fn luna_workspaces::WorkspaceSnapshot::fingerprint(&self) -> u64
+pub fn luna_workspaces::WorkspaceSnapshot::node(&self, &luna_workspaces::WorkspaceNodeId) -> core::option::Option<&luna_workspaces::WorkspaceNode>
+pub fn luna_workspaces::WorkspaceSnapshot::node_for_path(&self, &std::path::Path) -> core::option::Option<&luna_workspaces::WorkspaceNode>
+pub fn luna_workspaces::WorkspaceSnapshot::node_for_stable_key(&self, &str) -> core::option::Option<&luna_workspaces::WorkspaceNode>
+pub fn luna_workspaces::WorkspaceSnapshot::nodes(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = &luna_workspaces::WorkspaceNode>
+pub fn luna_workspaces::WorkspaceSnapshot::reconcile_subtree(&self, &std::path::Path, core::option::Option<&luna_workspaces::WorkspaceSnapshot>) -> core::result::Result<Self, luna_workspaces::WorkspaceError>
+pub fn luna_workspaces::WorkspaceSnapshot::root(&self) -> &std::path::Path
+pub const fn luna_workspaces::WorkspaceSnapshot::root_id(&self) -> &luna_workspaces::WorkspaceNodeId
+pub struct luna_workspaces::WorkspaceVisibleRow
+pub luna_workspaces::WorkspaceVisibleRow::depth: u16
+pub luna_workspaces::WorkspaceVisibleRow::id: luna_workspaces::WorkspaceNodeId
+pub luna_workspaces::WorkspaceVisibleRow::is_expanded: bool
+pub luna_workspaces::WorkspaceVisibleRow::kind: luna_workspaces::WorkspaceNodeKind
+pub luna_workspaces::WorkspaceVisibleRow::path: std::path::PathBuf
+pub luna_workspaces::WorkspaceVisibleRow::status: luna_workspaces::WorkspaceNodeStatus
+pub luna_workspaces::WorkspaceVisibleRow::title: alloc::string::String
+pub struct luna_workspaces::WorkspaceWatchEvent
+pub luna_workspaces::WorkspaceWatchEvent::kind: luna_workspaces::WorkspaceWatchKind
+pub luna_workspaces::WorkspaceWatchEvent::path: std::path::PathBuf
+pub trait luna_workspaces::WorkspaceMutationService
+pub fn luna_workspaces::WorkspaceMutationService::create_directory(&self, &std::path::Path, &str) -> core::result::Result<luna_workspaces::WorkspaceMutationOutcome, luna_workspaces::WorkspaceError>
+pub fn luna_workspaces::WorkspaceMutationService::create_file(&self, &std::path::Path, &str, luna_workspaces::WorkspaceCollisionPolicy) -> core::result::Result<luna_workspaces::WorkspaceMutationOutcome, luna_workspaces::WorkspaceError>
+pub fn luna_workspaces::WorkspaceMutationService::delete(&self, &std::path::Path) -> core::result::Result<(), luna_workspaces::WorkspaceError>
+pub fn luna_workspaces::WorkspaceMutationService::rename(&self, &std::path::Path, &str, luna_workspaces::WorkspaceCollisionPolicy) -> core::result::Result<luna_workspaces::WorkspaceMutationOutcome, luna_workspaces::WorkspaceError>
+impl luna_workspaces::WorkspaceMutationService for luna_workspaces::MemoryWorkspaceService
+pub fn luna_workspaces::MemoryWorkspaceService::create_directory(&self, &std::path::Path, &str) -> core::result::Result<luna_workspaces::WorkspaceMutationOutcome, luna_workspaces::WorkspaceError>
+pub fn luna_workspaces::MemoryWorkspaceService::create_file(&self, &std::path::Path, &str, luna_workspaces::WorkspaceCollisionPolicy) -> core::result::Result<luna_workspaces::WorkspaceMutationOutcome, luna_workspaces::WorkspaceError>
+pub fn luna_workspaces::MemoryWorkspaceService::delete(&self, &std::path::Path) -> core::result::Result<(), luna_workspaces::WorkspaceError>
+pub fn luna_workspaces::MemoryWorkspaceService::rename(&self, &std::path::Path, &str, luna_workspaces::WorkspaceCollisionPolicy) -> core::result::Result<luna_workspaces::WorkspaceMutationOutcome, luna_workspaces::WorkspaceError>
+impl luna_workspaces::WorkspaceMutationService for luna_workspaces::StdWorkspaceService
+pub fn luna_workspaces::StdWorkspaceService::create_directory(&self, &std::path::Path, &str) -> core::result::Result<luna_workspaces::WorkspaceMutationOutcome, luna_workspaces::WorkspaceError>
+pub fn luna_workspaces::StdWorkspaceService::create_file(&self, &std::path::Path, &str, luna_workspaces::WorkspaceCollisionPolicy) -> core::result::Result<luna_workspaces::WorkspaceMutationOutcome, luna_workspaces::WorkspaceError>
+pub fn luna_workspaces::StdWorkspaceService::delete(&self, &std::path::Path) -> core::result::Result<(), luna_workspaces::WorkspaceError>
+pub fn luna_workspaces::StdWorkspaceService::rename(&self, &std::path::Path, &str, luna_workspaces::WorkspaceCollisionPolicy) -> core::result::Result<luna_workspaces::WorkspaceMutationOutcome, luna_workspaces::WorkspaceError>
+pub trait luna_workspaces::WorkspaceRuntimeService: luna_workspaces::WorkspaceService + luna_workspaces::WorkspaceMutationService
+impl<T> luna_workspaces::WorkspaceRuntimeService for T where T: luna_workspaces::WorkspaceService + luna_workspaces::WorkspaceMutationService
+pub trait luna_workspaces::WorkspaceService
+pub fn luna_workspaces::WorkspaceService::scan(&self, &std::path::Path, luna_workspaces::WorkspaceScanOptions) -> core::result::Result<luna_workspaces::WorkspaceSnapshot, luna_workspaces::WorkspaceError>
+impl luna_workspaces::WorkspaceService for luna_workspaces::MemoryWorkspaceService
+pub fn luna_workspaces::MemoryWorkspaceService::scan(&self, &std::path::Path, luna_workspaces::WorkspaceScanOptions) -> core::result::Result<luna_workspaces::WorkspaceSnapshot, luna_workspaces::WorkspaceError>
+impl luna_workspaces::WorkspaceService for luna_workspaces::StdWorkspaceService
+pub fn luna_workspaces::StdWorkspaceService::scan(&self, &std::path::Path, luna_workspaces::WorkspaceScanOptions) -> core::result::Result<luna_workspaces::WorkspaceSnapshot, luna_workspaces::WorkspaceError>
+pub trait luna_workspaces::WorkspaceWatchService
+pub fn luna_workspaces::WorkspaceWatchService::drain_events(&mut self) -> core::result::Result<alloc::vec::Vec<luna_workspaces::WorkspaceWatchEvent>, luna_workspaces::WorkspaceError>
+pub fn luna_workspaces::WorkspaceWatchService::watch(&mut self, &std::path::Path) -> core::result::Result<(), luna_workspaces::WorkspaceError>
+impl luna_workspaces::WorkspaceWatchService for luna_workspaces::LinuxWorkspaceWatchService
+pub fn luna_workspaces::LinuxWorkspaceWatchService::drain_events(&mut self) -> core::result::Result<alloc::vec::Vec<luna_workspaces::WorkspaceWatchEvent>, luna_workspaces::WorkspaceError>
+pub fn luna_workspaces::LinuxWorkspaceWatchService::watch(&mut self, &std::path::Path) -> core::result::Result<(), luna_workspaces::WorkspaceError>
+impl luna_workspaces::WorkspaceWatchService for luna_workspaces::MemoryWorkspaceWatchService
+pub fn luna_workspaces::MemoryWorkspaceWatchService::drain_events(&mut self) -> core::result::Result<alloc::vec::Vec<luna_workspaces::WorkspaceWatchEvent>, luna_workspaces::WorkspaceError>
+pub fn luna_workspaces::MemoryWorkspaceWatchService::watch(&mut self, &std::path::Path) -> core::result::Result<(), luna_workspaces::WorkspaceError>
+impl luna_workspaces::WorkspaceWatchService for luna_workspaces::NotifyWorkspaceWatchService
+pub fn luna_workspaces::NotifyWorkspaceWatchService::drain_events(&mut self) -> core::result::Result<alloc::vec::Vec<luna_workspaces::WorkspaceWatchEvent>, luna_workspaces::WorkspaceError>
+pub fn luna_workspaces::NotifyWorkspaceWatchService::watch(&mut self, &std::path::Path) -> core::result::Result<(), luna_workspaces::WorkspaceError>
+impl luna_workspaces::WorkspaceWatchService for luna_workspaces::PlatformWorkspaceWatchService
+pub fn luna_workspaces::PlatformWorkspaceWatchService::drain_events(&mut self) -> core::result::Result<alloc::vec::Vec<luna_workspaces::WorkspaceWatchEvent>, luna_workspaces::WorkspaceError>
+pub fn luna_workspaces::PlatformWorkspaceWatchService::watch(&mut self, &std::path::Path) -> core::result::Result<(), luna_workspaces::WorkspaceError>
+impl luna_workspaces::WorkspaceWatchService for luna_workspaces::PollingWorkspaceWatchService
+pub fn luna_workspaces::PollingWorkspaceWatchService::drain_events(&mut self) -> core::result::Result<alloc::vec::Vec<luna_workspaces::WorkspaceWatchEvent>, luna_workspaces::WorkspaceError>
+pub fn luna_workspaces::PollingWorkspaceWatchService::watch(&mut self, &std::path::Path) -> core::result::Result<(), luna_workspaces::WorkspaceError>
+pub fn luna_workspaces::coalesce_watch_events(&std::path::Path, &[luna_workspaces::WorkspaceWatchEvent]) -> core::result::Result<alloc::vec::Vec<luna_workspaces::WorkspaceWatchEvent>, luna_workspaces::WorkspaceError>
+pub fn luna_workspaces::refresh_scope_for_events(&std::path::Path, &[luna_workspaces::WorkspaceWatchEvent]) -> core::result::Result<core::option::Option<luna_workspaces::WorkspaceRefreshScope>, luna_workspaces::WorkspaceError>
+pub type luna_workspaces::MacWorkspaceWatchService = luna_workspaces::PlatformWorkspaceWatchService

@@ -1,0 +1,75 @@
+pub mod luna_text_cosmic
+pub enum luna_text_cosmic::TextLayoutError
+pub luna_text_cosmic::TextLayoutError::Framebuffer(luna_render::framebuffer::FramebufferError)
+pub luna_text_cosmic::TextLayoutError::InvalidCacheState
+pub luna_text_cosmic::TextLayoutError::InvalidColorSpan(core::ops::range::Range<usize>)
+pub luna_text_cosmic::TextLayoutError::InvalidFontSize
+pub luna_text_cosmic::TextLayoutError::InvalidLineHeight
+pub luna_text_cosmic::TextLayoutError::RasterImage(luna_render::raster_image::RasterImageError)
+impl core::convert::From<luna_render::framebuffer::FramebufferError> for luna_text_cosmic::TextLayoutError
+pub fn luna_text_cosmic::TextLayoutError::from(luna_render::framebuffer::FramebufferError) -> Self
+impl core::convert::From<luna_render::raster_image::RasterImageError> for luna_text_cosmic::TextLayoutError
+pub fn luna_text_cosmic::TextLayoutError::from(luna_render::raster_image::RasterImageError) -> Self
+impl core::error::Error for luna_text_cosmic::TextLayoutError
+pub fn luna_text_cosmic::TextLayoutError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for luna_text_cosmic::TextLayoutError
+pub fn luna_text_cosmic::TextLayoutError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl luna_core::error_code::CodedError for luna_text_cosmic::TextLayoutError
+pub fn luna_text_cosmic::TextLayoutError::error_code(&self) -> luna_core::error_code::ErrorCode
+pub struct luna_text_cosmic::CaretStop
+pub luna_text_cosmic::CaretStop::height: u32
+pub luna_text_cosmic::CaretStop::location: luna_text::TextLocation
+pub luna_text_cosmic::CaretStop::point: luna_core::geometry::PointI
+pub struct luna_text_cosmic::TextColorSpan
+pub luna_text_cosmic::TextColorSpan::foreground: luna_theme::Rgba8
+pub luna_text_cosmic::TextColorSpan::range: core::ops::range::Range<usize>
+impl luna_text_cosmic::TextColorSpan
+pub const fn luna_text_cosmic::TextColorSpan::new(core::ops::range::Range<usize>, luna_theme::Rgba8) -> Self
+pub struct luna_text_cosmic::TextEngine
+impl luna_text_cosmic::TextEngine
+pub fn luna_text_cosmic::TextEngine::new() -> Self
+pub fn luna_text_cosmic::TextEngine::shape(&mut self, &luna_text::TextDocument, luna_text_cosmic::TextLayoutRequest) -> core::result::Result<luna_text_cosmic::TextLayoutSnapshot, luna_text_cosmic::TextLayoutError>
+impl core::default::Default for luna_text_cosmic::TextEngine
+pub fn luna_text_cosmic::TextEngine::default() -> Self
+pub struct luna_text_cosmic::TextLayoutCache
+impl luna_text_cosmic::TextLayoutCache
+pub fn luna_text_cosmic::TextLayoutCache::invalidate_raster(&mut self)
+pub const fn luna_text_cosmic::TextLayoutCache::new() -> Self
+pub const fn luna_text_cosmic::TextLayoutCache::snapshot(&self) -> core::option::Option<&luna_text_cosmic::TextLayoutSnapshot>
+pub const fn luna_text_cosmic::TextLayoutCache::stats(&self) -> luna_text_cosmic::TextLayoutCacheStats
+pub fn luna_text_cosmic::TextLayoutCache::update(&mut self, &mut luna_text_cosmic::TextEngine, &luna_text::TextDocument, u64, luna_text_cosmic::TextLayoutRequest, i32, u32) -> core::result::Result<&luna_text_cosmic::TextLayoutSnapshot, luna_text_cosmic::TextLayoutError>
+pub fn luna_text_cosmic::TextLayoutCache::update_styled(&mut self, &mut luna_text_cosmic::TextEngine, &luna_text::TextDocument, u64, u64, &[luna_text_cosmic::TextColorSpan], luna_text_cosmic::TextLayoutRequest, i32, u32) -> core::result::Result<&luna_text_cosmic::TextLayoutSnapshot, luna_text_cosmic::TextLayoutError>
+pub const fn luna_text_cosmic::TextLayoutCache::with_overscan_viewports(self, u32) -> Self
+impl core::default::Default for luna_text_cosmic::TextLayoutCache
+pub fn luna_text_cosmic::TextLayoutCache::default() -> Self
+pub struct luna_text_cosmic::TextLayoutCacheStats
+pub luna_text_cosmic::TextLayoutCacheStats::layout_hits: u64
+pub luna_text_cosmic::TextLayoutCacheStats::layout_misses: u64
+pub luna_text_cosmic::TextLayoutCacheStats::raster_hits: u64
+pub luna_text_cosmic::TextLayoutCacheStats::raster_misses: u64
+impl luna_text_cosmic::TextLayoutCacheStats
+pub fn luna_text_cosmic::TextLayoutCacheStats::accumulate(&mut self, Self)
+pub struct luna_text_cosmic::TextLayoutRequest
+pub luna_text_cosmic::TextLayoutRequest::font_size: f32
+pub luna_text_cosmic::TextLayoutRequest::foreground: luna_theme::Rgba8
+pub luna_text_cosmic::TextLayoutRequest::line_height: f32
+pub luna_text_cosmic::TextLayoutRequest::maximum_raster_width: u32
+pub luna_text_cosmic::TextLayoutRequest::tab_width: u16
+pub luna_text_cosmic::TextLayoutRequest::width: u32
+impl luna_text_cosmic::TextLayoutRequest
+pub const fn luna_text_cosmic::TextLayoutRequest::new(u32, f32, f32, luna_theme::Rgba8) -> Self
+pub const fn luna_text_cosmic::TextLayoutRequest::with_maximum_raster_width(self, u32) -> Self
+pub struct luna_text_cosmic::TextLayoutSnapshot
+impl luna_text_cosmic::TextLayoutSnapshot
+pub fn luna_text_cosmic::TextLayoutSnapshot::caret_rect(&self, luna_text::TextLocation) -> core::option::Option<luna_core::geometry::RectI>
+pub fn luna_text_cosmic::TextLayoutSnapshot::caret_stops(&self) -> &[luna_text_cosmic::CaretStop]
+pub const fn luna_text_cosmic::TextLayoutSnapshot::content_padding(&self) -> u32
+pub const fn luna_text_cosmic::TextLayoutSnapshot::content_size(&self) -> luna_core::geometry::SizeI
+pub fn luna_text_cosmic::TextLayoutSnapshot::covers_vertical_viewport(&self, i32, u32) -> bool
+pub fn luna_text_cosmic::TextLayoutSnapshot::hit_test(&self, luna_core::geometry::PointI) -> core::option::Option<luna_text::TextLocation>
+pub const fn luna_text_cosmic::TextLayoutSnapshot::image(&self) -> &luna_render::raster_image::RasterImage
+pub const fn luna_text_cosmic::TextLayoutSnapshot::line_height(&self) -> u32
+pub fn luna_text_cosmic::TextLayoutSnapshot::maximum_scroll(&self, luna_core::geometry::SizeI) -> luna_core::geometry::PointI
+pub const fn luna_text_cosmic::TextLayoutSnapshot::raster_bounds(&self) -> luna_core::geometry::RectI
+pub fn luna_text_cosmic::TextLayoutSnapshot::selection_rects(&self, luna_text::TextRange) -> alloc::vec::Vec<luna_core::geometry::RectI>
+pub fn luna_text_cosmic::TextLayoutSnapshot::visible_range(&self, &luna_text::TextDocument, i32, u32) -> luna_text::TextRange

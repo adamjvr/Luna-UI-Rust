@@ -1,0 +1,70 @@
+pub mod luna_qualification
+pub enum luna_qualification::ApiStability
+pub luna_qualification::ApiStability::Internal
+pub luna_qualification::ApiStability::Provisional
+pub luna_qualification::ApiStability::Stable
+impl luna_qualification::ApiStability
+pub const fn luna_qualification::ApiStability::as_str(self) -> &'static str
+pub enum luna_qualification::QualificationError
+pub luna_qualification::QualificationError::BudgetExceeded
+pub luna_qualification::QualificationError::BudgetExceeded::maximum: u64
+pub luna_qualification::QualificationError::BudgetExceeded::metric: luna_qualification::QualificationMetric
+pub luna_qualification::QualificationError::BudgetExceeded::observed: u64
+pub luna_qualification::QualificationError::DuplicateBudget(luna_qualification::QualificationMetric)
+pub luna_qualification::QualificationError::DuplicateMeasurement(luna_qualification::QualificationMetric)
+pub luna_qualification::QualificationError::EmptyProfileName
+pub luna_qualification::QualificationError::MissingMeasurement(luna_qualification::QualificationMetric)
+impl core::error::Error for luna_qualification::QualificationError
+impl core::fmt::Display for luna_qualification::QualificationError
+pub fn luna_qualification::QualificationError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl luna_core::error_code::CodedError for luna_qualification::QualificationError
+pub fn luna_qualification::QualificationError::error_code(&self) -> luna_core::error_code::ErrorCode
+pub enum luna_qualification::QualificationMetric
+pub luna_qualification::QualificationMetric::AccessibilityNodes
+pub luna_qualification::QualificationMetric::CpuDisplayCommands
+pub luna_qualification::QualificationMetric::EditorReplayOperations
+pub luna_qualification::QualificationMetric::GpuAtlasBytes
+pub luna_qualification::QualificationMetric::GpuDrawBatches
+pub luna_qualification::QualificationMetric::GpuIndexCapacityBytes
+pub luna_qualification::QualificationMetric::GpuVertexCapacityBytes
+pub luna_qualification::QualificationMetric::MenuRows
+pub luna_qualification::QualificationMetric::PaneLeaves
+pub luna_qualification::QualificationMetric::PaneSplitters
+pub luna_qualification::QualificationMetric::TextLayoutMisses
+pub luna_qualification::QualificationMetric::TextRasterMisses
+pub luna_qualification::QualificationMetric::WorkspaceNodes
+impl luna_qualification::QualificationMetric
+pub const fn luna_qualification::QualificationMetric::as_str(self) -> &'static str
+pub struct luna_qualification::CrateContract
+pub luna_qualification::CrateContract::package: &'static str
+pub luna_qualification::CrateContract::responsibility: &'static str
+pub luna_qualification::CrateContract::stability: luna_qualification::ApiStability
+pub struct luna_qualification::LongSessionWatermark
+impl luna_qualification::LongSessionWatermark
+pub const fn luna_qualification::LongSessionWatermark::current_bytes(self) -> u64
+pub const fn luna_qualification::LongSessionWatermark::peak_bytes(self) -> u64
+pub fn luna_qualification::LongSessionWatermark::record(&mut self, u64)
+pub const fn luna_qualification::LongSessionWatermark::samples(self) -> u64
+pub struct luna_qualification::QualificationBudget
+pub luna_qualification::QualificationBudget::maximum: u64
+pub luna_qualification::QualificationBudget::metric: luna_qualification::QualificationMetric
+pub struct luna_qualification::QualificationMeasurement
+pub luna_qualification::QualificationMeasurement::metric: luna_qualification::QualificationMetric
+pub luna_qualification::QualificationMeasurement::value: u64
+pub struct luna_qualification::QualificationProfile
+impl luna_qualification::QualificationProfile
+pub fn luna_qualification::QualificationProfile::budgets(&self) -> &[luna_qualification::QualificationBudget]
+pub fn luna_qualification::QualificationProfile::evaluate(&self, impl core::iter::traits::collect::IntoIterator<Item = luna_qualification::QualificationMeasurement>) -> core::result::Result<luna_qualification::QualificationReport, luna_qualification::QualificationError>
+pub fn luna_qualification::QualificationProfile::m7_release() -> Self
+pub fn luna_qualification::QualificationProfile::name(&self) -> &str
+pub fn luna_qualification::QualificationProfile::new(impl core::convert::Into<alloc::string::String>, impl core::iter::traits::collect::IntoIterator<Item = luna_qualification::QualificationBudget>) -> core::result::Result<Self, luna_qualification::QualificationError>
+pub struct luna_qualification::QualificationReport
+impl luna_qualification::QualificationReport
+pub fn luna_qualification::QualificationReport::profile(&self) -> &str
+pub fn luna_qualification::QualificationReport::results(&self) -> &[luna_qualification::QualificationResult]
+pub fn luna_qualification::QualificationReport::to_json(&self) -> alloc::string::String
+pub struct luna_qualification::QualificationResult
+pub luna_qualification::QualificationResult::maximum: u64
+pub luna_qualification::QualificationResult::metric: luna_qualification::QualificationMetric
+pub luna_qualification::QualificationResult::observed: u64
+pub const luna_qualification::CRATE_CONTRACTS: &[luna_qualification::CrateContract]

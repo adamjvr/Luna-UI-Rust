@@ -1,0 +1,68 @@
+pub mod luna_render
+pub enum luna_render::DisplayCommand
+pub luna_render::DisplayCommand::Clear(luna_theme::Rgba8)
+pub luna_render::DisplayCommand::DrawImage
+pub luna_render::DisplayCommand::DrawImage::clip: core::option::Option<luna_core::geometry::RectI>
+pub luna_render::DisplayCommand::DrawImage::image: luna_render::RasterImage
+pub luna_render::DisplayCommand::DrawImage::origin: luna_core::geometry::PointI
+pub luna_render::DisplayCommand::FillRect
+pub luna_render::DisplayCommand::FillRect::bounds: luna_core::geometry::RectI
+pub luna_render::DisplayCommand::FillRect::color: luna_theme::Rgba8
+pub luna_render::DisplayCommand::PopClip
+pub luna_render::DisplayCommand::PushClip(luna_core::geometry::RectI)
+pub enum luna_render::FramebufferError
+pub luna_render::FramebufferError::SizeOverflow
+impl core::error::Error for luna_render::FramebufferError
+impl core::fmt::Display for luna_render::FramebufferError
+pub fn luna_render::FramebufferError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl luna_core::error_code::CodedError for luna_render::FramebufferError
+pub fn luna_render::FramebufferError::error_code(&self) -> luna_core::error_code::ErrorCode
+pub enum luna_render::RasterImageError
+pub luna_render::RasterImageError::IncorrectByteLength
+pub luna_render::RasterImageError::IncorrectByteLength::actual: usize
+pub luna_render::RasterImageError::IncorrectByteLength::expected: usize
+pub luna_render::RasterImageError::SizeOverflow
+impl core::error::Error for luna_render::RasterImageError
+impl core::fmt::Display for luna_render::RasterImageError
+pub fn luna_render::RasterImageError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl luna_core::error_code::CodedError for luna_render::RasterImageError
+pub fn luna_render::RasterImageError::error_code(&self) -> luna_core::error_code::ErrorCode
+pub struct luna_render::CpuRenderer
+impl luna_render::CpuRenderer
+pub fn luna_render::CpuRenderer::render(&luna_render::DisplayList, &mut luna_render::Framebuffer)
+pub fn luna_render::CpuRenderer::render_scaled(&luna_render::DisplayList, &mut luna_render::Framebuffer, f64)
+pub fn luna_render::CpuRenderer::scale_logical_rect(luna_core::geometry::RectI, f64) -> luna_core::geometry::RectI
+pub struct luna_render::DisplayList
+impl luna_render::DisplayList
+pub fn luna_render::DisplayList::append(&mut self, &mut Self)
+pub fn luna_render::DisplayList::clear(&mut self, luna_theme::Rgba8)
+pub fn luna_render::DisplayList::commands(&self) -> &[luna_render::DisplayCommand]
+pub fn luna_render::DisplayList::draw_image(&mut self, luna_core::geometry::PointI, luna_render::RasterImage)
+pub fn luna_render::DisplayList::draw_image_clipped(&mut self, luna_core::geometry::PointI, luna_render::RasterImage, luna_core::geometry::RectI)
+pub fn luna_render::DisplayList::extend(&mut self, &Self)
+pub fn luna_render::DisplayList::fill_rect(&mut self, luna_core::geometry::RectI, luna_theme::Rgba8)
+pub fn luna_render::DisplayList::is_empty(&self) -> bool
+pub const fn luna_render::DisplayList::new() -> Self
+pub fn luna_render::DisplayList::pop_clip(&mut self)
+pub fn luna_render::DisplayList::push_clip(&mut self, luna_core::geometry::RectI)
+pub struct luna_render::Framebuffer
+impl luna_render::Framebuffer
+pub fn luna_render::Framebuffer::blend_image(&mut self, luna_core::geometry::RectI, &luna_render::RasterImage)
+pub fn luna_render::Framebuffer::blend_image_clipped(&mut self, luna_core::geometry::RectI, &luna_render::RasterImage, core::option::Option<luna_core::geometry::RectI>)
+pub fn luna_render::Framebuffer::blend_rect(&mut self, luna_core::geometry::RectI, luna_theme::Rgba8)
+pub fn luna_render::Framebuffer::bytes(&self) -> &[u8]
+pub fn luna_render::Framebuffer::clear(&mut self, luna_theme::Rgba8)
+pub fn luna_render::Framebuffer::copy_from(&mut self, &Self) -> usize
+pub fn luna_render::Framebuffer::copy_rect_from(&mut self, &Self, luna_core::geometry::RectI) -> usize
+pub fn luna_render::Framebuffer::copy_xrgb8888(&self, &mut [u32]) -> usize
+pub fn luna_render::Framebuffer::fill_rect(&mut self, luna_core::geometry::RectI, luna_theme::Rgba8)
+pub fn luna_render::Framebuffer::into_raster_image(self) -> core::result::Result<luna_render::RasterImage, luna_render::RasterImageError>
+pub fn luna_render::Framebuffer::new(luna_core::geometry::SizeI) -> core::result::Result<Self, luna_render::FramebufferError>
+pub fn luna_render::Framebuffer::reset(&mut self)
+pub const fn luna_render::Framebuffer::size(&self) -> luna_core::geometry::SizeI
+pub struct luna_render::RasterImage
+impl luna_render::RasterImage
+pub fn luna_render::RasterImage::bytes(&self) -> &[u8]
+pub fn luna_render::RasterImage::new(luna_core::geometry::SizeI, alloc::vec::Vec<u8>) -> core::result::Result<Self, luna_render::RasterImageError>
+pub const fn luna_render::RasterImage::size(&self) -> luna_core::geometry::SizeI
+pub fn luna_render::RasterImage::transparent(luna_core::geometry::SizeI) -> core::result::Result<Self, luna_render::RasterImageError>

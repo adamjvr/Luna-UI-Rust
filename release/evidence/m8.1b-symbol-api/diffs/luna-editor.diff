@@ -1,0 +1,13 @@
+--- m7.0.1/luna-editor.txt
++++ m8.1b/luna-editor.txt
+@@ -26,8 +26,8 @@
+ pub luna_editor::ParityError::InvalidSelection::operation_index: usize
+ pub luna_editor::ParityError::InvalidSelection::source: luna_editor::SelectionError
+ pub luna_editor::ParityError::Mismatch
+-pub luna_editor::ParityError::Mismatch::actual: luna_editor::ParityResult
+-pub luna_editor::ParityError::Mismatch::expected: luna_editor::ParityResult
++pub luna_editor::ParityError::Mismatch::actual: alloc::boxed::Box<luna_editor::ParityResult>
++pub luna_editor::ParityError::Mismatch::expected: alloc::boxed::Box<luna_editor::ParityResult>
+ pub luna_editor::ParityError::Mismatch::fixture: alloc::string::String
+ impl core::error::Error for luna_editor::ParityError
+ pub fn luna_editor::ParityError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>

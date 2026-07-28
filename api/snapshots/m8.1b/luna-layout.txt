@@ -1,0 +1,66 @@
+pub mod luna_layout
+pub enum luna_layout::Axis
+pub luna_layout::Axis::Horizontal
+pub luna_layout::Axis::Vertical
+pub enum luna_layout::CrossAlignment
+pub luna_layout::CrossAlignment::Center
+pub luna_layout::CrossAlignment::End
+pub luna_layout::CrossAlignment::Start
+pub luna_layout::CrossAlignment::Stretch
+pub enum luna_layout::CrossAxisSize
+pub luna_layout::CrossAxisSize::Fixed(u32)
+pub luna_layout::CrossAxisSize::Stretch
+pub enum luna_layout::MainAxisSize
+pub luna_layout::MainAxisSize::Fixed(u32)
+pub luna_layout::MainAxisSize::Flex
+pub luna_layout::MainAxisSize::Flex::weight: u16
+pub struct luna_layout::LayoutFrame
+pub luna_layout::LayoutFrame::bounds: luna_core::geometry::RectI
+pub luna_layout::LayoutFrame::id: luna_core::node_id::NodeId
+pub struct luna_layout::LayoutSnapshot
+impl luna_layout::LayoutSnapshot
+pub fn luna_layout::LayoutSnapshot::bounds(&self, &luna_core::node_id::NodeId) -> core::option::Option<luna_core::geometry::RectI>
+pub fn luna_layout::LayoutSnapshot::frames(&self) -> &[luna_layout::LayoutFrame]
+pub fn luna_layout::LayoutSnapshot::is_empty(&self) -> bool
+pub fn luna_layout::LayoutSnapshot::new(impl core::iter::traits::collect::IntoIterator<Item = luna_layout::LayoutFrame>) -> Self
+pub struct luna_layout::LinearItem
+pub luna_layout::LinearItem::cross: luna_layout::CrossAxisSize
+pub luna_layout::LinearItem::id: luna_core::node_id::NodeId
+pub luna_layout::LinearItem::main: luna_layout::MainAxisSize
+impl luna_layout::LinearItem
+pub fn luna_layout::LinearItem::fixed(luna_core::node_id::NodeId, u32) -> Self
+pub fn luna_layout::LinearItem::flex(luna_core::node_id::NodeId, u16) -> Self
+pub const fn luna_layout::LinearItem::with_cross(self, luna_layout::CrossAxisSize) -> Self
+pub struct luna_layout::LinearLayout
+pub luna_layout::LinearLayout::axis: luna_layout::Axis
+pub luna_layout::LinearLayout::bounds: luna_core::geometry::RectI
+pub luna_layout::LinearLayout::cross_alignment: luna_layout::CrossAlignment
+pub luna_layout::LinearLayout::gap: u32
+pub luna_layout::LinearLayout::items: alloc::vec::Vec<luna_layout::LinearItem>
+pub luna_layout::LinearLayout::padding: luna_core::geometry::InsetsI
+impl luna_layout::LinearLayout
+pub fn luna_layout::LinearLayout::calculate(&self) -> luna_layout::LayoutSnapshot
+pub struct luna_layout::SplitLayout
+pub luna_layout::SplitLayout::axis: luna_layout::Axis
+pub luna_layout::SplitLayout::bounds: luna_core::geometry::RectI
+pub luna_layout::SplitLayout::divider_extent: u32
+pub luna_layout::SplitLayout::minimum_first: u32
+pub luna_layout::SplitLayout::minimum_second: u32
+pub luna_layout::SplitLayout::ratio_per_mille: u16
+impl luna_layout::SplitLayout
+pub fn luna_layout::SplitLayout::calculate(self) -> luna_layout::SplitSnapshot
+pub struct luna_layout::SplitSnapshot
+pub luna_layout::SplitSnapshot::divider: luna_core::geometry::RectI
+pub luna_layout::SplitSnapshot::first: luna_core::geometry::RectI
+pub luna_layout::SplitSnapshot::second: luna_core::geometry::RectI
+pub struct luna_layout::StackItem
+pub luna_layout::StackItem::horizontal: luna_layout::CrossAlignment
+pub luna_layout::StackItem::id: luna_core::node_id::NodeId
+pub luna_layout::StackItem::size: core::option::Option<luna_core::geometry::SizeI>
+pub luna_layout::StackItem::vertical: luna_layout::CrossAlignment
+pub struct luna_layout::StackLayout
+pub luna_layout::StackLayout::bounds: luna_core::geometry::RectI
+pub luna_layout::StackLayout::items: alloc::vec::Vec<luna_layout::StackItem>
+pub luna_layout::StackLayout::padding: luna_core::geometry::InsetsI
+impl luna_layout::StackLayout
+pub fn luna_layout::StackLayout::calculate(&self) -> luna_layout::LayoutSnapshot

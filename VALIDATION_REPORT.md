@@ -71,9 +71,16 @@ Any Linux formatting, API-contract, compilation, Clippy, test, rustdoc, determin
 packaging, CPU/GPU, or operator-checklist regression blocks an M8 candidate. macOS remains advisory
 until repeated real-hardware acceptance supports promotion.
 
-## M8.1a Clipboard Candidate
+## M8.1a Clipboard Acceptance
 
-- A provisional `luna-clipboard` service boundary now supplies native and deterministic memory adapters.
+- A provisional `luna-clipboard` service boundary supplies native and deterministic memory adapters.
 - Edit > Cut, Copy, and Paste plus Ctrl+X/C/V share one editor command path across CPU and `wgpu` hosts.
-- The candidate remains unaccepted until `scripts/test-m8-1.sh`, cross-application clipboard transfer,
-  multi-selection behavior, undo, and extracted-package operation pass locally.
+- The complete M8.1a gate, CPU and `wgpu` operator passes, cross-application transfer,
+  multi-selection behavior, undo/redo, and extracted-package operation passed on Linux/Pop!_OS.
+
+## M8.1b symbol-level API acceptance
+
+M8.1b is accepted on the blocking Linux/Pop!_OS lane. Pinned symbol snapshots were retained for every
+accepted M7 and current public crate, every difference was explicitly classified, snapshot checksums
+passed, and `cargo-semver-checks` completed across every stable crate shared with the baseline. The
+accepted comparison contains no unclassified or accidental change.

@@ -1,0 +1,20 @@
+{
+  "baseline": "/home/adamjvr/GitHub/Luna-UI-Rust/api/baselines/m7.0.1.toml",
+  "baseline_crate_count": 23,
+  "breaking_change_count": 0,
+  "changes": [
+    {
+      "after": "provisional",
+      "before": null,
+      "classification": "compatible",
+      "kind": "crate-added",
+      "package": "luna-clipboard",
+      "rationale": "Adds a provisional product-neutral clipboard boundary without changing any accepted M7 stable crate contract."
+    }
+  ],
+  "classification": "/home/adamjvr/GitHub/Luna-UI-Rust/api/compatibility/m8.1.json",
+  "current": "/home/adamjvr/GitHub/Luna-UI-Rust/api/public-api.toml",
+  "current_crate_count": 24,
+  "passed": true,
+  "schema_version": 1
+}

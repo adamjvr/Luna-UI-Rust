@@ -1,0 +1,8 @@
+pub mod luna_host_wgpu
+pub struct luna_host_wgpu::WgpuHostError
+impl core::error::Error for luna_host_wgpu::WgpuHostError
+impl core::fmt::Display for luna_host_wgpu::WgpuHostError
+pub fn luna_host_wgpu::WgpuHostError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl luna_core::error_code::CodedError for luna_host_wgpu::WgpuHostError
+pub fn luna_host_wgpu::WgpuHostError::error_code(&self) -> luna_core::error_code::ErrorCode
+pub fn luna_host_wgpu::run_native_wgpu(impl luna_host_winit::host::NativeApplication + 'static) -> core::result::Result<(), luna_host_wgpu::WgpuHostError>

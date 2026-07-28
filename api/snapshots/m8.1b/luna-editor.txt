@@ -1,0 +1,201 @@
+pub mod luna_editor
+pub enum luna_editor::ColorSchemeError
+pub luna_editor::ColorSchemeError::ExpectedObject(&'static str)
+pub luna_editor::ColorSchemeError::InvalidColor
+pub luna_editor::ColorSchemeError::InvalidColor::field: alloc::string::String
+pub luna_editor::ColorSchemeError::InvalidColor::value: alloc::string::String
+pub luna_editor::ColorSchemeError::InvalidJson
+pub luna_editor::ColorSchemeError::InvalidJson::message: alloc::string::String
+pub luna_editor::ColorSchemeError::InvalidJson::offset: usize
+pub luna_editor::ColorSchemeError::InvalidScope
+pub luna_editor::ColorSchemeError::MissingField(&'static str)
+pub luna_editor::ColorSchemeError::UnterminatedComment
+impl core::error::Error for luna_editor::ColorSchemeError
+impl core::fmt::Display for luna_editor::ColorSchemeError
+pub fn luna_editor::ColorSchemeError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl luna_core::error_code::CodedError for luna_editor::ColorSchemeError
+pub fn luna_editor::ColorSchemeError::error_code(&self) -> luna_core::error_code::ErrorCode
+pub enum luna_editor::EditGroup
+pub luna_editor::EditGroup::Command
+pub luna_editor::EditGroup::Deletion
+pub luna_editor::EditGroup::Ime
+pub luna_editor::EditGroup::Replacement
+pub luna_editor::EditGroup::Typing
+pub enum luna_editor::ParityError
+pub luna_editor::ParityError::InvalidSelection
+pub luna_editor::ParityError::InvalidSelection::operation_index: usize
+pub luna_editor::ParityError::InvalidSelection::source: luna_editor::SelectionError
+pub luna_editor::ParityError::Mismatch
+pub luna_editor::ParityError::Mismatch::actual: alloc::boxed::Box<luna_editor::ParityResult>
+pub luna_editor::ParityError::Mismatch::expected: alloc::boxed::Box<luna_editor::ParityResult>
+pub luna_editor::ParityError::Mismatch::fixture: alloc::string::String
+impl core::error::Error for luna_editor::ParityError
+pub fn luna_editor::ParityError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for luna_editor::ParityError
+pub fn luna_editor::ParityError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl luna_core::error_code::CodedError for luna_editor::ParityError
+pub fn luna_editor::ParityError::error_code(&self) -> luna_core::error_code::ErrorCode
+pub enum luna_editor::ParityOperation
+pub luna_editor::ParityOperation::AddCursorAbove
+pub luna_editor::ParityOperation::AddCursorBelow
+pub luna_editor::ParityOperation::ClearSecondaryCursors
+pub luna_editor::ParityOperation::DeleteBackward
+pub luna_editor::ParityOperation::DeleteForward
+pub luna_editor::ParityOperation::Insert(alloc::string::String)
+pub luna_editor::ParityOperation::Redo
+pub luna_editor::ParityOperation::SetSelections
+pub luna_editor::ParityOperation::SetSelections::primary_index: usize
+pub luna_editor::ParityOperation::SetSelections::selections: alloc::vec::Vec<luna_editor::ByteSelection>
+pub luna_editor::ParityOperation::Undo
+pub enum luna_editor::SelectionError
+pub luna_editor::SelectionError::EmptySet
+pub luna_editor::SelectionError::InvalidPrimaryIndex(usize)
+impl core::error::Error for luna_editor::SelectionError
+impl core::fmt::Display for luna_editor::SelectionError
+pub fn luna_editor::SelectionError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl luna_core::error_code::CodedError for luna_editor::SelectionError
+pub fn luna_editor::SelectionError::error_code(&self) -> luna_core::error_code::ErrorCode
+pub enum luna_editor::SyntaxError
+pub luna_editor::SyntaxError::InvalidUtf8Boundary(core::ops::range::Range<usize>)
+pub luna_editor::SyntaxError::OutOfBounds(core::ops::range::Range<usize>)
+pub luna_editor::SyntaxError::OverlappingSpans
+pub luna_editor::SyntaxError::OverlappingSpans::next: core::ops::range::Range<usize>
+pub luna_editor::SyntaxError::OverlappingSpans::previous: core::ops::range::Range<usize>
+impl core::error::Error for luna_editor::SyntaxError
+impl core::fmt::Display for luna_editor::SyntaxError
+pub fn luna_editor::SyntaxError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl luna_core::error_code::CodedError for luna_editor::SyntaxError
+pub fn luna_editor::SyntaxError::error_code(&self) -> luna_core::error_code::ErrorCode
+pub struct luna_editor::ByteEdit
+pub luna_editor::ByteEdit::inserted_text: alloc::string::String
+pub luna_editor::ByteEdit::old_range: core::ops::range::Range<usize>
+pub struct luna_editor::ByteSelection
+pub luna_editor::ByteSelection::anchor: usize
+pub luna_editor::ByteSelection::focus: usize
+impl luna_editor::ByteSelection
+pub const fn luna_editor::ByteSelection::caret(usize) -> Self
+pub const fn luna_editor::ByteSelection::is_collapsed(self) -> bool
+pub const fn luna_editor::ByteSelection::new(usize, usize) -> Self
+pub fn luna_editor::ByteSelection::normalized_range(self) -> core::ops::range::Range<usize>
+pub struct luna_editor::EditHistory
+impl luna_editor::EditHistory
+pub fn luna_editor::EditHistory::can_redo(&self) -> bool
+pub fn luna_editor::EditHistory::can_undo(&self) -> bool
+pub fn luna_editor::EditHistory::clear(&mut self)
+pub fn luna_editor::EditHistory::is_at_saved_checkpoint(&self, &luna_editor::HistorySnapshot) -> bool
+pub fn luna_editor::EditHistory::mark_saved(&mut self, &luna_editor::HistorySnapshot)
+pub fn luna_editor::EditHistory::new(usize) -> Self
+pub fn luna_editor::EditHistory::record(&mut self, luna_editor::HistorySnapshot, luna_editor::HistorySnapshot, luna_editor::EditGroup)
+pub fn luna_editor::EditHistory::redo(&mut self, &luna_editor::HistorySnapshot) -> core::option::Option<luna_editor::HistorySnapshot>
+pub fn luna_editor::EditHistory::redo_depth(&self) -> usize
+pub fn luna_editor::EditHistory::undo(&mut self, &luna_editor::HistorySnapshot) -> core::option::Option<luna_editor::HistorySnapshot>
+pub fn luna_editor::EditHistory::undo_depth(&self) -> usize
+impl core::default::Default for luna_editor::EditHistory
+pub fn luna_editor::EditHistory::default() -> Self
+pub struct luna_editor::EditorParityFixture
+pub luna_editor::EditorParityFixture::expected: luna_editor::ParityResult
+pub luna_editor::EditorParityFixture::initial_selections: luna_editor::SelectionSet
+pub luna_editor::EditorParityFixture::initial_text: alloc::string::String
+pub luna_editor::EditorParityFixture::name: alloc::string::String
+pub luna_editor::EditorParityFixture::operations: alloc::vec::Vec<luna_editor::ParityOperation>
+impl luna_editor::EditorParityFixture
+pub fn luna_editor::EditorParityFixture::replay(&self) -> core::result::Result<luna_editor::ParityResult, luna_editor::ParityError>
+pub fn luna_editor::EditorParityFixture::verify(&self) -> core::result::Result<(), luna_editor::ParityError>
+pub struct luna_editor::HistorySnapshot
+pub luna_editor::HistorySnapshot::selections: luna_editor::SelectionSet
+pub luna_editor::HistorySnapshot::text: alloc::string::String
+impl luna_editor::HistorySnapshot
+pub fn luna_editor::HistorySnapshot::new(impl core::convert::Into<alloc::string::String>, luna_editor::SelectionSet) -> Self
+pub struct luna_editor::ImeCommit
+pub luna_editor::ImeCommit::replacement: core::ops::range::Range<usize>
+pub luna_editor::ImeCommit::text: alloc::string::String
+pub struct luna_editor::ImeComposition
+impl luna_editor::ImeComposition
+pub fn luna_editor::ImeComposition::cancel(&mut self)
+pub fn luna_editor::ImeComposition::commit(&mut self, impl core::convert::Into<alloc::string::String>) -> core::option::Option<luna_editor::ImeCommit>
+pub const fn luna_editor::ImeComposition::is_active(&self) -> bool
+pub const fn luna_editor::ImeComposition::new() -> Self
+pub fn luna_editor::ImeComposition::preedit(&self) -> &str
+pub fn luna_editor::ImeComposition::replacement(&self) -> core::ops::range::Range<usize>
+pub fn luna_editor::ImeComposition::selected_range(&self) -> core::option::Option<core::ops::range::Range<usize>>
+pub fn luna_editor::ImeComposition::update(&mut self, core::ops::range::Range<usize>, impl core::convert::Into<alloc::string::String>, core::option::Option<core::ops::range::Range<usize>>)
+pub struct luna_editor::KeywordSyntaxProvider
+impl luna_editor::KeywordSyntaxProvider
+pub fn luna_editor::KeywordSyntaxProvider::new(impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>, impl core::convert::Into<alloc::string::String>) -> Self
+pub fn luna_editor::KeywordSyntaxProvider::rust_demo() -> Self
+impl luna_editor::SyntaxProvider for luna_editor::KeywordSyntaxProvider
+pub fn luna_editor::KeywordSyntaxProvider::snapshot(&mut self, &str, u64) -> core::result::Result<luna_editor::SyntaxSnapshot, luna_editor::SyntaxError>
+pub struct luna_editor::MultiEditResult
+pub luna_editor::MultiEditResult::did_change: bool
+pub luna_editor::MultiEditResult::edits: alloc::vec::Vec<luna_editor::ByteEdit>
+pub luna_editor::MultiEditResult::selections: luna_editor::SelectionSet
+pub luna_editor::MultiEditResult::text: alloc::string::String
+pub struct luna_editor::ParityResult
+pub luna_editor::ParityResult::redo_depth: usize
+pub luna_editor::ParityResult::selections: luna_editor::SelectionSet
+pub luna_editor::ParityResult::text: alloc::string::String
+pub luna_editor::ParityResult::undo_depth: usize
+pub struct luna_editor::ResolvedSyntaxSpan
+pub luna_editor::ResolvedSyntaxSpan::range: core::ops::range::Range<usize>
+pub luna_editor::ResolvedSyntaxSpan::scope: alloc::string::String
+pub luna_editor::ResolvedSyntaxSpan::style: luna_editor::SyntaxStyle
+pub struct luna_editor::SelectionSet
+impl luna_editor::SelectionSet
+pub fn luna_editor::SelectionSet::add(&mut self, &str, luna_editor::ByteSelection)
+pub fn luna_editor::SelectionSet::add_cursor_vertical(&mut self, &str, i32) -> bool
+pub fn luna_editor::SelectionSet::clear_secondary(&mut self)
+pub fn luna_editor::SelectionSet::delete_backward(&self, &str) -> luna_editor::MultiEditResult
+pub fn luna_editor::SelectionSet::delete_forward(&self, &str) -> luna_editor::MultiEditResult
+pub fn luna_editor::SelectionSet::is_empty(&self) -> bool
+pub fn luna_editor::SelectionSet::is_multiple(&self) -> bool
+pub fn luna_editor::SelectionSet::len(&self) -> usize
+pub fn luna_editor::SelectionSet::new(&str, impl core::iter::traits::collect::IntoIterator<Item = luna_editor::ByteSelection>, usize) -> core::result::Result<Self, luna_editor::SelectionError>
+pub fn luna_editor::SelectionSet::normalized(&self, &str) -> Self
+pub fn luna_editor::SelectionSet::primary(&self) -> luna_editor::ByteSelection
+pub fn luna_editor::SelectionSet::replace_all(&self, &str, &str) -> luna_editor::MultiEditResult
+pub fn luna_editor::SelectionSet::selections(&self) -> &[luna_editor::ByteSelection]
+pub fn luna_editor::SelectionSet::set_single(&mut self, luna_editor::ByteSelection)
+pub fn luna_editor::SelectionSet::single(luna_editor::ByteSelection) -> Self
+impl core::default::Default for luna_editor::SelectionSet
+pub fn luna_editor::SelectionSet::default() -> Self
+pub struct luna_editor::SublimeColorSchemeAdapter
+impl luna_editor::SublimeColorSchemeAdapter
+pub fn luna_editor::SublimeColorSchemeAdapter::parse(&str) -> core::result::Result<luna_editor::SyntaxTheme, luna_editor::ColorSchemeError>
+pub struct luna_editor::SyntaxRule
+pub luna_editor::SyntaxRule::selectors: alloc::vec::Vec<alloc::string::String>
+pub luna_editor::SyntaxRule::style: luna_editor::SyntaxStyle
+impl luna_editor::SyntaxRule
+pub fn luna_editor::SyntaxRule::new(impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>, luna_editor::SyntaxStyle) -> Self
+pub struct luna_editor::SyntaxSnapshot
+pub luna_editor::SyntaxSnapshot::document_revision: u64
+pub luna_editor::SyntaxSnapshot::spans: alloc::vec::Vec<luna_editor::SyntaxSpan>
+impl luna_editor::SyntaxSnapshot
+pub fn luna_editor::SyntaxSnapshot::new(&str, u64, impl core::iter::traits::collect::IntoIterator<Item = luna_editor::SyntaxSpan>) -> core::result::Result<Self, luna_editor::SyntaxError>
+pub struct luna_editor::SyntaxSpan
+pub luna_editor::SyntaxSpan::range: core::ops::range::Range<usize>
+pub luna_editor::SyntaxSpan::scope: alloc::string::String
+impl luna_editor::SyntaxSpan
+pub fn luna_editor::SyntaxSpan::new(core::ops::range::Range<usize>, impl core::convert::Into<alloc::string::String>) -> Self
+pub struct luna_editor::SyntaxStyle
+pub luna_editor::SyntaxStyle::background: core::option::Option<luna_theme::Rgba8>
+pub luna_editor::SyntaxStyle::bold: bool
+pub luna_editor::SyntaxStyle::foreground: core::option::Option<luna_theme::Rgba8>
+pub luna_editor::SyntaxStyle::italic: bool
+pub luna_editor::SyntaxStyle::underline: bool
+impl luna_editor::SyntaxStyle
+pub const fn luna_editor::SyntaxStyle::foreground(luna_theme::Rgba8) -> Self
+pub const fn luna_editor::SyntaxStyle::merged(self, Self) -> Self
+pub struct luna_editor::SyntaxTheme
+pub luna_editor::SyntaxTheme::background: luna_theme::Rgba8
+pub luna_editor::SyntaxTheme::caret: luna_theme::Rgba8
+pub luna_editor::SyntaxTheme::foreground: luna_theme::Rgba8
+pub luna_editor::SyntaxTheme::name: alloc::string::String
+pub luna_editor::SyntaxTheme::rules: alloc::vec::Vec<luna_editor::SyntaxRule>
+pub luna_editor::SyntaxTheme::selection: luna_theme::Rgba8
+impl luna_editor::SyntaxTheme
+pub fn luna_editor::SyntaxTheme::resolve(&self, &luna_editor::SyntaxSnapshot) -> alloc::vec::Vec<luna_editor::ResolvedSyntaxSpan>
+pub fn luna_editor::SyntaxTheme::style_for_scope(&self, &str) -> luna_editor::SyntaxStyle
+pub trait luna_editor::SyntaxProvider: core::marker::Send
+pub fn luna_editor::SyntaxProvider::snapshot(&mut self, &str, u64) -> core::result::Result<luna_editor::SyntaxSnapshot, luna_editor::SyntaxError>
+impl luna_editor::SyntaxProvider for luna_editor::KeywordSyntaxProvider
+pub fn luna_editor::KeywordSyntaxProvider::snapshot(&mut self, &str, u64) -> core::result::Result<luna_editor::SyntaxSnapshot, luna_editor::SyntaxError>

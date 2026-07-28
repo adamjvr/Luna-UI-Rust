@@ -1,0 +1,77 @@
+pub mod luna_text
+pub enum luna_text::SnapBias
+pub luna_text::SnapBias::Backward
+pub luna_text::SnapBias::Forward
+pub struct luna_text::EditableText
+impl luna_text::EditableText
+pub const fn luna_text::EditableText::caret(&self) -> luna_text::TextLocation
+pub fn luna_text::EditableText::delete_backward(&mut self) -> luna_text::TextEditResult
+pub fn luna_text::EditableText::delete_forward(&mut self) -> luna_text::TextEditResult
+pub const fn luna_text::EditableText::document(&self) -> &luna_text::TextDocument
+pub const fn luna_text::EditableText::edit_revision(&self) -> u64
+pub fn luna_text::EditableText::insert_newline(&mut self) -> luna_text::TextEditResult
+pub fn luna_text::EditableText::insert_text(&mut self, &str) -> luna_text::TextEditResult
+pub fn luna_text::EditableText::move_backward(&mut self, bool)
+pub fn luna_text::EditableText::move_down(&mut self, bool)
+pub fn luna_text::EditableText::move_forward(&mut self, bool)
+pub fn luna_text::EditableText::move_to_line_end(&mut self, bool)
+pub fn luna_text::EditableText::move_to_line_start(&mut self, bool)
+pub fn luna_text::EditableText::move_up(&mut self, bool)
+pub fn luna_text::EditableText::new(impl core::convert::Into<alloc::string::String>) -> Self
+pub const fn luna_text::EditableText::selection(&self) -> core::option::Option<luna_text::TextRange>
+pub fn luna_text::EditableText::set_caret(&mut self, luna_text::TextLocation)
+pub fn luna_text::EditableText::set_selection(&mut self, luna_text::TextRange)
+pub fn luna_text::EditableText::synchronize_document(&mut self, impl core::convert::Into<alloc::string::String>, u64)
+impl core::default::Default for luna_text::EditableText
+pub fn luna_text::EditableText::default() -> Self
+pub struct luna_text::TextDocument
+impl luna_text::TextDocument
+pub fn luna_text::TextDocument::absolute_offset(&self, luna_text::TextLocation, luna_text::SnapBias) -> usize
+pub fn luna_text::TextDocument::absolute_range(&self, luna_text::TextRange) -> core::ops::range::Range<usize>
+pub fn luna_text::TextDocument::clamp_location(&self, luna_text::TextLocation, luna_text::SnapBias) -> luna_text::TextLocation
+pub fn luna_text::TextDocument::clamp_range(&self, luna_text::TextRange) -> luna_text::TextRange
+pub fn luna_text::TextDocument::end_location(&self) -> luna_text::TextLocation
+pub fn luna_text::TextDocument::grapheme_boundaries(&self, usize) -> alloc::vec::Vec<usize>
+pub fn luna_text::TextDocument::line(&self, usize) -> core::option::Option<&luna_text::TextLine>
+pub fn luna_text::TextDocument::line_count(&self) -> usize
+pub fn luna_text::TextDocument::lines(&self) -> &[luna_text::TextLine]
+pub fn luna_text::TextDocument::location_for_offset(&self, usize, luna_text::SnapBias) -> luna_text::TextLocation
+pub fn luna_text::TextDocument::new(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn luna_text::TextDocument::next_grapheme(&self, luna_text::TextLocation) -> luna_text::TextLocation
+pub fn luna_text::TextDocument::previous_grapheme(&self, luna_text::TextLocation) -> luna_text::TextLocation
+pub fn luna_text::TextDocument::text(&self) -> &str
+impl core::default::Default for luna_text::TextDocument
+pub fn luna_text::TextDocument::default() -> Self
+pub struct luna_text::TextEditResult
+pub luna_text::TextEditResult::did_change: bool
+pub luna_text::TextEditResult::inserted_text: alloc::string::String
+pub luna_text::TextEditResult::new_caret: luna_text::TextLocation
+pub luna_text::TextEditResult::old_range: luna_text::TextRange
+pub struct luna_text::TextLine
+pub luna_text::TextLine::index: usize
+pub luna_text::TextLine::text: alloc::string::String
+pub luna_text::TextLine::utf8_length: usize
+pub luna_text::TextLine::utf8_offset: usize
+impl luna_text::TextLine
+pub const fn luna_text::TextLine::absolute_range(&self) -> core::ops::range::Range<usize>
+pub const fn luna_text::TextLine::line_number(&self) -> usize
+pub struct luna_text::TextLocation
+pub luna_text::TextLocation::line_index: usize
+pub luna_text::TextLocation::utf8_column: usize
+impl luna_text::TextLocation
+pub const fn luna_text::TextLocation::new(usize, usize) -> Self
+pub struct luna_text::TextRange
+pub luna_text::TextRange::anchor: luna_text::TextLocation
+pub luna_text::TextRange::focus: luna_text::TextLocation
+impl luna_text::TextRange
+pub const fn luna_text::TextRange::collapsed(luna_text::TextLocation) -> Self
+pub const fn luna_text::TextRange::is_collapsed(self) -> bool
+pub const fn luna_text::TextRange::new(luna_text::TextLocation, luna_text::TextLocation) -> Self
+pub fn luna_text::TextRange::normalized(self) -> Self
+pub struct luna_text::TextScroll
+pub luna_text::TextScroll::x: i32
+pub luna_text::TextScroll::y: i32
+impl luna_text::TextScroll
+pub fn luna_text::TextScroll::clamp(&mut self, i32, i32)
+pub const fn luna_text::TextScroll::new(i32, i32) -> Self
+pub fn luna_text::TextScroll::scroll_by(&mut self, i32, i32, i32, i32)

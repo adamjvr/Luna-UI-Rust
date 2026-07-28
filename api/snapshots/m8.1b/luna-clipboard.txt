@@ -1,0 +1,49 @@
+pub mod luna_clipboard
+pub enum luna_clipboard::ClipboardErrorKind
+pub luna_clipboard::ClipboardErrorKind::Read
+pub luna_clipboard::ClipboardErrorKind::Unavailable
+pub luna_clipboard::ClipboardErrorKind::Write
+pub struct luna_clipboard::ClipboardError
+impl luna_clipboard::ClipboardError
+pub const fn luna_clipboard::ClipboardError::kind(&self) -> luna_clipboard::ClipboardErrorKind
+pub fn luna_clipboard::ClipboardError::message(&self) -> &str
+impl core::error::Error for luna_clipboard::ClipboardError
+impl core::fmt::Display for luna_clipboard::ClipboardError
+pub fn luna_clipboard::ClipboardError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl luna_core::error_code::CodedError for luna_clipboard::ClipboardError
+pub fn luna_clipboard::ClipboardError::error_code(&self) -> luna_core::error_code::ErrorCode
+pub struct luna_clipboard::MemoryClipboardService
+impl luna_clipboard::MemoryClipboardService
+pub const fn luna_clipboard::MemoryClipboardService::new() -> Self
+pub fn luna_clipboard::MemoryClipboardService::text(&self) -> core::option::Option<&str>
+pub const fn luna_clipboard::MemoryClipboardService::unavailable() -> Self
+pub fn luna_clipboard::MemoryClipboardService::with_text(impl core::convert::Into<alloc::string::String>) -> Self
+impl core::default::Default for luna_clipboard::MemoryClipboardService
+pub fn luna_clipboard::MemoryClipboardService::default() -> Self
+impl luna_clipboard::ClipboardService for luna_clipboard::MemoryClipboardService
+pub fn luna_clipboard::MemoryClipboardService::is_available(&self) -> bool
+pub fn luna_clipboard::MemoryClipboardService::read_text(&mut self) -> core::result::Result<core::option::Option<alloc::string::String>, luna_clipboard::ClipboardError>
+pub fn luna_clipboard::MemoryClipboardService::write_text(&mut self, &str) -> core::result::Result<(), luna_clipboard::ClipboardError>
+pub struct luna_clipboard::SystemClipboardService
+impl luna_clipboard::SystemClipboardService
+pub fn luna_clipboard::SystemClipboardService::detect() -> Self
+impl core::default::Default for luna_clipboard::SystemClipboardService
+pub fn luna_clipboard::SystemClipboardService::default() -> Self
+impl core::fmt::Debug for luna_clipboard::SystemClipboardService
+pub fn luna_clipboard::SystemClipboardService::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl luna_clipboard::ClipboardService for luna_clipboard::SystemClipboardService
+pub fn luna_clipboard::SystemClipboardService::is_available(&self) -> bool
+pub fn luna_clipboard::SystemClipboardService::read_text(&mut self) -> core::result::Result<core::option::Option<alloc::string::String>, luna_clipboard::ClipboardError>
+pub fn luna_clipboard::SystemClipboardService::write_text(&mut self, &str) -> core::result::Result<(), luna_clipboard::ClipboardError>
+pub trait luna_clipboard::ClipboardService
+pub fn luna_clipboard::ClipboardService::is_available(&self) -> bool
+pub fn luna_clipboard::ClipboardService::read_text(&mut self) -> core::result::Result<core::option::Option<alloc::string::String>, luna_clipboard::ClipboardError>
+pub fn luna_clipboard::ClipboardService::write_text(&mut self, &str) -> core::result::Result<(), luna_clipboard::ClipboardError>
+impl luna_clipboard::ClipboardService for luna_clipboard::MemoryClipboardService
+pub fn luna_clipboard::MemoryClipboardService::is_available(&self) -> bool
+pub fn luna_clipboard::MemoryClipboardService::read_text(&mut self) -> core::result::Result<core::option::Option<alloc::string::String>, luna_clipboard::ClipboardError>
+pub fn luna_clipboard::MemoryClipboardService::write_text(&mut self, &str) -> core::result::Result<(), luna_clipboard::ClipboardError>
+impl luna_clipboard::ClipboardService for luna_clipboard::SystemClipboardService
+pub fn luna_clipboard::SystemClipboardService::is_available(&self) -> bool
+pub fn luna_clipboard::SystemClipboardService::read_text(&mut self) -> core::result::Result<core::option::Option<alloc::string::String>, luna_clipboard::ClipboardError>
+pub fn luna_clipboard::SystemClipboardService::write_text(&mut self, &str) -> core::result::Result<(), luna_clipboard::ClipboardError>

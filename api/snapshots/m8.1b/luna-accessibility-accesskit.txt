@@ -1,0 +1,9 @@
+pub mod luna_accessibility_accesskit
+pub struct luna_accessibility_accesskit::AccessKitBridge
+impl luna_accessibility_accesskit::AccessKitBridge
+pub fn luna_accessibility_accesskit::AccessKitBridge::full_update(&mut self, &luna_accessibility::AccessibilityTree, f64) -> accesskit::TreeUpdate
+pub fn luna_accessibility_accesskit::AccessKitBridge::id_for(&mut self, &luna_core::node_id::NodeId) -> accesskit::NodeId
+pub fn luna_accessibility_accesskit::AccessKitBridge::luna_id_for(&self, accesskit::NodeId) -> core::option::Option<&luna_core::node_id::NodeId>
+pub fn luna_accessibility_accesskit::AccessKitBridge::new() -> Self
+impl core::default::Default for luna_accessibility_accesskit::AccessKitBridge
+pub fn luna_accessibility_accesskit::AccessKitBridge::default() -> Self

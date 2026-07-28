@@ -1,0 +1,76 @@
+pub mod luna_core
+pub enum luna_core::DiagnosticSeverity
+pub luna_core::DiagnosticSeverity::Error
+pub luna_core::DiagnosticSeverity::Info
+pub luna_core::DiagnosticSeverity::Warning
+pub enum luna_core::NodeIdError
+pub luna_core::NodeIdError::ChildSegmentContainsSeparator(alloc::string::String)
+pub luna_core::NodeIdError::ContainsWhitespace(alloc::string::String)
+pub luna_core::NodeIdError::Empty
+pub luna_core::NodeIdError::EmptyChildSegment
+impl core::error::Error for luna_core::NodeIdError
+impl core::fmt::Display for luna_core::NodeIdError
+pub fn luna_core::NodeIdError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl luna_core::CodedError for luna_core::NodeIdError
+pub fn luna_core::NodeIdError::error_code(&self) -> luna_core::ErrorCode
+pub struct luna_core::Diagnostic
+pub luna_core::Diagnostic::code: &'static str
+pub luna_core::Diagnostic::message: alloc::string::String
+pub luna_core::Diagnostic::severity: luna_core::DiagnosticSeverity
+impl luna_core::Diagnostic
+pub fn luna_core::Diagnostic::new(&'static str, impl core::convert::Into<alloc::string::String>, luna_core::DiagnosticSeverity) -> Self
+pub struct luna_core::Diagnostics
+impl luna_core::Diagnostics
+pub fn luna_core::Diagnostics::drain(&mut self) -> impl core::iter::traits::iterator::Iterator<Item = luna_core::Diagnostic> + '_
+pub fn luna_core::Diagnostics::entries(&self) -> &[luna_core::Diagnostic]
+pub fn luna_core::Diagnostics::is_empty(&self) -> bool
+pub fn luna_core::Diagnostics::push(&mut self, luna_core::Diagnostic)
+pub struct luna_core::ErrorCode(_)
+impl luna_core::ErrorCode
+pub const fn luna_core::ErrorCode::as_str(self) -> &'static str
+pub const fn luna_core::ErrorCode::new(&'static str) -> Self
+impl core::fmt::Display for luna_core::ErrorCode
+pub fn luna_core::ErrorCode::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct luna_core::InsetsI
+pub luna_core::InsetsI::bottom: u32
+pub luna_core::InsetsI::left: u32
+pub luna_core::InsetsI::right: u32
+pub luna_core::InsetsI::top: u32
+impl luna_core::InsetsI
+pub const fn luna_core::InsetsI::new(u32, u32, u32, u32) -> Self
+pub const fn luna_core::InsetsI::symmetric(u32, u32) -> Self
+pub struct luna_core::NodeId(_)
+impl luna_core::NodeId
+pub fn luna_core::NodeId::as_str(&self) -> &str
+pub fn luna_core::NodeId::child(&self, &str) -> core::result::Result<Self, luna_core::NodeIdError>
+pub fn luna_core::NodeId::new(impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, luna_core::NodeIdError>
+impl core::fmt::Display for luna_core::NodeId
+pub fn luna_core::NodeId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct luna_core::PointI
+pub luna_core::PointI::x: i32
+pub luna_core::PointI::y: i32
+impl luna_core::PointI
+pub const fn luna_core::PointI::new(i32, i32) -> Self
+pub struct luna_core::RectI
+pub luna_core::RectI::height: u32
+pub luna_core::RectI::width: u32
+pub luna_core::RectI::x: i32
+pub luna_core::RectI::y: i32
+impl luna_core::RectI
+pub fn luna_core::RectI::bottom(self) -> i64
+pub fn luna_core::RectI::contains(self, luna_core::PointI) -> bool
+pub fn luna_core::RectI::inset(self, luna_core::InsetsI) -> Self
+pub fn luna_core::RectI::intersection(self, Self) -> core::option::Option<Self>
+pub const fn luna_core::RectI::is_empty(self) -> bool
+pub const fn luna_core::RectI::new(i32, i32, u32, u32) -> Self
+pub fn luna_core::RectI::right(self) -> i64
+pub struct luna_core::SizeI
+pub luna_core::SizeI::height: u32
+pub luna_core::SizeI::width: u32
+impl luna_core::SizeI
+pub const fn luna_core::SizeI::is_empty(self) -> bool
+pub const fn luna_core::SizeI::new(u32, u32) -> Self
+pub trait luna_core::CodedError: core::error::Error
+pub fn luna_core::CodedError::error_code(&self) -> luna_core::ErrorCode
+impl luna_core::CodedError for luna_core::NodeIdError
+pub fn luna_core::NodeIdError::error_code(&self) -> luna_core::ErrorCode

@@ -66,9 +66,16 @@ M8 retains the accepted M7.0.1 API and qualification baseline, exercises Luna fr
 consumer, records repeated Linux and macOS evidence, and resolves intentional provisional-API churn
 before the planned `0.2.0-rc.1` development release. Windows remains unofficial and non-blocking.
 
-## M8.1a clipboard candidate
+## M8.1a clipboard acceptance
 
-The next acceptance candidate adds the provisional `luna-clipboard` crate, native and memory adapters,
-Cut/Copy/Paste menu and shortcut routing, deterministic editor tests, and explicit classification of
-the additive M7-to-M8.1 crate-contract difference. It is pending the complete M8.1a automated gate and
-CPU/`wgpu` cross-application clipboard operator pass.
+The provisional `luna-clipboard` crate, native and memory adapters, Cut/Copy/Paste menu and shortcut
+routing, deterministic editor tests, and additive M7-to-M8.1 crate-contract classification are accepted
+on the blocking Linux/Pop!_OS lane. CPU and `wgpu` cross-application transfer, multi-selection,
+undo/redo, and extracted-package operation completed locally.
+
+## M8.1b symbol-level API acceptance
+
+M8.1b is accepted on the blocking Linux/Pop!_OS lane. Pinned symbol snapshots were retained for every
+accepted M7 and current public crate, every difference was explicitly classified, snapshot checksums
+passed, and `cargo-semver-checks` completed across every stable crate shared with the baseline. The
+accepted comparison contains no unclassified or accidental change.

@@ -229,7 +229,7 @@
 ## M8 — release-candidate and ecosystem validation — active
 
 - M8.0 closes M7.0.1, freezes its API baseline, corrects documentation drift, and captures evidence.
-- M8.1a introduces the provisional clipboard boundary, enables Cut/Copy/Paste, and classifies the additive crate-contract change.
+- M8.1a clipboard integration and additive crate-contract classification — complete after Linux acceptance.
 - M8.1 retains and compares public API snapshots and classifies every compatibility difference.
 - M8.2 builds a separate product-neutral downstream consumer using only public Luna APIs.
 - M8.3 runs repeated Linux CPU/GPU, watcher, session, accessibility, resource, and package workloads.
@@ -250,3 +250,4 @@ four-palette comparison matrix. M5 adds reusable syntax/theme, history, multiple
 command-state, and accessibility-action mechanics. M6 adds lifecycle/dirty-state host seams, native
 macOS dialogs/session paths/FSEvents/package tooling, downstream composition, and the fifth
 **Different** theme. M7 adds enforceable API contracts, deterministic qualification, retained-resource limits, Linux packaging, and the permanent editor operator manual. M8 is release-candidate and ecosystem validation. Windows is not an official target.
+- M8.1b symbol-level snapshots, complete drift classification, and stable-crate semver review — complete after Linux acceptance.

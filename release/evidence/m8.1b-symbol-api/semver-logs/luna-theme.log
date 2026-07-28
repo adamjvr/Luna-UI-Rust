@@ -1,0 +1,15 @@
+$ cargo +stable semver-checks --package luna-theme --baseline-rev e696df0cedaeda7ac5c0892cf8f709f8325eff8b --all-features
+
+     Cloning e696df0cedaeda7ac5c0892cf8f709f8325eff8b
+    Building luna-theme v0.1.0 (current)
+       Built [   0.270s] (current)
+     Parsing luna-theme v0.1.0 (current)
+      Parsed [   0.001s] (current)
+    Building luna-theme v0.1.0 (baseline)
+       Built [   0.260s] (baseline)
+     Parsing luna-theme v0.1.0 (baseline)
+      Parsed [   0.001s] (baseline)
+    Checking luna-theme v0.1.0 -> v0.1.0 (no change; assume minor)
+     Checked [   0.003s] 196 checks: 196 pass, 57 skip
+     Summary no semver update required
+    Finished [   0.693s] luna-theme

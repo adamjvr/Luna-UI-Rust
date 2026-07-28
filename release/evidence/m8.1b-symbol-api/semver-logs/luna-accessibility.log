@@ -1,0 +1,15 @@
+$ cargo +stable semver-checks --package luna-accessibility --baseline-rev e696df0cedaeda7ac5c0892cf8f709f8325eff8b --all-features
+
+     Cloning e696df0cedaeda7ac5c0892cf8f709f8325eff8b
+    Building luna-accessibility v0.1.0 (current)
+       Built [   0.265s] (current)
+     Parsing luna-accessibility v0.1.0 (current)
+      Parsed [   0.002s] (current)
+    Building luna-accessibility v0.1.0 (baseline)
+       Built [   0.272s] (baseline)
+     Parsing luna-accessibility v0.1.0 (baseline)
+      Parsed [   0.001s] (baseline)
+    Checking luna-accessibility v0.1.0 -> v0.1.0 (no change; assume minor)
+     Checked [   0.003s] 196 checks: 196 pass, 57 skip
+     Summary no semver update required
+    Finished [   0.688s] luna-accessibility

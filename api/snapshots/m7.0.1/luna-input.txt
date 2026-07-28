@@ -1,0 +1,70 @@
+pub mod luna_input
+pub enum luna_input::ImeEvent
+pub luna_input::ImeEvent::Commit(alloc::string::String)
+pub luna_input::ImeEvent::Disabled
+pub luna_input::ImeEvent::Enabled
+pub luna_input::ImeEvent::Preedit
+pub luna_input::ImeEvent::Preedit::selected_range: core::option::Option<core::ops::range::Range<usize>>
+pub luna_input::ImeEvent::Preedit::text: alloc::string::String
+pub enum luna_input::InputEvent
+pub luna_input::InputEvent::FocusGained
+pub luna_input::InputEvent::FocusLost
+pub luna_input::InputEvent::Ime(luna_input::ImeEvent)
+pub luna_input::InputEvent::Keyboard(luna_input::KeyboardEvent)
+pub luna_input::InputEvent::Pointer(luna_input::PointerEvent)
+pub luna_input::InputEvent::Scroll(luna_input::ScrollEvent)
+pub luna_input::InputEvent::Text(alloc::string::String)
+pub enum luna_input::Key
+pub luna_input::Key::Character(alloc::string::String)
+pub luna_input::Key::Named(luna_input::NamedKey)
+pub luna_input::Key::Unidentified
+pub enum luna_input::NamedKey
+pub luna_input::NamedKey::ArrowDown
+pub luna_input::NamedKey::ArrowLeft
+pub luna_input::NamedKey::ArrowRight
+pub luna_input::NamedKey::ArrowUp
+pub luna_input::NamedKey::Backspace
+pub luna_input::NamedKey::Delete
+pub luna_input::NamedKey::End
+pub luna_input::NamedKey::Enter
+pub luna_input::NamedKey::Escape
+pub luna_input::NamedKey::Home
+pub luna_input::NamedKey::PageDown
+pub luna_input::NamedKey::PageUp
+pub luna_input::NamedKey::Tab
+pub enum luna_input::PointerButton
+pub luna_input::PointerButton::Middle
+pub luna_input::PointerButton::Other(u16)
+pub luna_input::PointerButton::Primary
+pub luna_input::PointerButton::Secondary
+pub enum luna_input::PointerEventKind
+pub luna_input::PointerEventKind::Left
+pub luna_input::PointerEventKind::Moved
+pub luna_input::PointerEventKind::Pressed(luna_input::PointerButton)
+pub luna_input::PointerEventKind::Released(luna_input::PointerButton)
+pub struct luna_input::KeyboardEvent
+pub luna_input::KeyboardEvent::is_pressed: bool
+pub luna_input::KeyboardEvent::is_repeat: bool
+pub luna_input::KeyboardEvent::key: luna_input::Key
+pub luna_input::KeyboardEvent::modifiers: luna_input::Modifiers
+pub luna_input::KeyboardEvent::text: core::option::Option<alloc::string::String>
+pub luna_input::KeyboardEvent::timestamp_micros: u64
+pub struct luna_input::Modifiers(_)
+impl luna_input::Modifiers
+pub const luna_input::Modifiers::ALT: Self
+pub const luna_input::Modifiers::CONTROL: Self
+pub const luna_input::Modifiers::NONE: Self
+pub const luna_input::Modifiers::SHIFT: Self
+pub const luna_input::Modifiers::SUPER: Self
+pub const fn luna_input::Modifiers::contains(self, Self) -> bool
+pub const fn luna_input::Modifiers::union(self, Self) -> Self
+pub struct luna_input::PointerEvent
+pub luna_input::PointerEvent::kind: luna_input::PointerEventKind
+pub luna_input::PointerEvent::modifiers: luna_input::Modifiers
+pub luna_input::PointerEvent::position: luna_core::geometry::PointI
+pub luna_input::PointerEvent::timestamp_micros: u64
+pub struct luna_input::ScrollEvent
+pub luna_input::ScrollEvent::delta_x: i32
+pub luna_input::ScrollEvent::delta_y: i32
+pub luna_input::ScrollEvent::modifiers: luna_input::Modifiers
+pub luna_input::ScrollEvent::timestamp_micros: u64

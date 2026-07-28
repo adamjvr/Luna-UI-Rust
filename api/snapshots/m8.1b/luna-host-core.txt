@@ -1,0 +1,63 @@
+pub mod luna_host_core
+pub enum luna_host_core::InvalidationClass
+pub luna_host_core::InvalidationClass::Accessibility
+pub luna_host_core::InvalidationClass::Animation
+pub luna_host_core::InvalidationClass::Explicit
+pub luna_host_core::InvalidationClass::FullFrame
+pub luna_host_core::InvalidationClass::Initial
+pub luna_host_core::InvalidationClass::PaintOverlay
+pub luna_host_core::InvalidationClass::Surface
+pub luna_host_core::InvalidationClass::TextLayout
+pub luna_host_core::InvalidationClass::TextOverlay
+pub luna_host_core::InvalidationClass::TextRaster
+pub luna_host_core::InvalidationClass::WidgetLayout
+pub enum luna_host_core::InvalidationReason
+pub luna_host_core::InvalidationReason::AccessibilityChanged
+pub luna_host_core::InvalidationReason::Animation
+pub luna_host_core::InvalidationReason::Classified(luna_host_core::InvalidationClass)
+pub luna_host_core::InvalidationReason::Explicit(alloc::string::String)
+pub luna_host_core::InvalidationReason::FullFrame
+pub luna_host_core::InvalidationReason::InitialFrame
+pub luna_host_core::InvalidationReason::PaintOverlay
+pub luna_host_core::InvalidationReason::StateChanged
+pub luna_host_core::InvalidationReason::SurfaceExposed
+pub luna_host_core::InvalidationReason::SurfaceResized
+pub luna_host_core::InvalidationReason::TextLayout
+pub luna_host_core::InvalidationReason::TextOverlay
+pub luna_host_core::InvalidationReason::TextRaster
+pub luna_host_core::InvalidationReason::ThemeChanged
+pub luna_host_core::InvalidationReason::WidgetLayout
+impl luna_host_core::InvalidationReason
+pub const fn luna_host_core::InvalidationReason::class(&self) -> luna_host_core::InvalidationClass
+pub enum luna_host_core::NativePlatform
+pub luna_host_core::NativePlatform::Linux
+pub luna_host_core::NativePlatform::MacOs
+pub luna_host_core::NativePlatform::Other
+pub luna_host_core::NativePlatform::Windows
+pub enum luna_host_core::PlatformSupportTier
+pub luna_host_core::PlatformSupportTier::BestEffort
+pub luna_host_core::PlatformSupportTier::Primary
+pub luna_host_core::PlatformSupportTier::Secondary
+pub luna_host_core::PlatformSupportTier::Unsupported
+pub struct luna_host_core::FrameRuntime
+impl luna_host_core::FrameRuntime
+pub fn luna_host_core::FrameRuntime::begin_frame(&mut self, u64) -> core::option::Option<luna_host_core::FrameToken>
+pub fn luna_host_core::FrameRuntime::finish_frame(&luna_host_core::FrameToken, u64) -> luna_host_core::FrameStats
+pub fn luna_host_core::FrameRuntime::has_pending_frame(&self) -> bool
+pub fn luna_host_core::FrameRuntime::new() -> Self
+pub fn luna_host_core::FrameRuntime::request_frame(&mut self, luna_host_core::InvalidationReason)
+pub struct luna_host_core::FrameStats
+pub luna_host_core::FrameStats::elapsed_micros: u64
+pub luna_host_core::FrameStats::frame_number: u64
+pub struct luna_host_core::FrameToken
+pub luna_host_core::FrameToken::frame_number: u64
+pub luna_host_core::FrameToken::invalidations: luna_host_core::InvalidationSet
+pub luna_host_core::FrameToken::started_at_micros: u64
+pub struct luna_host_core::InvalidationSet
+impl luna_host_core::InvalidationSet
+pub fn luna_host_core::InvalidationSet::insert(&mut self, luna_host_core::InvalidationReason)
+pub fn luna_host_core::InvalidationSet::is_empty(&self) -> bool
+pub fn luna_host_core::InvalidationSet::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = &luna_host_core::InvalidationReason>
+pub fn luna_host_core::InvalidationSet::take(&mut self) -> Self
+pub const fn luna_host_core::current_native_platform() -> luna_host_core::NativePlatform
+pub const fn luna_host_core::platform_support_tier(luna_host_core::NativePlatform) -> luna_host_core::PlatformSupportTier

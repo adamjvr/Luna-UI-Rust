@@ -1,0 +1,777 @@
+pub mod luna_ui
+pub enum luna_ui::EditorPaneSurfaceHit
+pub luna_ui::EditorPaneSurfaceHit::CloseTab
+pub luna_ui::EditorPaneSurfaceHit::CloseTab::pane_id: luna_panes::PaneId
+pub luna_ui::EditorPaneSurfaceHit::CloseTab::view_id: luna_documents::DocumentViewId
+pub luna_ui::EditorPaneSurfaceHit::Editor(luna_panes::PaneId)
+pub luna_ui::EditorPaneSurfaceHit::ScrollTabs
+pub luna_ui::EditorPaneSurfaceHit::ScrollTabs::direction: luna_ui::TabScrollDirection
+pub luna_ui::EditorPaneSurfaceHit::ScrollTabs::pane_id: luna_panes::PaneId
+pub luna_ui::EditorPaneSurfaceHit::Splitter(luna_panes::PaneId)
+pub luna_ui::EditorPaneSurfaceHit::Tab
+pub luna_ui::EditorPaneSurfaceHit::Tab::pane_id: luna_panes::PaneId
+pub luna_ui::EditorPaneSurfaceHit::Tab::view_id: luna_documents::DocumentViewId
+pub enum luna_ui::EditorShellHit
+pub luna_ui::EditorShellHit::CloseTab(alloc::string::String)
+pub luna_ui::EditorShellHit::Editor
+pub luna_ui::EditorShellHit::Menu(alloc::string::String)
+pub luna_ui::EditorShellHit::SidebarItem(alloc::string::String)
+pub luna_ui::EditorShellHit::Tab(alloc::string::String)
+pub enum luna_ui::FindField
+pub luna_ui::FindField::Query
+pub luna_ui::FindField::Replacement
+pub enum luna_ui::MenuItem
+pub luna_ui::MenuItem::Command(luna_ui::MenuCommand)
+pub luna_ui::MenuItem::Separator
+pub luna_ui::MenuItem::Submenu(alloc::boxed::Box<luna_ui::MenuDefinition>)
+impl luna_ui::MenuItem
+pub const fn luna_ui::MenuItem::as_command(&self) -> core::option::Option<&luna_ui::MenuCommand>
+pub fn luna_ui::MenuItem::as_submenu(&self) -> core::option::Option<&luna_ui::MenuDefinition>
+pub fn luna_ui::MenuItem::command(luna_ui::MenuCommand) -> Self
+pub fn luna_ui::MenuItem::submenu(luna_ui::MenuDefinition) -> Self
+pub enum luna_ui::SidebarItemKind
+pub luna_ui::SidebarItemKind::File
+pub luna_ui::SidebarItemKind::Folder
+pub enum luna_ui::TabScrollDirection
+pub luna_ui::TabScrollDirection::Next
+pub luna_ui::TabScrollDirection::Previous
+pub enum luna_ui::TextAlignment
+pub luna_ui::TextAlignment::Center
+pub luna_ui::TextAlignment::Leading
+pub luna_ui::TextAlignment::Trailing
+pub enum luna_ui::UiFrameError
+pub luna_ui::UiFrameError::Accessibility(luna_accessibility::AccessibilityTreeError)
+impl core::convert::From<luna_accessibility::AccessibilityTreeError> for luna_ui::UiFrameError
+pub fn luna_ui::UiFrameError::from(luna_accessibility::AccessibilityTreeError) -> Self
+impl core::error::Error for luna_ui::UiFrameError
+pub fn luna_ui::UiFrameError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for luna_ui::UiFrameError
+pub fn luna_ui::UiFrameError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl luna_core::error_code::CodedError for luna_ui::UiFrameError
+pub fn luna_ui::UiFrameError::error_code(&self) -> luna_core::error_code::ErrorCode
+pub enum luna_ui::VerticalScrollbarAction
+pub luna_ui::VerticalScrollbarAction::DragThumb
+pub luna_ui::VerticalScrollbarAction::None
+pub luna_ui::VerticalScrollbarAction::PageDown
+pub luna_ui::VerticalScrollbarAction::PageUp
+pub struct luna_ui::Button
+impl luna_ui::Button
+pub fn luna_ui::Button::new(luna_core::node_id::NodeId, luna_core::geometry::RectI, impl core::convert::Into<alloc::string::String>, luna_text_cosmic::TextLayoutSnapshot, luna_theme::Theme, luna_ui::ControlState) -> Self
+impl luna_ui::Widget for luna_ui::Button
+pub fn luna_ui::Button::accessibility_nodes(&self) -> alloc::vec::Vec<luna_accessibility::AccessibilityNode>
+pub fn luna_ui::Button::bounds(&self) -> luna_core::geometry::RectI
+pub fn luna_ui::Button::build_display_list(&self, &mut luna_render::display_list::DisplayList)
+pub fn luna_ui::Button::hit_test(&self, luna_core::geometry::PointI) -> core::option::Option<luna_core::node_id::NodeId>
+pub fn luna_ui::Button::id(&self) -> &luna_core::node_id::NodeId
+pub struct luna_ui::CascadingMenuLayout
+pub luna_ui::CascadingMenuLayout::panels: alloc::vec::Vec<luna_ui::CascadingMenuPanel>
+impl luna_ui::CascadingMenuLayout
+pub fn luna_ui::CascadingMenuLayout::calculate(&luna_ui::MenuDefinition, &luna_ui::CascadingMenuState, luna_core::geometry::RectI, luna_core::geometry::RectI) -> Self
+pub fn luna_ui::CascadingMenuLayout::path_at(&self, &luna_ui::MenuDefinition, luna_core::geometry::PointI) -> core::option::Option<luna_ui::MenuPath>
+pub fn luna_ui::CascadingMenuLayout::preserves_child_pointer_intent(&self, usize, luna_core::geometry::PointI, u32) -> bool
+pub struct luna_ui::CascadingMenuPanel
+pub luna_ui::CascadingMenuPanel::bounds: luna_core::geometry::RectI
+pub luna_ui::CascadingMenuPanel::depth: usize
+pub luna_ui::CascadingMenuPanel::path_prefix: luna_ui::MenuPath
+pub luna_ui::CascadingMenuPanel::rows: alloc::vec::Vec<luna_core::geometry::RectI>
+pub struct luna_ui::CascadingMenuState
+impl luna_ui::CascadingMenuState
+pub fn luna_ui::CascadingMenuState::close(&mut self)
+pub fn luna_ui::CascadingMenuState::close_child(&mut self) -> bool
+pub const fn luna_ui::CascadingMenuState::is_open(&self) -> bool
+pub fn luna_ui::CascadingMenuState::open(&mut self, &luna_ui::MenuDefinition)
+pub const fn luna_ui::CascadingMenuState::open_depth(&self) -> usize
+pub fn luna_ui::CascadingMenuState::open_selected_submenu(&mut self, &luna_ui::MenuDefinition) -> bool
+pub fn luna_ui::CascadingMenuState::select_next(&mut self, &luna_ui::MenuDefinition)
+pub fn luna_ui::CascadingMenuState::select_path(&mut self, &luna_ui::MenuDefinition, luna_ui::MenuPath, bool) -> bool
+pub fn luna_ui::CascadingMenuState::select_previous(&mut self, &luna_ui::MenuDefinition)
+pub fn luna_ui::CascadingMenuState::selected_command<'a>(&self, &'a luna_ui::MenuDefinition) -> core::option::Option<&'a luna_ui::MenuCommand>
+pub const fn luna_ui::CascadingMenuState::selected_path(&self) -> &luna_ui::MenuPath
+pub fn luna_ui::CascadingMenuState::update_hover(&mut self, &luna_ui::MenuDefinition, luna_ui::MenuPath, u64, u64, bool) -> bool
+pub struct luna_ui::CommandPalette
+impl luna_ui::CommandPalette
+pub fn luna_ui::CommandPalette::command_at(&self, luna_core::geometry::PointI) -> core::option::Option<&str>
+pub fn luna_ui::CommandPalette::command_for_node(&self, &luna_core::node_id::NodeId) -> core::option::Option<&str>
+pub const fn luna_ui::CommandPalette::input_node_id(&self) -> &luna_core::node_id::NodeId
+pub const fn luna_ui::CommandPalette::layout(&self) -> &luna_ui::CommandPaletteLayout
+pub fn luna_ui::CommandPalette::new(luna_core::node_id::NodeId, luna_core::geometry::RectI, luna_theme::Theme, luna_ui::CommandPaletteState) -> core::result::Result<Self, luna_core::node_id::NodeIdError>
+impl luna_ui::Widget for luna_ui::CommandPalette
+pub fn luna_ui::CommandPalette::accessibility_nodes(&self) -> alloc::vec::Vec<luna_accessibility::AccessibilityNode>
+pub fn luna_ui::CommandPalette::bounds(&self) -> luna_core::geometry::RectI
+pub fn luna_ui::CommandPalette::build_display_list(&self, &mut luna_render::display_list::DisplayList)
+pub fn luna_ui::CommandPalette::hit_test(&self, luna_core::geometry::PointI) -> core::option::Option<luna_core::node_id::NodeId>
+pub fn luna_ui::CommandPalette::id(&self) -> &luna_core::node_id::NodeId
+pub struct luna_ui::CommandPaletteLayout
+pub luna_ui::CommandPaletteLayout::backdrop: luna_core::geometry::RectI
+pub luna_ui::CommandPaletteLayout::empty_state: luna_core::geometry::RectI
+pub luna_ui::CommandPaletteLayout::input: luna_core::geometry::RectI
+pub luna_ui::CommandPaletteLayout::panel: luna_core::geometry::RectI
+pub luna_ui::CommandPaletteLayout::rows: alloc::vec::Vec<luna_ui::PaletteRowFrame>
+pub luna_ui::CommandPaletteLayout::title: luna_core::geometry::RectI
+pub struct luna_ui::CommandPaletteState
+pub luna_ui::CommandPaletteState::items: alloc::vec::Vec<luna_ui::PaletteItem>
+pub luna_ui::CommandPaletteState::query: alloc::string::String
+pub luna_ui::CommandPaletteState::selected_index: usize
+impl luna_ui::CommandPaletteState
+pub fn luna_ui::CommandPaletteState::filtered_items(&self) -> alloc::vec::Vec<&luna_ui::PaletteItem>
+pub fn luna_ui::CommandPaletteState::normalize_selection(&mut self)
+pub fn luna_ui::CommandPaletteState::select_next(&mut self)
+pub fn luna_ui::CommandPaletteState::select_previous(&mut self)
+pub fn luna_ui::CommandPaletteState::selected_item(&self) -> core::option::Option<&luna_ui::PaletteItem>
+pub struct luna_ui::CompletionCandidate
+pub luna_ui::CompletionCandidate::detail: alloc::string::String
+pub luna_ui::CompletionCandidate::documentation: core::option::Option<alloc::string::String>
+pub luna_ui::CompletionCandidate::id: alloc::string::String
+pub luna_ui::CompletionCandidate::insert_text: alloc::string::String
+pub luna_ui::CompletionCandidate::label: alloc::string::String
+pub luna_ui::CompletionCandidate::replacement: luna_ui::CompletionReplacementRange
+pub struct luna_ui::CompletionCoordinator
+impl luna_ui::CompletionCoordinator
+pub const fn luna_ui::CompletionCoordinator::active_request(&self) -> core::option::Option<luna_ui::CompletionRequestId>
+pub fn luna_ui::CompletionCoordinator::begin<P: luna_ui::CompletionProvider + ?core::marker::Sized>(&mut self, &mut P, u64, u64, usize, impl core::convert::Into<alloc::string::String>) -> luna_ui::CompletionRequestId
+pub fn luna_ui::CompletionCoordinator::cancel<P: luna_ui::CompletionProvider + ?core::marker::Sized>(&mut self, &mut P)
+pub fn luna_ui::CompletionCoordinator::drain_latest(&mut self, u64, u64) -> core::option::Option<luna_ui::CompletionResponse>
+pub fn luna_ui::CompletionCoordinator::new() -> Self
+impl core::default::Default for luna_ui::CompletionCoordinator
+pub fn luna_ui::CompletionCoordinator::default() -> Self
+pub struct luna_ui::CompletionItem
+pub luna_ui::CompletionItem::detail: alloc::string::String
+pub luna_ui::CompletionItem::id: alloc::string::String
+pub luna_ui::CompletionItem::insert_text: alloc::string::String
+pub luna_ui::CompletionItem::label: alloc::string::String
+impl luna_ui::CompletionItem
+pub fn luna_ui::CompletionItem::new(impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>) -> Self
+pub struct luna_ui::CompletionPopup
+impl luna_ui::CompletionPopup
+pub fn luna_ui::CompletionPopup::item_at(&self, luna_core::geometry::PointI) -> core::option::Option<&str>
+pub fn luna_ui::CompletionPopup::item_for_node(&self, &luna_core::node_id::NodeId) -> core::option::Option<&str>
+pub const fn luna_ui::CompletionPopup::layout(&self) -> &luna_ui::CompletionPopupLayout
+pub fn luna_ui::CompletionPopup::new(luna_core::node_id::NodeId, luna_core::geometry::RectI, luna_core::geometry::RectI, luna_theme::Theme, luna_ui::CompletionPopupState) -> core::result::Result<Self, luna_core::node_id::NodeIdError>
+impl luna_ui::Widget for luna_ui::CompletionPopup
+pub fn luna_ui::CompletionPopup::accessibility_nodes(&self) -> alloc::vec::Vec<luna_accessibility::AccessibilityNode>
+pub fn luna_ui::CompletionPopup::bounds(&self) -> luna_core::geometry::RectI
+pub fn luna_ui::CompletionPopup::build_display_list(&self, &mut luna_render::display_list::DisplayList)
+pub fn luna_ui::CompletionPopup::hit_test(&self, luna_core::geometry::PointI) -> core::option::Option<luna_core::node_id::NodeId>
+pub fn luna_ui::CompletionPopup::id(&self) -> &luna_core::node_id::NodeId
+pub struct luna_ui::CompletionPopupLayout
+pub luna_ui::CompletionPopupLayout::panel: luna_core::geometry::RectI
+pub luna_ui::CompletionPopupLayout::rows: alloc::vec::Vec<luna_ui::CompletionRowFrame>
+pub struct luna_ui::CompletionPopupState
+pub luna_ui::CompletionPopupState::items: alloc::vec::Vec<luna_ui::CompletionItem>
+pub luna_ui::CompletionPopupState::selected_index: usize
+impl luna_ui::CompletionPopupState
+pub fn luna_ui::CompletionPopupState::normalize_selection(&mut self)
+pub fn luna_ui::CompletionPopupState::select_next(&mut self)
+pub fn luna_ui::CompletionPopupState::select_previous(&mut self)
+pub fn luna_ui::CompletionPopupState::selected_item(&self) -> core::option::Option<&luna_ui::CompletionItem>
+pub struct luna_ui::CompletionReplacementRange
+pub luna_ui::CompletionReplacementRange::end_byte: usize
+pub luna_ui::CompletionReplacementRange::start_byte: usize
+impl luna_ui::CompletionReplacementRange
+pub const fn luna_ui::CompletionReplacementRange::new(usize, usize) -> core::option::Option<Self>
+pub struct luna_ui::CompletionRequest
+pub luna_ui::CompletionRequest::caret_byte: usize
+pub luna_ui::CompletionRequest::document_revision: u64
+pub luna_ui::CompletionRequest::id: luna_ui::CompletionRequestId
+pub luna_ui::CompletionRequest::prefix: alloc::string::String
+pub luna_ui::CompletionRequest::view_key: u64
+pub struct luna_ui::CompletionRequestId(_)
+impl luna_ui::CompletionRequestId
+pub const fn luna_ui::CompletionRequestId::value(self) -> u64
+pub struct luna_ui::CompletionResponse
+pub luna_ui::CompletionResponse::candidates: alloc::vec::Vec<luna_ui::CompletionCandidate>
+pub luna_ui::CompletionResponse::document_revision: u64
+pub luna_ui::CompletionResponse::request_id: luna_ui::CompletionRequestId
+pub struct luna_ui::CompletionResponseSender
+impl luna_ui::CompletionResponseSender
+pub fn luna_ui::CompletionResponseSender::send(&self, luna_ui::CompletionResponse) -> core::result::Result<(), luna_ui::CompletionResponse>
+pub struct luna_ui::CompletionRowFrame
+pub luna_ui::CompletionRowFrame::bounds: luna_core::geometry::RectI
+pub luna_ui::CompletionRowFrame::detail: alloc::string::String
+pub luna_ui::CompletionRowFrame::id: alloc::string::String
+pub luna_ui::CompletionRowFrame::is_selected: bool
+pub luna_ui::CompletionRowFrame::label: alloc::string::String
+pub luna_ui::CompletionRowFrame::node_id: luna_core::node_id::NodeId
+pub struct luna_ui::ControlState
+pub luna_ui::ControlState::is_disabled: bool
+pub luna_ui::ControlState::is_focused: bool
+pub luna_ui::ControlState::is_hovered: bool
+pub struct luna_ui::DemoPanel
+impl luna_ui::DemoPanel
+pub fn luna_ui::DemoPanel::new(luna_core::node_id::NodeId, luna_core::geometry::RectI, luna_theme::Theme, impl core::convert::Into<alloc::string::String>) -> Self
+impl luna_ui::Widget for luna_ui::DemoPanel
+pub fn luna_ui::DemoPanel::accessibility_nodes(&self) -> alloc::vec::Vec<luna_accessibility::AccessibilityNode>
+pub fn luna_ui::DemoPanel::bounds(&self) -> luna_core::geometry::RectI
+pub fn luna_ui::DemoPanel::build_display_list(&self, &mut luna_render::display_list::DisplayList)
+pub fn luna_ui::DemoPanel::hit_test(&self, luna_core::geometry::PointI) -> core::option::Option<luna_core::node_id::NodeId>
+pub fn luna_ui::DemoPanel::id(&self) -> &luna_core::node_id::NodeId
+pub struct luna_ui::DropdownMenu
+impl luna_ui::DropdownMenu
+pub fn luna_ui::DropdownMenu::command_at(&self, luna_core::geometry::PointI) -> core::option::Option<&str>
+pub fn luna_ui::DropdownMenu::command_for_node(&self, &luna_core::node_id::NodeId) -> core::option::Option<&str>
+pub fn luna_ui::DropdownMenu::contains(&self, luna_core::geometry::PointI) -> bool
+pub const fn luna_ui::DropdownMenu::definition(&self) -> &luna_ui::MenuDefinition
+pub fn luna_ui::DropdownMenu::item_index_at(&self, luna_core::geometry::PointI) -> core::option::Option<usize>
+pub const fn luna_ui::DropdownMenu::layout(&self) -> &luna_ui::DropdownMenuLayout
+pub fn luna_ui::DropdownMenu::menu_item_at(&self, luna_core::geometry::PointI) -> core::option::Option<(usize, usize)>
+pub fn luna_ui::DropdownMenu::new(luna_core::node_id::NodeId, luna_core::geometry::RectI, luna_core::geometry::RectI, luna_theme::Theme, luna_ui::MenuDefinition, usize) -> core::result::Result<Self, luna_core::node_id::NodeIdError>
+pub fn luna_ui::DropdownMenu::new_with_state(luna_core::node_id::NodeId, luna_core::geometry::RectI, luna_core::geometry::RectI, luna_theme::Theme, luna_ui::MenuDefinition, &luna_ui::DropdownMenuState) -> core::result::Result<Self, luna_core::node_id::NodeIdError>
+pub fn luna_ui::DropdownMenu::preserves_submenu_pointer_intent(&self, usize, luna_core::geometry::PointI, u32) -> bool
+impl luna_ui::Widget for luna_ui::DropdownMenu
+pub fn luna_ui::DropdownMenu::accessibility_nodes(&self) -> alloc::vec::Vec<luna_accessibility::AccessibilityNode>
+pub fn luna_ui::DropdownMenu::bounds(&self) -> luna_core::geometry::RectI
+pub fn luna_ui::DropdownMenu::build_display_list(&self, &mut luna_render::display_list::DisplayList)
+pub fn luna_ui::DropdownMenu::hit_test(&self, luna_core::geometry::PointI) -> core::option::Option<luna_core::node_id::NodeId>
+pub fn luna_ui::DropdownMenu::id(&self) -> &luna_core::node_id::NodeId
+pub struct luna_ui::DropdownMenuLayout
+pub luna_ui::DropdownMenuLayout::panel: luna_core::geometry::RectI
+pub luna_ui::DropdownMenuLayout::panels: alloc::vec::Vec<luna_core::geometry::RectI>
+pub luna_ui::DropdownMenuLayout::rows: alloc::vec::Vec<luna_ui::DropdownMenuRowFrame>
+pub struct luna_ui::DropdownMenuRowFrame
+pub luna_ui::DropdownMenuRowFrame::bounds: luna_core::geometry::RectI
+pub luna_ui::DropdownMenuRowFrame::command_id: core::option::Option<alloc::string::String>
+pub luna_ui::DropdownMenuRowFrame::has_submenu: bool
+pub luna_ui::DropdownMenuRowFrame::is_checked: bool
+pub luna_ui::DropdownMenuRowFrame::is_enabled: bool
+pub luna_ui::DropdownMenuRowFrame::is_selected: bool
+pub luna_ui::DropdownMenuRowFrame::is_separator: bool
+pub luna_ui::DropdownMenuRowFrame::item_index: usize
+pub luna_ui::DropdownMenuRowFrame::menu_depth: usize
+pub luna_ui::DropdownMenuRowFrame::node_id: core::option::Option<luna_core::node_id::NodeId>
+pub luna_ui::DropdownMenuRowFrame::shortcut: alloc::string::String
+pub luna_ui::DropdownMenuRowFrame::submenu_id: core::option::Option<alloc::string::String>
+pub luna_ui::DropdownMenuRowFrame::title: alloc::string::String
+pub struct luna_ui::DropdownMenuState
+pub luna_ui::DropdownMenuState::active_menu_id: core::option::Option<alloc::string::String>
+pub luna_ui::DropdownMenuState::active_submenu_index: core::option::Option<usize>
+pub luna_ui::DropdownMenuState::selected_index: usize
+pub luna_ui::DropdownMenuState::selection_path: alloc::vec::Vec<usize>
+pub luna_ui::DropdownMenuState::submenu_selected_index: usize
+impl luna_ui::DropdownMenuState
+pub fn luna_ui::DropdownMenuState::activate_mnemonic(&mut self, &luna_ui::MenuDefinition, char) -> core::option::Option<alloc::string::String>
+pub fn luna_ui::DropdownMenuState::close(&mut self)
+pub fn luna_ui::DropdownMenuState::close_submenu(&mut self) -> bool
+pub const fn luna_ui::DropdownMenuState::is_open(&self) -> bool
+pub fn luna_ui::DropdownMenuState::open(&mut self, &luna_ui::MenuDefinition)
+pub fn luna_ui::DropdownMenuState::open_selected_submenu(&mut self, &luna_ui::MenuDefinition) -> bool
+pub fn luna_ui::DropdownMenuState::select_first(&mut self, &luna_ui::MenuDefinition)
+pub fn luna_ui::DropdownMenuState::select_hovered(&mut self, &luna_ui::MenuDefinition, usize) -> bool
+pub fn luna_ui::DropdownMenuState::select_hovered_path(&mut self, &luna_ui::MenuDefinition, usize, usize) -> bool
+pub fn luna_ui::DropdownMenuState::select_last(&mut self, &luna_ui::MenuDefinition)
+pub fn luna_ui::DropdownMenuState::select_next(&mut self, &luna_ui::MenuDefinition)
+pub fn luna_ui::DropdownMenuState::select_previous(&mut self, &luna_ui::MenuDefinition)
+pub fn luna_ui::DropdownMenuState::selected_command<'a>(&self, &'a luna_ui::MenuDefinition) -> core::option::Option<&'a str>
+pub fn luna_ui::DropdownMenuState::selected_path(&self) -> &[usize]
+pub fn luna_ui::DropdownMenuState::submenu_is_open(&self) -> bool
+pub struct luna_ui::EditorPaneSurface
+impl luna_ui::EditorPaneSurface
+pub fn luna_ui::EditorPaneSurface::editor_node_id(&self, luna_panes::PaneId) -> core::result::Result<luna_core::node_id::NodeId, luna_core::node_id::NodeIdError>
+pub const fn luna_ui::EditorPaneSurface::layout(&self) -> &luna_ui::EditorPaneSurfaceLayout
+pub fn luna_ui::EditorPaneSurface::new(luna_core::node_id::NodeId, luna_core::geometry::RectI, luna_theme::Theme, luna_ui::EditorPaneSurfaceState, luna_panes::PaneLayoutMetrics) -> core::result::Result<Self, luna_core::node_id::NodeIdError>
+pub fn luna_ui::EditorPaneSurface::semantic_hit_test(&self, luna_core::geometry::PointI) -> core::option::Option<luna_ui::EditorPaneSurfaceHit>
+pub fn luna_ui::EditorPaneSurface::semantic_target(&self, &luna_core::node_id::NodeId) -> core::option::Option<luna_ui::EditorPaneSurfaceHit>
+pub fn luna_ui::EditorPaneSurface::splitter_node_id(&self, luna_panes::PaneId) -> core::result::Result<luna_core::node_id::NodeId, luna_core::node_id::NodeIdError>
+pub fn luna_ui::EditorPaneSurface::tab_drop_target(&self, luna_core::geometry::PointI) -> core::option::Option<(luna_panes::PaneId, usize)>
+impl luna_ui::Widget for luna_ui::EditorPaneSurface
+pub fn luna_ui::EditorPaneSurface::accessibility_nodes(&self) -> alloc::vec::Vec<luna_accessibility::AccessibilityNode>
+pub fn luna_ui::EditorPaneSurface::bounds(&self) -> luna_core::geometry::RectI
+pub fn luna_ui::EditorPaneSurface::build_display_list(&self, &mut luna_render::display_list::DisplayList)
+pub fn luna_ui::EditorPaneSurface::hit_test(&self, luna_core::geometry::PointI) -> core::option::Option<luna_core::node_id::NodeId>
+pub fn luna_ui::EditorPaneSurface::id(&self) -> &luna_core::node_id::NodeId
+pub struct luna_ui::EditorPaneSurfaceLayout
+pub luna_ui::EditorPaneSurfaceLayout::panes: luna_panes::PaneLayoutSnapshot
+pub luna_ui::EditorPaneSurfaceLayout::tab_strips: alloc::vec::Vec<luna_ui::PaneTabStripFrame>
+pub luna_ui::EditorPaneSurfaceLayout::tabs: alloc::vec::Vec<luna_ui::PaneTabFrame>
+pub struct luna_ui::EditorPaneSurfaceState
+pub luna_ui::EditorPaneSurfaceState::panes: alloc::vec::Vec<luna_ui::PanePresentation>
+pub luna_ui::EditorPaneSurfaceState::tree: luna_panes::PaneTree
+pub struct luna_ui::EditorShell
+impl luna_ui::EditorShell
+pub const fn luna_ui::EditorShell::editor_node_id(&self) -> &luna_core::node_id::NodeId
+pub const fn luna_ui::EditorShell::layout(&self) -> &luna_ui::EditorShellLayout
+pub fn luna_ui::EditorShell::new(luna_core::node_id::NodeId, luna_core::geometry::RectI, luna_theme::Theme, luna_ui::EditorShellState, luna_ui::EditorShellMetrics) -> core::result::Result<Self, luna_core::node_id::NodeIdError>
+pub fn luna_ui::EditorShell::semantic_hit_test(&self, luna_core::geometry::PointI) -> core::option::Option<luna_ui::EditorShellHit>
+pub fn luna_ui::EditorShell::semantic_target(&self, &luna_core::node_id::NodeId) -> core::option::Option<luna_ui::EditorShellHit>
+impl luna_ui::Widget for luna_ui::EditorShell
+pub fn luna_ui::EditorShell::accessibility_nodes(&self) -> alloc::vec::Vec<luna_accessibility::AccessibilityNode>
+pub fn luna_ui::EditorShell::bounds(&self) -> luna_core::geometry::RectI
+pub fn luna_ui::EditorShell::build_display_list(&self, &mut luna_render::display_list::DisplayList)
+pub fn luna_ui::EditorShell::hit_test(&self, luna_core::geometry::PointI) -> core::option::Option<luna_core::node_id::NodeId>
+pub fn luna_ui::EditorShell::id(&self) -> &luna_core::node_id::NodeId
+pub struct luna_ui::EditorShellLayout
+pub luna_ui::EditorShellLayout::bounds: luna_core::geometry::RectI
+pub luna_ui::EditorShellLayout::content: luna_core::geometry::RectI
+pub luna_ui::EditorShellLayout::editor: luna_core::geometry::RectI
+pub luna_ui::EditorShellLayout::menu_bar: luna_core::geometry::RectI
+pub luna_ui::EditorShellLayout::menus: alloc::vec::Vec<luna_ui::ShellItemFrame>
+pub luna_ui::EditorShellLayout::sidebar: luna_core::geometry::RectI
+pub luna_ui::EditorShellLayout::sidebar_header: luna_core::geometry::RectI
+pub luna_ui::EditorShellLayout::sidebar_rows: alloc::vec::Vec<luna_ui::ShellItemFrame>
+pub luna_ui::EditorShellLayout::status_bar: luna_core::geometry::RectI
+pub luna_ui::EditorShellLayout::status_left: luna_core::geometry::RectI
+pub luna_ui::EditorShellLayout::status_right: luna_core::geometry::RectI
+pub luna_ui::EditorShellLayout::tab_strip: luna_core::geometry::RectI
+pub luna_ui::EditorShellLayout::tabs: alloc::vec::Vec<luna_ui::ShellItemFrame>
+pub struct luna_ui::EditorShellMetrics
+pub luna_ui::EditorShellMetrics::menu_bar_height: u32
+pub luna_ui::EditorShellMetrics::menu_width: u32
+pub luna_ui::EditorShellMetrics::separator_width: u32
+pub luna_ui::EditorShellMetrics::sidebar_header_height: u32
+pub luna_ui::EditorShellMetrics::sidebar_indent: u32
+pub luna_ui::EditorShellMetrics::sidebar_maximum_width: u32
+pub luna_ui::EditorShellMetrics::sidebar_minimum_width: u32
+pub luna_ui::EditorShellMetrics::sidebar_row_height: u32
+pub luna_ui::EditorShellMetrics::status_bar_height: u32
+pub luna_ui::EditorShellMetrics::tab_maximum_width: u32
+pub luna_ui::EditorShellMetrics::tab_minimum_width: u32
+pub luna_ui::EditorShellMetrics::tab_strip_height: u32
+impl core::default::Default for luna_ui::EditorShellMetrics
+pub fn luna_ui::EditorShellMetrics::default() -> Self
+pub struct luna_ui::EditorShellState
+pub luna_ui::EditorShellState::active_menu_id: core::option::Option<alloc::string::String>
+pub luna_ui::EditorShellState::active_tab_id: core::option::Option<alloc::string::String>
+pub luna_ui::EditorShellState::editor_children: alloc::vec::Vec<luna_core::node_id::NodeId>
+pub luna_ui::EditorShellState::menus: alloc::vec::Vec<luna_ui::ShellMenu>
+pub luna_ui::EditorShellState::selected_sidebar_id: core::option::Option<alloc::string::String>
+pub luna_ui::EditorShellState::sidebar_is_visible: bool
+pub luna_ui::EditorShellState::sidebar_items: alloc::vec::Vec<luna_ui::SidebarItem>
+pub luna_ui::EditorShellState::sidebar_width: u32
+pub luna_ui::EditorShellState::status_left: alloc::string::String
+pub luna_ui::EditorShellState::status_right: alloc::string::String
+pub luna_ui::EditorShellState::tab_strip_is_visible: bool
+pub luna_ui::EditorShellState::tabs: alloc::vec::Vec<luna_ui::ShellTab>
+impl core::default::Default for luna_ui::EditorShellState
+pub fn luna_ui::EditorShellState::default() -> Self
+pub struct luna_ui::FindPanel
+impl luna_ui::FindPanel
+pub const fn luna_ui::FindPanel::active_field_bounds(&self) -> luna_core::geometry::RectI
+pub const fn luna_ui::FindPanel::close_node_id(&self) -> &luna_core::node_id::NodeId
+pub const fn luna_ui::FindPanel::layout(&self) -> luna_ui::FindPanelLayout
+pub const fn luna_ui::FindPanel::match_case_node_id(&self) -> &luna_core::node_id::NodeId
+pub fn luna_ui::FindPanel::new(luna_core::node_id::NodeId, luna_core::geometry::RectI, luna_theme::Theme, luna_ui::FindPanelState) -> core::result::Result<Self, luna_core::node_id::NodeIdError>
+pub const fn luna_ui::FindPanel::next_node_id(&self) -> &luna_core::node_id::NodeId
+pub const fn luna_ui::FindPanel::previous_node_id(&self) -> &luna_core::node_id::NodeId
+pub const fn luna_ui::FindPanel::query_node_id(&self) -> &luna_core::node_id::NodeId
+pub const fn luna_ui::FindPanel::replace_all_node_id(&self) -> &luna_core::node_id::NodeId
+pub const fn luna_ui::FindPanel::replace_one_node_id(&self) -> &luna_core::node_id::NodeId
+pub const fn luna_ui::FindPanel::replacement_node_id(&self) -> &luna_core::node_id::NodeId
+pub const fn luna_ui::FindPanel::selection_only_node_id(&self) -> &luna_core::node_id::NodeId
+pub const fn luna_ui::FindPanel::status_node_id(&self) -> &luna_core::node_id::NodeId
+pub const fn luna_ui::FindPanel::whole_word_node_id(&self) -> &luna_core::node_id::NodeId
+pub const fn luna_ui::FindPanel::wrap_around_node_id(&self) -> &luna_core::node_id::NodeId
+impl luna_ui::Widget for luna_ui::FindPanel
+pub fn luna_ui::FindPanel::accessibility_nodes(&self) -> alloc::vec::Vec<luna_accessibility::AccessibilityNode>
+pub fn luna_ui::FindPanel::bounds(&self) -> luna_core::geometry::RectI
+pub fn luna_ui::FindPanel::build_display_list(&self, &mut luna_render::display_list::DisplayList)
+pub fn luna_ui::FindPanel::hit_test(&self, luna_core::geometry::PointI) -> core::option::Option<luna_core::node_id::NodeId>
+pub fn luna_ui::FindPanel::id(&self) -> &luna_core::node_id::NodeId
+pub struct luna_ui::FindPanelLayout
+pub luna_ui::FindPanelLayout::close: luna_core::geometry::RectI
+pub luna_ui::FindPanelLayout::match_case: luna_core::geometry::RectI
+pub luna_ui::FindPanelLayout::next: luna_core::geometry::RectI
+pub luna_ui::FindPanelLayout::panel: luna_core::geometry::RectI
+pub luna_ui::FindPanelLayout::previous: luna_core::geometry::RectI
+pub luna_ui::FindPanelLayout::query: luna_core::geometry::RectI
+pub luna_ui::FindPanelLayout::replace_all: luna_core::geometry::RectI
+pub luna_ui::FindPanelLayout::replace_one: luna_core::geometry::RectI
+pub luna_ui::FindPanelLayout::replacement: luna_core::geometry::RectI
+pub luna_ui::FindPanelLayout::selection_only: luna_core::geometry::RectI
+pub luna_ui::FindPanelLayout::status: luna_core::geometry::RectI
+pub luna_ui::FindPanelLayout::whole_word: luna_core::geometry::RectI
+pub luna_ui::FindPanelLayout::wrap_around: luna_core::geometry::RectI
+pub struct luna_ui::FindPanelState
+pub luna_ui::FindPanelState::active_field: luna_ui::FindField
+pub luna_ui::FindPanelState::case_sensitive: bool
+pub luna_ui::FindPanelState::match_count: usize
+pub luna_ui::FindPanelState::query: alloc::string::String
+pub luna_ui::FindPanelState::replacement: alloc::string::String
+pub luna_ui::FindPanelState::replacement_is_visible: bool
+pub luna_ui::FindPanelState::selected_match: usize
+pub luna_ui::FindPanelState::selection_only: bool
+pub luna_ui::FindPanelState::whole_word: bool
+pub luna_ui::FindPanelState::wrap_around: bool
+impl core::default::Default for luna_ui::FindPanelState
+pub fn luna_ui::FindPanelState::default() -> Self
+pub struct luna_ui::MenuCommand
+pub luna_ui::MenuCommand::id: alloc::string::String
+pub luna_ui::MenuCommand::is_checked: bool
+pub luna_ui::MenuCommand::is_enabled: bool
+pub luna_ui::MenuCommand::mnemonic: core::option::Option<char>
+pub luna_ui::MenuCommand::shortcut: alloc::string::String
+pub luna_ui::MenuCommand::title: alloc::string::String
+impl luna_ui::MenuCommand
+pub fn luna_ui::MenuCommand::new(impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>) -> Self
+pub const fn luna_ui::MenuCommand::with_checked(self, bool) -> Self
+pub const fn luna_ui::MenuCommand::with_enabled(self, bool) -> Self
+pub fn luna_ui::MenuCommand::with_mnemonic(self, char) -> Self
+pub struct luna_ui::MenuDefinition
+pub luna_ui::MenuDefinition::id: alloc::string::String
+pub luna_ui::MenuDefinition::items: alloc::vec::Vec<luna_ui::MenuItem>
+pub luna_ui::MenuDefinition::mnemonic: core::option::Option<char>
+pub luna_ui::MenuDefinition::title: alloc::string::String
+impl luna_ui::MenuDefinition
+pub fn luna_ui::MenuDefinition::new(impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>, alloc::vec::Vec<luna_ui::MenuItem>) -> Self
+pub fn luna_ui::MenuDefinition::with_mnemonic(self, char) -> Self
+pub struct luna_ui::MenuHoverIntent
+pub luna_ui::MenuHoverIntent::candidate: luna_ui::MenuPath
+pub luna_ui::MenuHoverIntent::started_at_millis: u64
+pub struct luna_ui::MenuPath(_)
+impl luna_ui::MenuPath
+pub fn luna_ui::MenuPath::depth(&self) -> usize
+pub fn luna_ui::MenuPath::indices(&self) -> &[usize]
+pub fn luna_ui::MenuPath::new(alloc::vec::Vec<usize>) -> Self
+pub struct luna_ui::PaletteItem
+pub luna_ui::PaletteItem::detail: alloc::string::String
+pub luna_ui::PaletteItem::id: alloc::string::String
+pub luna_ui::PaletteItem::title: alloc::string::String
+impl luna_ui::PaletteItem
+pub fn luna_ui::PaletteItem::new(impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>) -> Self
+pub struct luna_ui::PaletteRowFrame
+pub luna_ui::PaletteRowFrame::bounds: luna_core::geometry::RectI
+pub luna_ui::PaletteRowFrame::detail: alloc::string::String
+pub luna_ui::PaletteRowFrame::id: alloc::string::String
+pub luna_ui::PaletteRowFrame::is_selected: bool
+pub luna_ui::PaletteRowFrame::node_id: luna_core::node_id::NodeId
+pub luna_ui::PaletteRowFrame::title: alloc::string::String
+pub struct luna_ui::PanePresentation
+pub luna_ui::PanePresentation::active_view: luna_documents::DocumentViewId
+pub luna_ui::PanePresentation::editor_child: luna_core::node_id::NodeId
+pub luna_ui::PanePresentation::pane_id: luna_panes::PaneId
+pub luna_ui::PanePresentation::tab_scroll_offset: usize
+pub luna_ui::PanePresentation::tabs: alloc::vec::Vec<luna_ui::PaneTab>
+pub struct luna_ui::PaneTab
+pub luna_ui::PaneTab::is_closable: bool
+pub luna_ui::PaneTab::is_dirty: bool
+pub luna_ui::PaneTab::is_pinned: bool
+pub luna_ui::PaneTab::is_preview: bool
+pub luna_ui::PaneTab::title: alloc::string::String
+pub luna_ui::PaneTab::view_id: luna_documents::DocumentViewId
+impl luna_ui::PaneTab
+pub fn luna_ui::PaneTab::new(luna_documents::DocumentViewId, impl core::convert::Into<alloc::string::String>) -> Self
+pub struct luna_ui::PaneTabFrame
+pub luna_ui::PaneTabFrame::bounds: luna_core::geometry::RectI
+pub luna_ui::PaneTabFrame::close_bounds: core::option::Option<luna_core::geometry::RectI>
+pub luna_ui::PaneTabFrame::close_node_id: core::option::Option<luna_core::node_id::NodeId>
+pub luna_ui::PaneTabFrame::is_active: bool
+pub luna_ui::PaneTabFrame::is_dirty: bool
+pub luna_ui::PaneTabFrame::is_pinned: bool
+pub luna_ui::PaneTabFrame::is_preview: bool
+pub luna_ui::PaneTabFrame::node_id: luna_core::node_id::NodeId
+pub luna_ui::PaneTabFrame::pane_id: luna_panes::PaneId
+pub luna_ui::PaneTabFrame::tab_index: usize
+pub luna_ui::PaneTabFrame::title: alloc::string::String
+pub luna_ui::PaneTabFrame::view_id: luna_documents::DocumentViewId
+pub struct luna_ui::PaneTabStripFrame
+pub luna_ui::PaneTabStripFrame::bounds: luna_core::geometry::RectI
+pub luna_ui::PaneTabStripFrame::can_scroll_next: bool
+pub luna_ui::PaneTabStripFrame::can_scroll_previous: bool
+pub luna_ui::PaneTabStripFrame::effective_offset: usize
+pub luna_ui::PaneTabStripFrame::next_bounds: core::option::Option<luna_core::geometry::RectI>
+pub luna_ui::PaneTabStripFrame::next_node_id: core::option::Option<luna_core::node_id::NodeId>
+pub luna_ui::PaneTabStripFrame::pane_id: luna_panes::PaneId
+pub luna_ui::PaneTabStripFrame::previous_bounds: core::option::Option<luna_core::geometry::RectI>
+pub luna_ui::PaneTabStripFrame::previous_node_id: core::option::Option<luna_core::node_id::NodeId>
+pub luna_ui::PaneTabStripFrame::regular_viewport: luna_core::geometry::RectI
+pub luna_ui::PaneTabStripFrame::visible_regular_count: usize
+pub struct luna_ui::ProgressBar
+impl luna_ui::ProgressBar
+pub fn luna_ui::ProgressBar::fill_bounds(&self) -> luna_core::geometry::RectI
+pub fn luna_ui::ProgressBar::new(luna_core::node_id::NodeId, luna_core::geometry::RectI, luna_theme::Theme, u16, u16, impl core::convert::Into<alloc::string::String>) -> Self
+impl luna_ui::Widget for luna_ui::ProgressBar
+pub fn luna_ui::ProgressBar::accessibility_nodes(&self) -> alloc::vec::Vec<luna_accessibility::AccessibilityNode>
+pub fn luna_ui::ProgressBar::bounds(&self) -> luna_core::geometry::RectI
+pub fn luna_ui::ProgressBar::build_display_list(&self, &mut luna_render::display_list::DisplayList)
+pub fn luna_ui::ProgressBar::hit_test(&self, luna_core::geometry::PointI) -> core::option::Option<luna_core::node_id::NodeId>
+pub fn luna_ui::ProgressBar::id(&self) -> &luna_core::node_id::NodeId
+pub struct luna_ui::ProofCardFrame
+pub luna_ui::ProofCardFrame::bounds: luna_core::geometry::RectI
+pub luna_ui::ProofCardFrame::content: luna_core::geometry::RectI
+pub luna_ui::ProofCardFrame::id: alloc::string::String
+pub luna_ui::ProofCardFrame::node_id: luna_core::node_id::NodeId
+pub luna_ui::ProofCardFrame::title: alloc::string::String
+pub struct luna_ui::ProofGallery
+impl luna_ui::ProofGallery
+pub fn luna_ui::ProofGallery::build_animation_display_list(&self, &mut luna_render::display_list::DisplayList)
+pub fn luna_ui::ProofGallery::build_static_display_list(&self, &mut luna_render::display_list::DisplayList)
+pub fn luna_ui::ProofGallery::from_layout_snapshot(luna_core::node_id::NodeId, luna_theme::Theme, luna_ui::ProofGalleryState, luna_ui::ProofGalleryLayout) -> Self
+pub const fn luna_ui::ProofGallery::layout(&self) -> &luna_ui::ProofGalleryLayout
+pub fn luna_ui::ProofGallery::new(luna_core::node_id::NodeId, luna_core::geometry::RectI, luna_theme::Theme, luna_ui::ProofGalleryState) -> core::result::Result<Self, luna_core::node_id::NodeIdError>
+impl luna_ui::Widget for luna_ui::ProofGallery
+pub fn luna_ui::ProofGallery::accessibility_nodes(&self) -> alloc::vec::Vec<luna_accessibility::AccessibilityNode>
+pub fn luna_ui::ProofGallery::bounds(&self) -> luna_core::geometry::RectI
+pub fn luna_ui::ProofGallery::build_display_list(&self, &mut luna_render::display_list::DisplayList)
+pub fn luna_ui::ProofGallery::hit_test(&self, luna_core::geometry::PointI) -> core::option::Option<luna_core::node_id::NodeId>
+pub fn luna_ui::ProofGallery::id(&self) -> &luna_core::node_id::NodeId
+pub struct luna_ui::ProofGalleryLayout
+pub luna_ui::ProofGalleryLayout::accessibility_note: luna_core::geometry::RectI
+pub luna_ui::ProofGalleryLayout::animation_lane: luna_core::geometry::RectI
+pub luna_ui::ProofGalleryLayout::animation_square: luna_core::geometry::RectI
+pub luna_ui::ProofGalleryLayout::bounds: luna_core::geometry::RectI
+pub luna_ui::ProofGalleryLayout::button: luna_core::geometry::RectI
+pub luna_ui::ProofGalleryLayout::cards: alloc::vec::Vec<luna_ui::ProofCardFrame>
+pub luna_ui::ProofGalleryLayout::header: luna_core::geometry::RectI
+pub luna_ui::ProofGalleryLayout::progress: luna_core::geometry::RectI
+pub luna_ui::ProofGalleryLayout::split_divider: luna_core::geometry::RectI
+pub luna_ui::ProofGalleryLayout::split_primary: luna_core::geometry::RectI
+pub luna_ui::ProofGalleryLayout::split_secondary: luna_core::geometry::RectI
+pub luna_ui::ProofGalleryLayout::subtitle: luna_core::geometry::RectI
+pub luna_ui::ProofGalleryLayout::text_sample: luna_core::geometry::RectI
+pub luna_ui::ProofGalleryLayout::toggle: luna_core::geometry::RectI
+impl luna_ui::ProofGalleryLayout
+pub fn luna_ui::ProofGalleryLayout::with_animation_millis(self, u64) -> Self
+pub struct luna_ui::ProofGalleryState
+pub luna_ui::ProofGalleryState::activation_count: u32
+pub luna_ui::ProofGalleryState::animation_millis: u64
+pub luna_ui::ProofGalleryState::toggle_is_on: bool
+pub struct luna_ui::RetainedDisplayList
+pub luna_ui::RetainedDisplayList::dirty_bounds: luna_core::geometry::RectI
+pub luna_ui::RetainedDisplayList::display_list: alloc::sync::Arc<luna_render::display_list::DisplayList>
+pub luna_ui::RetainedDisplayList::revision: u64
+impl luna_ui::RetainedDisplayList
+pub fn luna_ui::RetainedDisplayList::new(u64, alloc::sync::Arc<luna_render::display_list::DisplayList>, luna_core::geometry::RectI) -> Self
+pub struct luna_ui::ScriptedCompletionProvider
+impl luna_ui::ScriptedCompletionProvider
+pub fn luna_ui::ScriptedCompletionProvider::canceled_requests(&self) -> &[luna_ui::CompletionRequestId]
+pub fn luna_ui::ScriptedCompletionProvider::new(alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::vec::Vec<luna_ui::CompletionCandidate>>) -> Self
+impl luna_ui::CompletionProvider for luna_ui::ScriptedCompletionProvider
+pub fn luna_ui::ScriptedCompletionProvider::cancel(&mut self, luna_ui::CompletionRequestId)
+pub fn luna_ui::ScriptedCompletionProvider::request(&mut self, luna_ui::CompletionRequest, luna_ui::CompletionResponseSender)
+pub struct luna_ui::SearchHistory
+impl luna_ui::SearchHistory
+pub fn luna_ui::SearchHistory::entries(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = &str>
+pub fn luna_ui::SearchHistory::new(usize) -> Self
+pub fn luna_ui::SearchHistory::next(&mut self) -> core::option::Option<&str>
+pub fn luna_ui::SearchHistory::previous(&mut self) -> core::option::Option<&str>
+pub fn luna_ui::SearchHistory::record(&mut self, impl core::convert::Into<alloc::string::String>) -> bool
+pub fn luna_ui::SearchHistory::reset_navigation(&mut self)
+impl core::default::Default for luna_ui::SearchHistory
+pub fn luna_ui::SearchHistory::default() -> Self
+pub struct luna_ui::ShellItemFrame
+pub luna_ui::ShellItemFrame::accessory_bounds: core::option::Option<luna_core::geometry::RectI>
+pub luna_ui::ShellItemFrame::bounds: luna_core::geometry::RectI
+pub luna_ui::ShellItemFrame::depth: u16
+pub luna_ui::ShellItemFrame::id: alloc::string::String
+pub luna_ui::ShellItemFrame::is_selected: bool
+pub luna_ui::ShellItemFrame::node_id: luna_core::node_id::NodeId
+pub luna_ui::ShellItemFrame::title: alloc::string::String
+pub struct luna_ui::ShellMenu
+pub luna_ui::ShellMenu::id: alloc::string::String
+pub luna_ui::ShellMenu::title: alloc::string::String
+impl luna_ui::ShellMenu
+pub fn luna_ui::ShellMenu::new(impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>) -> Self
+pub struct luna_ui::ShellTab
+pub luna_ui::ShellTab::id: alloc::string::String
+pub luna_ui::ShellTab::is_closable: bool
+pub luna_ui::ShellTab::is_dirty: bool
+pub luna_ui::ShellTab::title: alloc::string::String
+impl luna_ui::ShellTab
+pub fn luna_ui::ShellTab::new(impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>) -> Self
+pub struct luna_ui::SidebarItem
+pub luna_ui::SidebarItem::depth: u16
+pub luna_ui::SidebarItem::id: alloc::string::String
+pub luna_ui::SidebarItem::is_expanded: bool
+pub luna_ui::SidebarItem::kind: luna_ui::SidebarItemKind
+pub luna_ui::SidebarItem::title: alloc::string::String
+impl luna_ui::SidebarItem
+pub fn luna_ui::SidebarItem::file(impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>, u16) -> Self
+pub fn luna_ui::SidebarItem::folder(impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>, u16, bool) -> Self
+pub struct luna_ui::TextLabel
+impl luna_ui::TextLabel
+pub fn luna_ui::TextLabel::image_origin(&self) -> luna_core::geometry::PointI
+pub fn luna_ui::TextLabel::new(luna_core::node_id::NodeId, luna_core::geometry::RectI, impl core::convert::Into<alloc::string::String>, luna_text_cosmic::TextLayoutSnapshot, luna_ui::TextAlignment) -> Self
+impl luna_ui::Widget for luna_ui::TextLabel
+pub fn luna_ui::TextLabel::accessibility_nodes(&self) -> alloc::vec::Vec<luna_accessibility::AccessibilityNode>
+pub fn luna_ui::TextLabel::bounds(&self) -> luna_core::geometry::RectI
+pub fn luna_ui::TextLabel::build_display_list(&self, &mut luna_render::display_list::DisplayList)
+pub fn luna_ui::TextLabel::hit_test(&self, luna_core::geometry::PointI) -> core::option::Option<luna_core::node_id::NodeId>
+pub fn luna_ui::TextLabel::id(&self) -> &luna_core::node_id::NodeId
+pub struct luna_ui::TextLabelCache
+impl luna_ui::TextLabelCache
+pub fn luna_ui::TextLabelCache::clear(&mut self)
+pub fn luna_ui::TextLabelCache::layout(&mut self, &mut luna_text_cosmic::TextEngine, &str, &str, u32, f32, f32, luna_theme::Rgba8) -> core::result::Result<luna_text_cosmic::TextLayoutSnapshot, luna_text_cosmic::TextLayoutError>
+pub fn luna_ui::TextLabelCache::new() -> Self
+pub fn luna_ui::TextLabelCache::stats(&self) -> luna_ui::TextLabelCacheStats
+pub struct luna_ui::TextLabelCacheStats
+pub luna_ui::TextLabelCacheStats::entries: usize
+pub luna_ui::TextLabelCacheStats::hits: u64
+pub luna_ui::TextLabelCacheStats::misses: u64
+pub struct luna_ui::TextStyleDecoration
+pub luna_ui::TextStyleDecoration::background: core::option::Option<luna_theme::Rgba8>
+pub luna_ui::TextStyleDecoration::range: luna_text::TextRange
+pub luna_ui::TextStyleDecoration::underline: core::option::Option<luna_theme::Rgba8>
+impl luna_ui::TextStyleDecoration
+pub const fn luna_ui::TextStyleDecoration::new(luna_text::TextRange, core::option::Option<luna_theme::Rgba8>, core::option::Option<luna_theme::Rgba8>) -> Self
+pub struct luna_ui::TextView
+impl luna_ui::TextView
+pub fn luna_ui::TextView::additional_selections(&self) -> &[luna_text::TextRange]
+pub fn luna_ui::TextView::caret_bounds(&self) -> core::option::Option<luna_core::geometry::RectI>
+pub fn luna_ui::TextView::decorations(&self) -> &[luna_ui::TextStyleDecoration]
+pub fn luna_ui::TextView::gutter_bounds(&self) -> luna_core::geometry::RectI
+pub fn luna_ui::TextView::maximum_scroll(&self) -> luna_core::geometry::PointI
+pub fn luna_ui::TextView::new(luna_core::node_id::NodeId, luna_core::geometry::RectI, luna_text::TextDocument, luna_text_cosmic::TextLayoutSnapshot, luna_text::TextLocation, core::option::Option<luna_text::TextRange>, luna_text::TextScroll, luna_ui::TextViewStyle, impl core::convert::Into<alloc::string::String>, bool, bool) -> Self
+pub fn luna_ui::TextView::scroll_revealing_caret(&self) -> luna_text::TextScroll
+pub fn luna_ui::TextView::scroll_y_for_scrollbar_point(&self, luna_core::geometry::PointI) -> i32
+pub fn luna_ui::TextView::text_hit_test(&self, luna_core::geometry::PointI) -> core::option::Option<luna_text::TextLocation>
+pub fn luna_ui::TextView::text_viewport(&self) -> luna_core::geometry::RectI
+pub fn luna_ui::TextView::vertical_page_delta(&self) -> i32
+pub fn luna_ui::TextView::vertical_scrollbar_action(&self, luna_core::geometry::PointI) -> luna_ui::VerticalScrollbarAction
+pub fn luna_ui::TextView::vertical_scrollbar_bounds(&self) -> luna_core::geometry::RectI
+pub fn luna_ui::TextView::vertical_scrollbar_contains(&self, luna_core::geometry::PointI) -> bool
+pub fn luna_ui::TextView::vertical_scrollbar_thumb(&self) -> luna_core::geometry::RectI
+pub fn luna_ui::TextView::with_additional_selections(self, impl core::iter::traits::collect::IntoIterator<Item = luna_text::TextRange>) -> Self
+pub fn luna_ui::TextView::with_decorations(self, impl core::iter::traits::collect::IntoIterator<Item = luna_ui::TextStyleDecoration>) -> Self
+impl luna_ui::Widget for luna_ui::TextView
+pub fn luna_ui::TextView::accessibility_nodes(&self) -> alloc::vec::Vec<luna_accessibility::AccessibilityNode>
+pub fn luna_ui::TextView::bounds(&self) -> luna_core::geometry::RectI
+pub fn luna_ui::TextView::build_display_list(&self, &mut luna_render::display_list::DisplayList)
+pub fn luna_ui::TextView::hit_test(&self, luna_core::geometry::PointI) -> core::option::Option<luna_core::node_id::NodeId>
+pub fn luna_ui::TextView::id(&self) -> &luna_core::node_id::NodeId
+pub struct luna_ui::TextViewStyle
+pub luna_ui::TextViewStyle::background: luna_theme::Rgba8
+pub luna_ui::TextViewStyle::caret: luna_theme::Rgba8
+pub luna_ui::TextViewStyle::content_insets: luna_core::geometry::InsetsI
+pub luna_ui::TextViewStyle::current_line_background: luna_theme::Rgba8
+pub luna_ui::TextViewStyle::gutter_background: luna_theme::Rgba8
+pub luna_ui::TextViewStyle::gutter_width: u32
+pub luna_ui::TextViewStyle::scrollbar_width: u32
+pub luna_ui::TextViewStyle::selection_background: luna_theme::Rgba8
+impl luna_ui::TextViewStyle
+pub const fn luna_ui::TextViewStyle::from_theme(luna_theme::Theme) -> Self
+pub struct luna_ui::Toggle
+impl luna_ui::Toggle
+pub fn luna_ui::Toggle::new(luna_core::node_id::NodeId, luna_core::geometry::RectI, impl core::convert::Into<alloc::string::String>, luna_text_cosmic::TextLayoutSnapshot, luna_theme::Theme, luna_ui::ControlState, bool) -> Self
+pub fn luna_ui::Toggle::switch_bounds(&self) -> luna_core::geometry::RectI
+impl luna_ui::Widget for luna_ui::Toggle
+pub fn luna_ui::Toggle::accessibility_nodes(&self) -> alloc::vec::Vec<luna_accessibility::AccessibilityNode>
+pub fn luna_ui::Toggle::bounds(&self) -> luna_core::geometry::RectI
+pub fn luna_ui::Toggle::build_display_list(&self, &mut luna_render::display_list::DisplayList)
+pub fn luna_ui::Toggle::hit_test(&self, luna_core::geometry::PointI) -> core::option::Option<luna_core::node_id::NodeId>
+pub fn luna_ui::Toggle::id(&self) -> &luna_core::node_id::NodeId
+pub struct luna_ui::UiFrame
+pub luna_ui::UiFrame::accessibility_tree: alloc::sync::Arc<luna_accessibility::AccessibilityTree>
+pub luna_ui::UiFrame::display_list: luna_render::display_list::DisplayList
+pub luna_ui::UiFrame::retained_display_list: core::option::Option<luna_ui::RetainedDisplayList>
+impl luna_ui::UiFrame
+pub fn luna_ui::UiFrame::build(&impl luna_ui::Widget, luna_theme::Rgba8) -> core::result::Result<Self, luna_ui::UiFrameError>
+pub fn luna_ui::UiFrame::from_parts(luna_render::display_list::DisplayList, luna_core::node_id::NodeId, impl core::iter::traits::collect::IntoIterator<Item = luna_accessibility::AccessibilityNode>) -> core::result::Result<Self, luna_ui::UiFrameError>
+pub fn luna_ui::UiFrame::from_retained_snapshots(luna_ui::RetainedDisplayList, luna_render::display_list::DisplayList, alloc::sync::Arc<luna_accessibility::AccessibilityTree>) -> Self
+pub struct luna_ui::WorkspaceDemo
+impl luna_ui::WorkspaceDemo
+pub const fn luna_ui::WorkspaceDemo::command_button_id(&self) -> &luna_core::node_id::NodeId
+pub const fn luna_ui::WorkspaceDemo::layout(&self) -> luna_ui::WorkspaceDemoLayout
+pub fn luna_ui::WorkspaceDemo::new(luna_core::node_id::NodeId, luna_core::geometry::RectI, luna_theme::Theme, luna_ui::WorkspaceDemoState) -> core::result::Result<Self, luna_core::node_id::NodeIdError>
+impl luna_ui::Widget for luna_ui::WorkspaceDemo
+pub fn luna_ui::WorkspaceDemo::accessibility_nodes(&self) -> alloc::vec::Vec<luna_accessibility::AccessibilityNode>
+pub fn luna_ui::WorkspaceDemo::bounds(&self) -> luna_core::geometry::RectI
+pub fn luna_ui::WorkspaceDemo::build_display_list(&self, &mut luna_render::display_list::DisplayList)
+pub fn luna_ui::WorkspaceDemo::hit_test(&self, luna_core::geometry::PointI) -> core::option::Option<luna_core::node_id::NodeId>
+pub fn luna_ui::WorkspaceDemo::id(&self) -> &luna_core::node_id::NodeId
+pub struct luna_ui::WorkspaceDemoLayout
+pub luna_ui::WorkspaceDemoLayout::body: luna_core::geometry::RectI
+pub luna_ui::WorkspaceDemoLayout::command_button: luna_core::geometry::RectI
+pub luna_ui::WorkspaceDemoLayout::divider: luna_core::geometry::RectI
+pub luna_ui::WorkspaceDemoLayout::editor: luna_core::geometry::RectI
+pub luna_ui::WorkspaceDemoLayout::editor_overlay: luna_core::geometry::RectI
+pub luna_ui::WorkspaceDemoLayout::header: luna_core::geometry::RectI
+pub luna_ui::WorkspaceDemoLayout::sidebar: luna_core::geometry::RectI
+pub luna_ui::WorkspaceDemoLayout::status: luna_core::geometry::RectI
+pub struct luna_ui::WorkspaceDemoState
+pub luna_ui::WorkspaceDemoState::focused_node: core::option::Option<luna_core::node_id::NodeId>
+pub luna_ui::WorkspaceDemoState::sidebar_is_accented: bool
+pub trait luna_ui::CompletionProvider
+pub fn luna_ui::CompletionProvider::cancel(&mut self, luna_ui::CompletionRequestId)
+pub fn luna_ui::CompletionProvider::request(&mut self, luna_ui::CompletionRequest, luna_ui::CompletionResponseSender)
+impl luna_ui::CompletionProvider for luna_ui::ScriptedCompletionProvider
+pub fn luna_ui::ScriptedCompletionProvider::cancel(&mut self, luna_ui::CompletionRequestId)
+pub fn luna_ui::ScriptedCompletionProvider::request(&mut self, luna_ui::CompletionRequest, luna_ui::CompletionResponseSender)
+pub trait luna_ui::Widget
+pub fn luna_ui::Widget::accessibility_nodes(&self) -> alloc::vec::Vec<luna_accessibility::AccessibilityNode>
+pub fn luna_ui::Widget::bounds(&self) -> luna_core::geometry::RectI
+pub fn luna_ui::Widget::build_display_list(&self, &mut luna_render::display_list::DisplayList)
+pub fn luna_ui::Widget::hit_test(&self, luna_core::geometry::PointI) -> core::option::Option<luna_core::node_id::NodeId>
+pub fn luna_ui::Widget::id(&self) -> &luna_core::node_id::NodeId
+impl luna_ui::Widget for luna_ui::Button
+pub fn luna_ui::Button::accessibility_nodes(&self) -> alloc::vec::Vec<luna_accessibility::AccessibilityNode>
+pub fn luna_ui::Button::bounds(&self) -> luna_core::geometry::RectI
+pub fn luna_ui::Button::build_display_list(&self, &mut luna_render::display_list::DisplayList)
+pub fn luna_ui::Button::hit_test(&self, luna_core::geometry::PointI) -> core::option::Option<luna_core::node_id::NodeId>
+pub fn luna_ui::Button::id(&self) -> &luna_core::node_id::NodeId
+impl luna_ui::Widget for luna_ui::CommandPalette
+pub fn luna_ui::CommandPalette::accessibility_nodes(&self) -> alloc::vec::Vec<luna_accessibility::AccessibilityNode>
+pub fn luna_ui::CommandPalette::bounds(&self) -> luna_core::geometry::RectI
+pub fn luna_ui::CommandPalette::build_display_list(&self, &mut luna_render::display_list::DisplayList)
+pub fn luna_ui::CommandPalette::hit_test(&self, luna_core::geometry::PointI) -> core::option::Option<luna_core::node_id::NodeId>
+pub fn luna_ui::CommandPalette::id(&self) -> &luna_core::node_id::NodeId
+impl luna_ui::Widget for luna_ui::CompletionPopup
+pub fn luna_ui::CompletionPopup::accessibility_nodes(&self) -> alloc::vec::Vec<luna_accessibility::AccessibilityNode>
+pub fn luna_ui::CompletionPopup::bounds(&self) -> luna_core::geometry::RectI
+pub fn luna_ui::CompletionPopup::build_display_list(&self, &mut luna_render::display_list::DisplayList)
+pub fn luna_ui::CompletionPopup::hit_test(&self, luna_core::geometry::PointI) -> core::option::Option<luna_core::node_id::NodeId>
+pub fn luna_ui::CompletionPopup::id(&self) -> &luna_core::node_id::NodeId
+impl luna_ui::Widget for luna_ui::DemoPanel
+pub fn luna_ui::DemoPanel::accessibility_nodes(&self) -> alloc::vec::Vec<luna_accessibility::AccessibilityNode>
+pub fn luna_ui::DemoPanel::bounds(&self) -> luna_core::geometry::RectI
+pub fn luna_ui::DemoPanel::build_display_list(&self, &mut luna_render::display_list::DisplayList)
+pub fn luna_ui::DemoPanel::hit_test(&self, luna_core::geometry::PointI) -> core::option::Option<luna_core::node_id::NodeId>
+pub fn luna_ui::DemoPanel::id(&self) -> &luna_core::node_id::NodeId
+impl luna_ui::Widget for luna_ui::DropdownMenu
+pub fn luna_ui::DropdownMenu::accessibility_nodes(&self) -> alloc::vec::Vec<luna_accessibility::AccessibilityNode>
+pub fn luna_ui::DropdownMenu::bounds(&self) -> luna_core::geometry::RectI
+pub fn luna_ui::DropdownMenu::build_display_list(&self, &mut luna_render::display_list::DisplayList)
+pub fn luna_ui::DropdownMenu::hit_test(&self, luna_core::geometry::PointI) -> core::option::Option<luna_core::node_id::NodeId>
+pub fn luna_ui::DropdownMenu::id(&self) -> &luna_core::node_id::NodeId
+impl luna_ui::Widget for luna_ui::EditorPaneSurface
+pub fn luna_ui::EditorPaneSurface::accessibility_nodes(&self) -> alloc::vec::Vec<luna_accessibility::AccessibilityNode>
+pub fn luna_ui::EditorPaneSurface::bounds(&self) -> luna_core::geometry::RectI
+pub fn luna_ui::EditorPaneSurface::build_display_list(&self, &mut luna_render::display_list::DisplayList)
+pub fn luna_ui::EditorPaneSurface::hit_test(&self, luna_core::geometry::PointI) -> core::option::Option<luna_core::node_id::NodeId>
+pub fn luna_ui::EditorPaneSurface::id(&self) -> &luna_core::node_id::NodeId
+impl luna_ui::Widget for luna_ui::EditorShell
+pub fn luna_ui::EditorShell::accessibility_nodes(&self) -> alloc::vec::Vec<luna_accessibility::AccessibilityNode>
+pub fn luna_ui::EditorShell::bounds(&self) -> luna_core::geometry::RectI
+pub fn luna_ui::EditorShell::build_display_list(&self, &mut luna_render::display_list::DisplayList)
+pub fn luna_ui::EditorShell::hit_test(&self, luna_core::geometry::PointI) -> core::option::Option<luna_core::node_id::NodeId>
+pub fn luna_ui::EditorShell::id(&self) -> &luna_core::node_id::NodeId
+impl luna_ui::Widget for luna_ui::FindPanel
+pub fn luna_ui::FindPanel::accessibility_nodes(&self) -> alloc::vec::Vec<luna_accessibility::AccessibilityNode>
+pub fn luna_ui::FindPanel::bounds(&self) -> luna_core::geometry::RectI
+pub fn luna_ui::FindPanel::build_display_list(&self, &mut luna_render::display_list::DisplayList)
+pub fn luna_ui::FindPanel::hit_test(&self, luna_core::geometry::PointI) -> core::option::Option<luna_core::node_id::NodeId>
+pub fn luna_ui::FindPanel::id(&self) -> &luna_core::node_id::NodeId
+impl luna_ui::Widget for luna_ui::ProgressBar
+pub fn luna_ui::ProgressBar::accessibility_nodes(&self) -> alloc::vec::Vec<luna_accessibility::AccessibilityNode>
+pub fn luna_ui::ProgressBar::bounds(&self) -> luna_core::geometry::RectI
+pub fn luna_ui::ProgressBar::build_display_list(&self, &mut luna_render::display_list::DisplayList)
+pub fn luna_ui::ProgressBar::hit_test(&self, luna_core::geometry::PointI) -> core::option::Option<luna_core::node_id::NodeId>
+pub fn luna_ui::ProgressBar::id(&self) -> &luna_core::node_id::NodeId
+impl luna_ui::Widget for luna_ui::ProofGallery
+pub fn luna_ui::ProofGallery::accessibility_nodes(&self) -> alloc::vec::Vec<luna_accessibility::AccessibilityNode>
+pub fn luna_ui::ProofGallery::bounds(&self) -> luna_core::geometry::RectI
+pub fn luna_ui::ProofGallery::build_display_list(&self, &mut luna_render::display_list::DisplayList)
+pub fn luna_ui::ProofGallery::hit_test(&self, luna_core::geometry::PointI) -> core::option::Option<luna_core::node_id::NodeId>
+pub fn luna_ui::ProofGallery::id(&self) -> &luna_core::node_id::NodeId
+impl luna_ui::Widget for luna_ui::TextLabel
+pub fn luna_ui::TextLabel::accessibility_nodes(&self) -> alloc::vec::Vec<luna_accessibility::AccessibilityNode>
+pub fn luna_ui::TextLabel::bounds(&self) -> luna_core::geometry::RectI
+pub fn luna_ui::TextLabel::build_display_list(&self, &mut luna_render::display_list::DisplayList)
+pub fn luna_ui::TextLabel::hit_test(&self, luna_core::geometry::PointI) -> core::option::Option<luna_core::node_id::NodeId>
+pub fn luna_ui::TextLabel::id(&self) -> &luna_core::node_id::NodeId
+impl luna_ui::Widget for luna_ui::TextView
+pub fn luna_ui::TextView::accessibility_nodes(&self) -> alloc::vec::Vec<luna_accessibility::AccessibilityNode>
+pub fn luna_ui::TextView::bounds(&self) -> luna_core::geometry::RectI
+pub fn luna_ui::TextView::build_display_list(&self, &mut luna_render::display_list::DisplayList)
+pub fn luna_ui::TextView::hit_test(&self, luna_core::geometry::PointI) -> core::option::Option<luna_core::node_id::NodeId>
+pub fn luna_ui::TextView::id(&self) -> &luna_core::node_id::NodeId
+impl luna_ui::Widget for luna_ui::Toggle
+pub fn luna_ui::Toggle::accessibility_nodes(&self) -> alloc::vec::Vec<luna_accessibility::AccessibilityNode>
+pub fn luna_ui::Toggle::bounds(&self) -> luna_core::geometry::RectI
+pub fn luna_ui::Toggle::build_display_list(&self, &mut luna_render::display_list::DisplayList)
+pub fn luna_ui::Toggle::hit_test(&self, luna_core::geometry::PointI) -> core::option::Option<luna_core::node_id::NodeId>
+pub fn luna_ui::Toggle::id(&self) -> &luna_core::node_id::NodeId
+impl luna_ui::Widget for luna_ui::WorkspaceDemo
+pub fn luna_ui::WorkspaceDemo::accessibility_nodes(&self) -> alloc::vec::Vec<luna_accessibility::AccessibilityNode>
+pub fn luna_ui::WorkspaceDemo::bounds(&self) -> luna_core::geometry::RectI
+pub fn luna_ui::WorkspaceDemo::build_display_list(&self, &mut luna_render::display_list::DisplayList)
+pub fn luna_ui::WorkspaceDemo::hit_test(&self, luna_core::geometry::PointI) -> core::option::Option<luna_core::node_id::NodeId>
+pub fn luna_ui::WorkspaceDemo::id(&self) -> &luna_core::node_id::NodeId
+pub fn luna_ui::card_border(luna_theme::Theme) -> luna_theme::Rgba8

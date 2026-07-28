@@ -1,0 +1,127 @@
+pub mod luna_panes
+pub enum luna_panes::PaneAxis
+pub luna_panes::PaneAxis::Horizontal
+pub luna_panes::PaneAxis::Vertical
+pub enum luna_panes::PaneError
+pub luna_panes::PaneError::CannotCloseLastPane
+pub luna_panes::PaneError::CannotPreviewPinned
+pub luna_panes::PaneError::EmptyPane
+pub luna_panes::PaneError::InvalidSnapshot(&'static str)
+pub luna_panes::PaneError::UnknownPane(luna_panes::PaneId)
+pub luna_panes::PaneError::UnknownView(luna_documents::DocumentViewId)
+pub luna_panes::PaneError::UnknownViewKey(u64)
+impl core::error::Error for luna_panes::PaneError
+impl core::fmt::Display for luna_panes::PaneError
+pub fn luna_panes::PaneError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl luna_core::error_code::CodedError for luna_panes::PaneError
+pub fn luna_panes::PaneError::error_code(&self) -> luna_core::error_code::ErrorCode
+pub enum luna_panes::PaneNode
+pub luna_panes::PaneNode::Leaf(luna_panes::PaneLeaf)
+pub luna_panes::PaneNode::Split(luna_panes::PaneSplit)
+impl luna_panes::PaneNode
+pub const fn luna_panes::PaneNode::id(&self) -> luna_panes::PaneId
+pub enum luna_panes::PaneNodeSnapshot
+pub luna_panes::PaneNodeSnapshot::Leaf(luna_panes::PaneLeafSnapshot)
+pub luna_panes::PaneNodeSnapshot::Split(luna_panes::PaneSplitSnapshot)
+pub struct luna_panes::PaneCloseResult
+pub luna_panes::PaneCloseResult::focused_pane: luna_panes::PaneId
+pub luna_panes::PaneCloseResult::removed_views: alloc::vec::Vec<luna_documents::DocumentViewId>
+pub struct luna_panes::PaneId(_)
+impl luna_panes::PaneId
+pub fn luna_panes::PaneId::stable_key(self) -> alloc::string::String
+pub const fn luna_panes::PaneId::value(self) -> u64
+impl core::fmt::Display for luna_panes::PaneId
+pub fn luna_panes::PaneId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct luna_panes::PaneLayoutMetrics
+pub luna_panes::PaneLayoutMetrics::minimum_pane_extent: u32
+pub luna_panes::PaneLayoutMetrics::splitter_thickness: u32
+pub luna_panes::PaneLayoutMetrics::tab_strip_height: u32
+impl core::default::Default for luna_panes::PaneLayoutMetrics
+pub fn luna_panes::PaneLayoutMetrics::default() -> Self
+pub struct luna_panes::PaneLayoutSnapshot
+pub luna_panes::PaneLayoutSnapshot::bounds: luna_core::geometry::RectI
+pub luna_panes::PaneLayoutSnapshot::leaves: alloc::vec::Vec<luna_panes::PaneLeafFrame>
+pub luna_panes::PaneLayoutSnapshot::splitters: alloc::vec::Vec<luna_panes::PaneSplitterFrame>
+impl luna_panes::PaneLayoutSnapshot
+pub fn luna_panes::PaneLayoutSnapshot::editor_at(&self, luna_core::geometry::PointI) -> core::option::Option<luna_panes::PaneLeafFrame>
+pub fn luna_panes::PaneLayoutSnapshot::leaf_at(&self, luna_core::geometry::PointI) -> core::option::Option<luna_panes::PaneLeafFrame>
+pub fn luna_panes::PaneLayoutSnapshot::splitter_at(&self, luna_core::geometry::PointI) -> core::option::Option<luna_panes::PaneSplitterFrame>
+pub struct luna_panes::PaneLeaf
+impl luna_panes::PaneLeaf
+pub const fn luna_panes::PaneLeaf::active_view(&self) -> luna_documents::DocumentViewId
+pub const fn luna_panes::PaneLeaf::id(&self) -> luna_panes::PaneId
+pub fn luna_panes::PaneLeaf::is_pinned(&self, luna_documents::DocumentViewId) -> bool
+pub fn luna_panes::PaneLeaf::is_preview(&self, luna_documents::DocumentViewId) -> bool
+pub fn luna_panes::PaneLeaf::pinned_views(&self) -> &[luna_documents::DocumentViewId]
+pub const fn luna_panes::PaneLeaf::preview_view(&self) -> core::option::Option<luna_documents::DocumentViewId>
+pub const fn luna_panes::PaneLeaf::tab_scroll_offset(&self) -> usize
+pub fn luna_panes::PaneLeaf::views(&self) -> &[luna_documents::DocumentViewId]
+pub struct luna_panes::PaneLeafFrame
+pub luna_panes::PaneLeafFrame::bounds: luna_core::geometry::RectI
+pub luna_panes::PaneLeafFrame::editor: luna_core::geometry::RectI
+pub luna_panes::PaneLeafFrame::is_focused: bool
+pub luna_panes::PaneLeafFrame::pane_id: luna_panes::PaneId
+pub luna_panes::PaneLeafFrame::tab_strip: luna_core::geometry::RectI
+pub struct luna_panes::PaneLeafSnapshot
+pub luna_panes::PaneLeafSnapshot::active_view_key: u64
+pub luna_panes::PaneLeafSnapshot::pane_key: u64
+pub luna_panes::PaneLeafSnapshot::pinned_view_keys: alloc::vec::Vec<u64>
+pub luna_panes::PaneLeafSnapshot::preview_view_key: core::option::Option<u64>
+pub luna_panes::PaneLeafSnapshot::tab_scroll_offset: usize
+pub luna_panes::PaneLeafSnapshot::view_keys: alloc::vec::Vec<u64>
+pub struct luna_panes::PaneSplit
+impl luna_panes::PaneSplit
+pub const fn luna_panes::PaneSplit::axis(&self) -> luna_panes::PaneAxis
+pub fn luna_panes::PaneSplit::first(&self) -> &luna_panes::PaneNode
+pub const fn luna_panes::PaneSplit::id(&self) -> luna_panes::PaneId
+pub const fn luna_panes::PaneSplit::ratio_milli(&self) -> u16
+pub fn luna_panes::PaneSplit::second(&self) -> &luna_panes::PaneNode
+pub struct luna_panes::PaneSplitSnapshot
+pub luna_panes::PaneSplitSnapshot::axis: luna_panes::PaneAxis
+pub luna_panes::PaneSplitSnapshot::first: alloc::boxed::Box<luna_panes::PaneNodeSnapshot>
+pub luna_panes::PaneSplitSnapshot::ratio_milli: u16
+pub luna_panes::PaneSplitSnapshot::second: alloc::boxed::Box<luna_panes::PaneNodeSnapshot>
+pub luna_panes::PaneSplitSnapshot::split_key: u64
+pub struct luna_panes::PaneSplitterFrame
+pub luna_panes::PaneSplitterFrame::axis: luna_panes::PaneAxis
+pub luna_panes::PaneSplitterFrame::bounds: luna_core::geometry::RectI
+pub luna_panes::PaneSplitterFrame::container: luna_core::geometry::RectI
+pub luna_panes::PaneSplitterFrame::split_id: luna_panes::PaneId
+pub struct luna_panes::PaneTree
+impl luna_panes::PaneTree
+pub fn luna_panes::PaneTree::activate_view(&mut self, luna_panes::PaneId, luna_documents::DocumentViewId) -> core::result::Result<(), luna_panes::PaneError>
+pub fn luna_panes::PaneTree::add_view(&mut self, luna_panes::PaneId, luna_documents::DocumentViewId) -> core::result::Result<(), luna_panes::PaneError>
+pub fn luna_panes::PaneTree::close_focused_pane(&mut self) -> core::result::Result<luna_panes::PaneCloseResult, luna_panes::PaneError>
+pub fn luna_panes::PaneTree::close_view(&mut self, luna_panes::PaneId, luna_documents::DocumentViewId) -> core::result::Result<luna_panes::PaneCloseResult, luna_panes::PaneError>
+pub fn luna_panes::PaneTree::focus(&mut self, luna_panes::PaneId) -> core::result::Result<(), luna_panes::PaneError>
+pub fn luna_panes::PaneTree::focus_next(&mut self) -> luna_panes::PaneId
+pub fn luna_panes::PaneTree::focus_previous(&mut self) -> luna_panes::PaneId
+pub const fn luna_panes::PaneTree::focused_pane(&self) -> luna_panes::PaneId
+pub fn luna_panes::PaneTree::focused_view(&self) -> luna_documents::DocumentViewId
+pub fn luna_panes::PaneTree::layout(&self, luna_core::geometry::RectI, luna_panes::PaneLayoutMetrics) -> luna_panes::PaneLayoutSnapshot
+pub fn luna_panes::PaneTree::leaf(&self, luna_panes::PaneId) -> core::option::Option<&luna_panes::PaneLeaf>
+pub fn luna_panes::PaneTree::leaves(&self) -> alloc::vec::Vec<&luna_panes::PaneLeaf>
+pub fn luna_panes::PaneTree::move_active_tab_left(&mut self) -> core::result::Result<(), luna_panes::PaneError>
+pub fn luna_panes::PaneTree::move_active_tab_right(&mut self) -> core::result::Result<(), luna_panes::PaneError>
+pub fn luna_panes::PaneTree::move_active_tab_to_next_pane(&mut self) -> core::result::Result<luna_panes::PaneId, luna_panes::PaneError>
+pub fn luna_panes::PaneTree::move_active_tab_to_previous_pane(&mut self) -> core::result::Result<luna_panes::PaneId, luna_panes::PaneError>
+pub fn luna_panes::PaneTree::move_view(&mut self, luna_panes::PaneId, luna_panes::PaneId, luna_documents::DocumentViewId, usize) -> core::result::Result<luna_panes::PaneId, luna_panes::PaneError>
+pub fn luna_panes::PaneTree::new(luna_documents::DocumentViewId) -> Self
+pub fn luna_panes::PaneTree::pane_for_view(&self, luna_documents::DocumentViewId) -> core::option::Option<luna_panes::PaneId>
+pub fn luna_panes::PaneTree::pin_view(&mut self, luna_panes::PaneId, luna_documents::DocumentViewId) -> core::result::Result<(), luna_panes::PaneError>
+pub fn luna_panes::PaneTree::promote_preview(&mut self, luna_panes::PaneId, luna_documents::DocumentViewId) -> core::result::Result<(), luna_panes::PaneError>
+pub fn luna_panes::PaneTree::reorder_view(&mut self, luna_panes::PaneId, luna_documents::DocumentViewId, usize) -> core::result::Result<(), luna_panes::PaneError>
+pub fn luna_panes::PaneTree::restore_with<F>(&luna_panes::PaneTreeSnapshot, F) -> core::result::Result<Self, luna_panes::PaneError> where F: core::ops::function::FnMut(u64) -> core::option::Option<luna_documents::DocumentViewId>
+pub const fn luna_panes::PaneTree::root(&self) -> &luna_panes::PaneNode
+pub fn luna_panes::PaneTree::set_preview_view(&mut self, luna_panes::PaneId, luna_documents::DocumentViewId) -> core::result::Result<core::option::Option<luna_documents::DocumentViewId>, luna_panes::PaneError>
+pub fn luna_panes::PaneTree::set_split_ratio(&mut self, luna_panes::PaneId, u16) -> core::result::Result<(), luna_panes::PaneError>
+pub fn luna_panes::PaneTree::set_split_ratio_from_point(&mut self, luna_panes::PaneId, luna_core::geometry::RectI, luna_core::geometry::PointI) -> core::result::Result<(), luna_panes::PaneError>
+pub fn luna_panes::PaneTree::set_tab_scroll_offset(&mut self, luna_panes::PaneId, usize) -> core::result::Result<(), luna_panes::PaneError>
+pub fn luna_panes::PaneTree::snapshot_with<F>(&self, F) -> luna_panes::PaneTreeSnapshot where F: core::ops::function::FnMut(luna_documents::DocumentViewId) -> u64
+pub fn luna_panes::PaneTree::split(&mut self, luna_panes::PaneId, luna_panes::PaneAxis, luna_documents::DocumentViewId) -> core::result::Result<luna_panes::PaneId, luna_panes::PaneError>
+pub fn luna_panes::PaneTree::split_focused(&mut self, luna_panes::PaneAxis, luna_documents::DocumentViewId) -> luna_panes::PaneId
+pub fn luna_panes::PaneTree::splits(&self) -> alloc::vec::Vec<&luna_panes::PaneSplit>
+pub fn luna_panes::PaneTree::unpin_view(&mut self, luna_panes::PaneId, luna_documents::DocumentViewId) -> core::result::Result<(), luna_panes::PaneError>
+pub struct luna_panes::PaneTreeSnapshot
+pub luna_panes::PaneTreeSnapshot::focused_pane_key: u64
+pub luna_panes::PaneTreeSnapshot::root: luna_panes::PaneNodeSnapshot

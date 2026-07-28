@@ -1,0 +1,15 @@
+$ cargo +stable semver-checks --package luna-core --baseline-rev e696df0cedaeda7ac5c0892cf8f709f8325eff8b --all-features
+
+     Cloning e696df0cedaeda7ac5c0892cf8f709f8325eff8b
+    Building luna-core v0.1.0 (current)
+       Built [   0.310s] (current)
+     Parsing luna-core v0.1.0 (current)
+      Parsed [   0.002s] (current)
+    Building luna-core v0.1.0 (baseline)
+       Built [   0.254s] (baseline)
+     Parsing luna-core v0.1.0 (baseline)
+      Parsed [   0.002s] (baseline)
+    Checking luna-core v0.1.0 -> v0.1.0 (no change; assume minor)
+     Checked [   0.003s] 196 checks: 196 pass, 57 skip
+     Summary no semver update required
+    Finished [   0.718s] luna-core

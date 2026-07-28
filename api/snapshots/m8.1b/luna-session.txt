@@ -1,0 +1,91 @@
+pub mod luna_session
+pub enum luna_session::SessionDocumentSource
+pub luna_session::SessionDocumentSource::File(std::path::PathBuf)
+pub luna_session::SessionDocumentSource::Untitled(u32)
+pub luna_session::SessionDocumentSource::Virtual(alloc::string::String)
+pub enum luna_session::SessionPaneAxis
+pub luna_session::SessionPaneAxis::Horizontal
+pub luna_session::SessionPaneAxis::Vertical
+pub enum luna_session::SessionPaneNode
+pub luna_session::SessionPaneNode::Leaf
+pub luna_session::SessionPaneNode::Leaf::active_view_key: u64
+pub luna_session::SessionPaneNode::Leaf::pane_key: u64
+pub luna_session::SessionPaneNode::Leaf::tab_scroll_offset: usize
+pub luna_session::SessionPaneNode::Leaf::tabs: alloc::vec::Vec<luna_session::SessionPaneTab>
+pub luna_session::SessionPaneNode::Split
+pub luna_session::SessionPaneNode::Split::axis: luna_session::SessionPaneAxis
+pub luna_session::SessionPaneNode::Split::first: alloc::boxed::Box<luna_session::SessionPaneNode>
+pub luna_session::SessionPaneNode::Split::ratio_milli: u16
+pub luna_session::SessionPaneNode::Split::second: alloc::boxed::Box<luna_session::SessionPaneNode>
+pub luna_session::SessionPaneNode::Split::split_key: u64
+pub struct luna_session::MemorySessionStore
+impl luna_session::MemorySessionStore
+pub fn luna_session::MemorySessionStore::set_state(&self, luna_session::SessionState)
+pub fn luna_session::MemorySessionStore::state(&self) -> luna_session::SessionState
+impl luna_session::SessionStore for luna_session::MemorySessionStore
+pub fn luna_session::MemorySessionStore::load(&self) -> core::result::Result<luna_session::SessionState, luna_session::SessionError>
+pub fn luna_session::MemorySessionStore::save(&self, &luna_session::SessionState) -> core::result::Result<(), luna_session::SessionError>
+pub struct luna_session::SessionDocument
+pub luna_session::SessionDocument::document_key: u64
+pub luna_session::SessionDocument::is_dirty: bool
+pub luna_session::SessionDocument::source: luna_session::SessionDocumentSource
+pub luna_session::SessionDocument::storage_snapshot: core::option::Option<luna_session::SessionStorageSnapshot>
+pub luna_session::SessionDocument::text: alloc::string::String
+pub luna_session::SessionDocument::title: alloc::string::String
+pub struct luna_session::SessionDocumentView
+pub luna_session::SessionDocumentView::caret_byte: usize
+pub luna_session::SessionDocumentView::document_key: u64
+pub luna_session::SessionDocumentView::scroll_x: i32
+pub luna_session::SessionDocumentView::scroll_y: i32
+pub luna_session::SessionDocumentView::selection_anchor_byte: core::option::Option<usize>
+pub luna_session::SessionDocumentView::selection_focus_byte: core::option::Option<usize>
+pub luna_session::SessionDocumentView::view_key: u64
+pub struct luna_session::SessionError
+impl luna_session::SessionError
+pub const fn luna_session::SessionError::operation(&self) -> &'static str
+pub fn luna_session::SessionError::path(&self) -> core::option::Option<&std::path::Path>
+impl core::error::Error for luna_session::SessionError
+impl core::fmt::Display for luna_session::SessionError
+pub fn luna_session::SessionError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl luna_core::error_code::CodedError for luna_session::SessionError
+pub fn luna_session::SessionError::error_code(&self) -> luna_core::error_code::ErrorCode
+pub struct luna_session::SessionPaneTab
+pub luna_session::SessionPaneTab::is_pinned: bool
+pub luna_session::SessionPaneTab::is_preview: bool
+pub luna_session::SessionPaneTab::view_key: u64
+pub struct luna_session::SessionPaneTree
+pub luna_session::SessionPaneTree::focused_pane_key: u64
+pub luna_session::SessionPaneTree::root: luna_session::SessionPaneNode
+pub struct luna_session::SessionRecentFile
+pub luna_session::SessionRecentFile::path: std::path::PathBuf
+pub luna_session::SessionRecentFile::title: alloc::string::String
+pub struct luna_session::SessionState
+pub luna_session::SessionState::documents: alloc::vec::Vec<luna_session::SessionDocument>
+pub luna_session::SessionState::pane_tree: core::option::Option<luna_session::SessionPaneTree>
+pub luna_session::SessionState::recent_files: alloc::vec::Vec<luna_session::SessionRecentFile>
+pub luna_session::SessionState::views: alloc::vec::Vec<luna_session::SessionDocumentView>
+pub luna_session::SessionState::workspace: core::option::Option<luna_session::SessionWorkspace>
+pub struct luna_session::SessionStorageSnapshot
+pub luna_session::SessionStorageSnapshot::instance: u128
+pub luna_session::SessionStorageSnapshot::revision: u64
+pub struct luna_session::SessionWorkspace
+pub luna_session::SessionWorkspace::expanded_paths: alloc::vec::Vec<std::path::PathBuf>
+pub luna_session::SessionWorkspace::root: std::path::PathBuf
+pub luna_session::SessionWorkspace::selected_path: core::option::Option<std::path::PathBuf>
+pub struct luna_session::StdSessionStore
+impl luna_session::StdSessionStore
+pub fn luna_session::StdSessionStore::for_application(&str) -> core::result::Result<Self, luna_session::SessionError>
+pub fn luna_session::StdSessionStore::new(impl core::convert::Into<std::path::PathBuf>) -> Self
+pub fn luna_session::StdSessionStore::path(&self) -> &std::path::Path
+impl luna_session::SessionStore for luna_session::StdSessionStore
+pub fn luna_session::StdSessionStore::load(&self) -> core::result::Result<luna_session::SessionState, luna_session::SessionError>
+pub fn luna_session::StdSessionStore::save(&self, &luna_session::SessionState) -> core::result::Result<(), luna_session::SessionError>
+pub trait luna_session::SessionStore
+pub fn luna_session::SessionStore::load(&self) -> core::result::Result<luna_session::SessionState, luna_session::SessionError>
+pub fn luna_session::SessionStore::save(&self, &luna_session::SessionState) -> core::result::Result<(), luna_session::SessionError>
+impl luna_session::SessionStore for luna_session::MemorySessionStore
+pub fn luna_session::MemorySessionStore::load(&self) -> core::result::Result<luna_session::SessionState, luna_session::SessionError>
+pub fn luna_session::MemorySessionStore::save(&self, &luna_session::SessionState) -> core::result::Result<(), luna_session::SessionError>
+impl luna_session::SessionStore for luna_session::StdSessionStore
+pub fn luna_session::StdSessionStore::load(&self) -> core::result::Result<luna_session::SessionState, luna_session::SessionError>
+pub fn luna_session::StdSessionStore::save(&self, &luna_session::SessionState) -> core::result::Result<(), luna_session::SessionError>

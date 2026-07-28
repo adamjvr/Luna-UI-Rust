@@ -1,0 +1,40 @@
+pub mod luna_theme
+pub enum luna_theme::ThemePreset
+pub luna_theme::ThemePreset::AmberMonitor
+pub luna_theme::ThemePreset::Different
+pub luna_theme::ThemePreset::GreenTerminal
+pub luna_theme::ThemePreset::LunaDark
+pub luna_theme::ThemePreset::LunaLight
+impl luna_theme::ThemePreset
+pub const luna_theme::ThemePreset::ALL: [Self; 5]
+pub fn luna_theme::ThemePreset::from_id(&str) -> core::option::Option<Self>
+pub const fn luna_theme::ThemePreset::id(self) -> &'static str
+pub const fn luna_theme::ThemePreset::label(self) -> &'static str
+pub const fn luna_theme::ThemePreset::next(self) -> Self
+pub const fn luna_theme::ThemePreset::theme(self) -> luna_theme::Theme
+pub struct luna_theme::Rgba8
+pub luna_theme::Rgba8::alpha: u8
+pub luna_theme::Rgba8::blue: u8
+pub luna_theme::Rgba8::green: u8
+pub luna_theme::Rgba8::red: u8
+impl luna_theme::Rgba8
+pub fn luna_theme::Rgba8::mix(self, Self, u8) -> Self
+pub const fn luna_theme::Rgba8::new(u8, u8, u8, u8) -> Self
+pub const fn luna_theme::Rgba8::opaque(u8, u8, u8) -> Self
+pub const fn luna_theme::Rgba8::with_alpha(self, u8) -> Self
+pub struct luna_theme::Theme
+pub luna_theme::Theme::accent: luna_theme::Rgba8
+pub luna_theme::Theme::background: luna_theme::Rgba8
+pub luna_theme::Theme::foreground: luna_theme::Rgba8
+pub luna_theme::Theme::panel: luna_theme::Rgba8
+pub luna_theme::Theme::panel_header: luna_theme::Rgba8
+impl luna_theme::Theme
+pub const fn luna_theme::Theme::amber_monitor() -> Self
+pub fn luna_theme::Theme::border(self) -> luna_theme::Rgba8
+pub const fn luna_theme::Theme::different() -> Self
+pub const fn luna_theme::Theme::green_terminal() -> Self
+pub fn luna_theme::Theme::hover_surface(self) -> luna_theme::Rgba8
+pub const fn luna_theme::Theme::luna_dark() -> Self
+pub const fn luna_theme::Theme::luna_light() -> Self
+pub fn luna_theme::Theme::muted_foreground(self) -> luna_theme::Rgba8
+pub const fn luna_theme::Theme::selection(self) -> luna_theme::Rgba8

@@ -46,6 +46,43 @@ def replace_once(path: Path, old: str, new: str) -> None:
     print(f"[ OK ] updated {path.relative_to(ROOT)}")
 
 
+def replace_or_append_section(path: Path, old: str, new: str) -> None:
+    # Replace a candidate section, or append acceptance when the candidate was never checked in.
+    text = path.read_text(encoding="utf-8")
+    if new in text:
+        print(f"[ OK ] already accepted {path.relative_to(ROOT)}")
+        return
+    count = text.count(old)
+    if count == 1:
+        path.write_text(text.replace(old, new, 1), encoding="utf-8")
+        print(f"[ OK ] updated {path.relative_to(ROOT)}")
+        return
+    if count > 1:
+        fail(f"{path.relative_to(ROOT)}: duplicate candidate blocks: {count}")
+    heading = new.splitlines()[0]
+    if heading in text:
+        fail(f"{path.relative_to(ROOT)}: acceptance heading exists with unexpected content")
+    path.write_text(text.rstrip() + "\n\n" + new.strip() + "\n", encoding="utf-8")
+    print(f"[ OK ] appended missing acceptance section to {path.relative_to(ROOT)}")
+
+
+def replace_or_append_line(path: Path, old: str, new: str) -> None:
+    # Replace one roadmap line, or append completion when the active line was absent.
+    text = path.read_text(encoding="utf-8")
+    if new in text:
+        print(f"[ OK ] already accepted {path.relative_to(ROOT)}")
+        return
+    count = text.count(old)
+    if count == 1:
+        path.write_text(text.replace(old, new, 1), encoding="utf-8")
+        print(f"[ OK ] updated {path.relative_to(ROOT)}")
+        return
+    if count > 1:
+        fail(f"{path.relative_to(ROOT)}: duplicate roadmap lines: {count}")
+    path.write_text(text.rstrip() + "\n" + new + "\n", encoding="utf-8")
+    print(f"[ OK ] appended missing roadmap completion to {path.relative_to(ROOT)}")
+
+
 def git_output(*arguments: str) -> str:
     completed = subprocess.run(
         ["git", *arguments],
@@ -116,9 +153,9 @@ accepted M7 and current public crate, every difference was explicitly classified
 passed, and `cargo-semver-checks` completed across every stable crate shared with the baseline. The
 accepted comparison contains no unclassified or accidental change.
 """
-    replace_once(ROOT / "docs" / "CURRENT_STATUS.md", candidate, accepted)
-    replace_once(ROOT / "VALIDATION_REPORT.md", candidate, accepted)
-    replace_once(
+    replace_or_append_section(ROOT / "docs" / "CURRENT_STATUS.md", candidate, accepted)
+    replace_or_append_section(ROOT / "VALIDATION_REPORT.md", candidate, accepted)
+    replace_or_append_line(
         ROOT / "docs" / "ROADMAP.md",
         "- M8.1b captures symbol-level snapshots for every public crate, classifies all drift, and runs stable-crate semver review — active.",
         "- M8.1b symbol-level snapshots, complete drift classification, and stable-crate semver review — complete after Linux acceptance.",

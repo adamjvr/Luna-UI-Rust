@@ -1,0 +1,55 @@
+pub mod luna_render_wgpu
+#[non_exhaustive] pub enum luna_render_wgpu::WgpuRenderError
+pub luna_render_wgpu::WgpuRenderError::AtlasOverflow
+pub luna_render_wgpu::WgpuRenderError::AtlasOverflow::height: u32
+pub luna_render_wgpu::WgpuRenderError::AtlasOverflow::width: u32
+pub luna_render_wgpu::WgpuRenderError::IndexOverflow
+pub luna_render_wgpu::WgpuRenderError::InvalidTargetSize(luna_core::geometry::SizeI)
+pub luna_render_wgpu::WgpuRenderError::ResourceBudgetExceeded
+pub luna_render_wgpu::WgpuRenderError::ResourceBudgetExceeded::limit: usize
+pub luna_render_wgpu::WgpuRenderError::ResourceBudgetExceeded::requested: usize
+pub luna_render_wgpu::WgpuRenderError::ResourceBudgetExceeded::resource: &'static str
+pub luna_render_wgpu::WgpuRenderError::RetainedResourceUnavailable(&'static str)
+impl core::error::Error for luna_render_wgpu::WgpuRenderError
+impl core::fmt::Display for luna_render_wgpu::WgpuRenderError
+pub fn luna_render_wgpu::WgpuRenderError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl luna_core::error_code::CodedError for luna_render_wgpu::WgpuRenderError
+pub fn luna_render_wgpu::WgpuRenderError::error_code(&self) -> luna_core::error_code::ErrorCode
+pub struct luna_render_wgpu::WgpuRenderStats
+pub luna_render_wgpu::WgpuRenderStats::atlas_bytes: usize
+pub luna_render_wgpu::WgpuRenderStats::atlas_images: usize
+pub luna_render_wgpu::WgpuRenderStats::batches: usize
+pub luna_render_wgpu::WgpuRenderStats::commands: usize
+pub luna_render_wgpu::WgpuRenderStats::indices: usize
+pub luna_render_wgpu::WgpuRenderStats::vertices: usize
+pub struct luna_render_wgpu::WgpuRenderer
+impl luna_render_wgpu::WgpuRenderer
+pub fn luna_render_wgpu::WgpuRenderer::new(&wgpu::api::device::Device, wgpu_types::texture::format::TextureFormat) -> Self
+pub fn luna_render_wgpu::WgpuRenderer::render_layers(&mut self, &wgpu::api::device::Device, &wgpu::api::queue::Queue, &mut wgpu::api::command_encoder::CommandEncoder, &wgpu::api::texture_view::TextureView, &[&luna_render::display_list::DisplayList], luna_core::geometry::SizeI, f64) -> core::result::Result<luna_render_wgpu::WgpuRenderStats, luna_render_wgpu::WgpuRenderError>
+pub const fn luna_render_wgpu::WgpuRenderer::resource_policy(&self) -> luna_render_wgpu::WgpuResourcePolicy
+pub const fn luna_render_wgpu::WgpuRenderer::resource_stats(&self) -> luna_render_wgpu::WgpuResourceStats
+pub const fn luna_render_wgpu::WgpuRenderer::target_format(&self) -> wgpu_types::texture::format::TextureFormat
+pub fn luna_render_wgpu::WgpuRenderer::trim_retained_resources(&mut self, &wgpu::api::device::Device)
+pub fn luna_render_wgpu::WgpuRenderer::with_resource_policy(&wgpu::api::device::Device, wgpu_types::texture::format::TextureFormat, luna_render_wgpu::WgpuResourcePolicy) -> Self
+pub struct luna_render_wgpu::WgpuResourcePolicy
+impl luna_render_wgpu::WgpuResourcePolicy
+pub const fn luna_render_wgpu::WgpuResourcePolicy::max_index_buffer_bytes(self) -> usize
+pub const fn luna_render_wgpu::WgpuResourcePolicy::max_vertex_buffer_bytes(self) -> usize
+pub const fn luna_render_wgpu::WgpuResourcePolicy::new(usize, usize) -> Self
+impl core::default::Default for luna_render_wgpu::WgpuResourcePolicy
+pub fn luna_render_wgpu::WgpuResourcePolicy::default() -> Self
+pub struct luna_render_wgpu::WgpuResourceStats
+impl luna_render_wgpu::WgpuResourceStats
+pub const fn luna_render_wgpu::WgpuResourceStats::atlas_capacity_bytes(self) -> usize
+pub const fn luna_render_wgpu::WgpuResourceStats::atlas_reallocations(self) -> u64
+pub const fn luna_render_wgpu::WgpuResourceStats::atlas_upload_skips(self) -> u64
+pub const fn luna_render_wgpu::WgpuResourceStats::atlas_uploads(self) -> u64
+pub const fn luna_render_wgpu::WgpuResourceStats::buffer_reallocations(self) -> u64
+pub const fn luna_render_wgpu::WgpuResourceStats::buffer_reuses(self) -> u64
+pub const fn luna_render_wgpu::WgpuResourceStats::index_capacity_bytes(self) -> usize
+pub const fn luna_render_wgpu::WgpuResourceStats::retained_bytes(self) -> usize
+pub const fn luna_render_wgpu::WgpuResourceStats::trims(self) -> u64
+pub const fn luna_render_wgpu::WgpuResourceStats::vertex_capacity_bytes(self) -> usize
+pub struct luna_render_wgpu::WgpuSceneCompiler
+impl luna_render_wgpu::WgpuSceneCompiler
+pub fn luna_render_wgpu::WgpuSceneCompiler::analyze_layers(&[&luna_render::display_list::DisplayList], luna_core::geometry::SizeI, f64) -> core::result::Result<luna_render_wgpu::WgpuRenderStats, luna_render_wgpu::WgpuRenderError>
