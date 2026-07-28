@@ -10,9 +10,6 @@ snapshot_root="${LUNA_API_SNAPSHOT_ROOT:-api/snapshots}"
 report_root="${LUNA_API_REPORT_ROOT:-release/evidence/m8.1b-symbol-api}"
 nightly="${LUNA_API_NIGHTLY:-nightly-2026-07-10}"
 
-step "Running the complete accepted M8.1a gate"
-./scripts/test-m8-1.sh
-
 step "Verifying pinned API review tools"
 cargo +"$nightly" public-api --version
 cargo +stable semver-checks --version
@@ -21,6 +18,9 @@ step "Capturing accepted M7 and current symbol-level public API snapshots"
 python3 scripts/capture-public-api-snapshots.py \
     --nightly "$nightly" \
     --output-root "$snapshot_root"
+
+step "Running the complete accepted M8.1a gate"
+./scripts/test-m8-1.sh
 
 step "Verifying snapshot checksums"
 (
