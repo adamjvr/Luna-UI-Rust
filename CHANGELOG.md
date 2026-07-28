@@ -7,6 +7,8 @@ commitments are governed by `api/public-api.toml` and `docs/PUBLIC_API_POLICY.md
 
 ### Added
 
+- M8.2 external downstream reference consumer with separate Cargo-workspace qualification;
+- M8.2 source-tree and extracted-ZIP public-API self-tests;
 - provisional product-neutral `luna-clipboard` text clipboard services;
 - native and deterministic memory clipboard adapters;
 - Cut, Copy, and Paste command integration for the editor demo;
@@ -32,7 +34,8 @@ commitments are governed by `api/public-api.toml` and `docs/PUBLIC_API_POLICY.md
 - machine-readable `ErrorCode` and `CodedError` boundaries;
 - deterministic release-qualification budgets and JSON reports;
 - bounded retained GPU resources, atlas reuse, statistics, and memory-pressure trimming;
-- packaged-resource discovery and Linux development packaging;
+- product-neutral packaged-resource discovery and a downstream example;
+- Linux development packaging with Desktop Entry, AppStream metadata, and operator docs;
 - permanent editor operator and accessibility acceptance documentation.
 
 ### Fixed

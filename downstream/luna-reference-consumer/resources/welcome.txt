@@ -1,0 +1,16 @@
+Luna Reference Consumer — M8.2 external downstream proof
+
+This editable document was loaded through luna_integration::ResourceLocator.
+The application is a separate Cargo workspace and consumes Luna only through
+public package APIs.
+
+Try the proof:
+- type, select, delete, and scroll in this editor;
+- press Control-S to persist this virtual document and view state;
+- press Control-R or click Reload Workspace to rescan the selected folder;
+- press Control-T or click Cycle Theme to change Luna theme presets;
+- close and relaunch to verify session restoration;
+- use --backend wgpu to present the same application through the GPU host.
+
+An extracted Linux ZIP must load this file from the executable-relative
+share/org.lunaui.ReferenceConsumer directory without any repository path.

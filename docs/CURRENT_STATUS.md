@@ -79,3 +79,12 @@ M8.1b is accepted on the blocking Linux/Pop!_OS lane. Pinned symbol snapshots we
 accepted M7 and current public crate, every difference was explicitly classified, snapshot checksums
 passed, and `cargo-semver-checks` completed across every stable crate shared with the baseline. The
 accepted comparison contains no unclassified or accidental change.
+
+## M8.2 external downstream consumer candidate
+
+A separate `luna-reference-consumer` Cargo workspace now composes public Luna packages into one
+product-neutral native application. The candidate exercises CPU and `wgpu` presentation, reusable
+controls, editable text, workspace scanning, session save/restore, packaged resources, deterministic
+headless frame construction, and extracted Linux ZIP launching without repository-relative paths.
+Acceptance remains pending `scripts/test-m8-2.sh`, CPU and `wgpu` operator passes, session relaunch,
+and the extracted-package operator pass documented in `M8_2_DOWNSTREAM_CONSUMER.md`.

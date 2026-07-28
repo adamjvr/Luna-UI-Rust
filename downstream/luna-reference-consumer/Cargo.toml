@@ -1,0 +1,46 @@
+[package]
+name = "luna-reference-consumer"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97.1"
+license = "MPL-2.0"
+authors = ["Adam Vadala-Roth"]
+publish = false
+description = "Product-neutral external downstream consumer proof for Luna UI Rust"
+repository = "https://github.com/adamjvr/Luna-UI-Rust"
+
+[dependencies]
+luna-accessibility = { path = "../../crates/luna-accessibility" }
+luna-core = { path = "../../crates/luna-core" }
+luna-document-services = { path = "../../crates/luna-document-services" }
+luna-editor = { path = "../../crates/luna-editor" }
+luna-host-wgpu = { path = "../../crates/luna-host-wgpu" }
+luna-host-winit = { path = "../../crates/luna-host-winit" }
+luna-input = { path = "../../crates/luna-input" }
+luna-integration = { path = "../../crates/luna-integration" }
+luna-render = { path = "../../crates/luna-render" }
+luna-session = { path = "../../crates/luna-session" }
+luna-text = { path = "../../crates/luna-text" }
+luna-text-cosmic = { path = "../../crates/luna-text-cosmic" }
+luna-theme = { path = "../../crates/luna-theme" }
+luna-ui = { path = "../../crates/luna-ui" }
+luna-workspaces = { path = "../../crates/luna-workspaces" }
+
+[lints.rust]
+missing_docs = "deny"
+unsafe_code = "forbid"
+unreachable_pub = "deny"
+unused_must_use = "deny"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+unwrap_used = "deny"
+
+# This empty workspace declaration is intentional. It prevents Cargo from
+# treating this package as a member of the Luna repository workspace, even
+# though it lives below the repository directory for qualification purposes.
+[workspace]

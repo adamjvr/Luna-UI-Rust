@@ -70,3 +70,16 @@ Windows is not a release blocker and receives no official package or support com
 - [x] no stable public crate changed
 - [x] `cargo-semver-checks` passed across all ten stable crates
 - [x] symbol diff, per-crate diffs, semver report, logs, and acceptance record are retained
+
+## M8.2 external downstream consumer acceptance
+
+- [ ] consumer Cargo metadata proves a separate workspace outside the root dependency graph
+- [ ] root workspace format, API-contract, check, strict Clippy, tests, rustdoc, and release demo builds pass
+- [ ] external consumer format, check, strict Clippy, tests, rustdoc, and release build pass
+- [ ] source-tree `--self-test` finishes with `m8_2_self_test=passed`
+- [ ] CPU consumer editing, controls, workspace reload, theme cycling, and accessibility pass
+- [ ] `wgpu` consumer repeats the CPU operator pass
+- [ ] session text, caret/selection/scroll, and workspace state survive close/relaunch
+- [ ] Linux downstream ZIP and SHA-256 checksum are produced under ignored `dist/m8.2`
+- [ ] extracted package discovers executable-relative resources without `LUNA_RESOURCE_ROOT`
+- [ ] extracted package launches and self-tests from an unrelated working directory
