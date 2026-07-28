@@ -72,6 +72,18 @@ Downstream migration:
   with `*expected` and `*actual`;
 - no stable Luna crate changes in this migration.
 
+### `luna-ui` search-history rename
+
+The provisional public method `SearchHistory::next()` is renamed to
+`SearchHistory::next_newer()`. The new name makes the direction explicit and avoids implying
+`Iterator::next` behavior.
+
+Downstream migration:
+
+- replace `history.next()` with `history.next_newer()`;
+- no data format or runtime behavior changes;
+- no stable Luna crate changes in this migration.
+
 ## Gate
 
 Run the phase through the safe child-shell wrapper:

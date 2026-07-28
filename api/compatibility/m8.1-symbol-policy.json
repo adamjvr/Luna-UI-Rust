@@ -22,6 +22,12 @@
       "package": "luna-editor",
       "classification": "intentionally-breaking",
       "rationale": "M8.0 changes the provisional public ParityError::Mismatch expected and actual payloads from ParityResult to Box<ParityResult> to bound enum size under strict Clippy. Downstream code that constructs this variant must wrap payloads with Box::new, and code that destructures it must handle boxed values."
+    },
+    {
+      "kind": "symbols-changed",
+      "package": "luna-ui",
+      "classification": "intentionally-breaking",
+      "rationale": "M8.0 renames the provisional public SearchHistory::next method to SearchHistory::next_newer. The new name states the navigation direction explicitly and avoids resembling Iterator::next. Downstream callers must replace history.next() with history.next_newer()."
     }
   ]
 }

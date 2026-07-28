@@ -18,6 +18,7 @@ commitments are governed by `api/public-api.toml` and `docs/PUBLIC_API_POLICY.md
 
 ### Changed
 
+- the provisional `SearchHistory::next()` API is renamed to `SearchHistory::next_newer()`; downstream callers must update the method name;
 - the provisional `ParityError::Mismatch` payloads are boxed; downstream constructors must use `Box::new` and destructuring code must handle `Box<ParityResult>`;
 - M7.0.1 is the accepted implementation baseline for M8;
 - project status now distinguishes completed Linux acceptance from advisory macOS evidence;
