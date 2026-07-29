@@ -148,6 +148,7 @@ python3 - \
     "$build_version" <<'PY'
 import html
 import pathlib
+import re
 import sys
 
 template_path, output_path, display_name, executable, bundle_id, version, build_version = sys.argv[1:]
@@ -160,9 +161,16 @@ values = {
     "@BUILD_VERSION@": build_version,
 }
 for token, value in values.items():
-    if text.count(token) != 1:
-        raise SystemExit(f"Info.plist template expected exactly one {token}")
+    if token not in text:
+        raise SystemExit(f"Info.plist template is missing required token {token}")
     text = text.replace(token, html.escape(value, quote=False))
+
+unresolved = sorted(set(re.findall(r"@[A-Z0-9_]+@", text)))
+if unresolved:
+    raise SystemExit(
+        "Info.plist template contains unresolved tokens: " + ", ".join(unresolved)
+    )
+
 pathlib.Path(output_path).write_text(text, encoding="utf-8")
 PY
 
