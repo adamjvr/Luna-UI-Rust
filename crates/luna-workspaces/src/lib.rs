@@ -2373,7 +2373,7 @@ mod tests {
             fs::remove_dir_all(&root)?;
         }
         fs::create_dir_all(&root)?;
-        Ok(root)
+        Ok(fs::canonicalize(&root)?)
     }
 
     #[test]

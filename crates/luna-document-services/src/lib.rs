@@ -1203,6 +1203,7 @@ fn path_from_dialog_stdout(stdout: Vec<u8>) -> Result<Option<PathBuf>, DialogErr
     }
 }
 
+#[cfg(not(target_os = "macos"))]
 fn command_exists(program: &str) -> bool {
     std::env::var_os("PATH").is_some_and(|paths| {
         std::env::split_paths(&paths).any(|directory| directory.join(program).is_file())
