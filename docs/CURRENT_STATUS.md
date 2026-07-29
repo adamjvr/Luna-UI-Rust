@@ -1,6 +1,6 @@
 # Current Status
 
-**Milestone:** M8.3 repeated long-session qualification — candidate
+**Milestone:** M8.4 Apple-Silicon evidence campaign — candidate
 
 ## Baseline
 
@@ -88,11 +88,25 @@ release mode; source-tree and extracted-package self-tests passed; CPU and `wgpu
 completed; edited text and view/workspace state survived session relaunch; and the extracted Linux ZIP
 loaded resources without a repository-relative path.
 
-## M8.3 repeated long-session qualification candidate
+## M8.3 repeated long-session qualification status
 
-M8.3 adds a private qualification binary rather than changing a public Luna crate. Seven deterministic
-workloads cover document open/edit/save/close cycles, large-text layout/raster reuse, pane/tab churn,
-workspace mutations and watcher bursts, session round-trips, CPU/GPU scene and lifecycle transitions,
-and source/extracted resource loading. The gate repeats both package modes and compares two reports
-after removing diagnostic-only timing fields. Acceptance remains pending the automated gate and the
-real CPU/`wgpu` long-session operator protocol in `M8_3_LONG_SESSION_QUALIFICATION.md`.
+The complete M8.3 automated gate passes: all seven deterministic workloads passed twice, four source
+and four extracted-package self-tests passed, and normalized reports were byte-for-byte identical.
+Extracted CPU and Vulkan/`wgpu` consumer launches also passed. Manual full-editor testing exposed one
+blocking Linux native-dialog defect: selecting **Discard** for a dirty document did not close the tab.
+
+## M8.3.1 native dirty-close repair candidate
+
+The repair keeps the editor lifecycle unchanged and corrects the Zenity adapter boundary. Extra-button labels are recognized before Cancel-like process statuses. Exact
+response lines are recognized on either standard output or standard error, without
+requiring toolkit diagnostics to be valid UTF-8. Focused parser tests cover primary, secondary,
+diagnostic, CRLF, and substring cases. Final M8.3 acceptance requires repeating dirty-close Discard
+through both CPU and Vulkan/`wgpu` editor hosts.
+
+## M8.4 Apple-Silicon evidence candidate
+
+M8.4 adds a private evidence executable, a safe macOS gate, and backend-pinned CPU and Metal `.app`
+bundles. Evidence capture requires arm64 hardware, validated signatures and manifests, explicit
+operator results, and by default a clean source tree. Campaign verification requires at least three
+unique runs from one commit. macOS remains advisory; no headless process claims Retina, dialogs,
+FSEvents, IME, sleep/wake, memory pressure, or VoiceOver success without operator input.

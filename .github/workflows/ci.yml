@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   validate-linux:
+    name: M8.3 Linux qualification
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
@@ -20,11 +21,13 @@ jobs:
           rustup toolchain install 1.97.1 --profile minimal --component clippy,rustfmt
           rustup default 1.97.1
 
-      - name: Run M7 Linux release-qualification gate
-        run: ./scripts/test-m7.sh
+      - name: Run M8.3.1 repair and M8.3 Linux gates
+        run: |
+          ./scripts/test-m8-3-1.sh
+          ./scripts/test-m8-3.sh
 
   macos-advisory:
-    name: M7 macOS 15 Apple Silicon advisory
+    name: M8.4 macOS 15 Apple-Silicon advisory
     runs-on: macos-15
     continue-on-error: true
     steps:
@@ -36,5 +39,5 @@ jobs:
           rustup toolchain install 1.97.1 --profile minimal --component clippy,rustfmt
           rustup default 1.97.1
 
-      - name: Run macOS advisory gate
-        run: ./scripts/test-macos.sh
+      - name: Run M8.4 Apple-Silicon advisory gate
+        run: ./scripts/test-m8-4-macos.sh

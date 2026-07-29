@@ -314,3 +314,11 @@ M8.3 is ready for acceptance when:
 - session state survives repeated relaunches;
 - watcher and external-file changes remain accurate;
 - no generated package, JSON report, extracted bundle, state directory, or raw log is staged in Git.
+
+## M8.3.1 operator-discovered dirty-close blocker
+
+The deterministic lifecycle tests passed, but Linux graphical acceptance found that one Zenity
+extra-button response could be misclassified when the helper wrote the selected label on standard
+error. M8.3 final acceptance therefore includes `scripts/test-m8-3-1.sh` and a manual CPU and
+Vulkan/`wgpu` check that **Discard** removes the dirty tab without saving. The complete M8.3 harness
+remains accepted as qualification infrastructure.

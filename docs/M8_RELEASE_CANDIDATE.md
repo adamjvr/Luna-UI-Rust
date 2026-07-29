@@ -81,8 +81,15 @@ diagnostic only.
 
 Record repeated Apple-Silicon results for CPU and Metal/`wgpu` launch, `.app` packaging, Retina and
 external-display geometry, dialogs, Application Support sessions, FSEvents, sleep/wake, memory
-pressure, dead keys, emoji, multi-stage CJK IME, and VoiceOver. Advisory CI becomes blocking only
-through an explicit roadmap decision supported by repeated real-hardware evidence.
+pressure, dead keys, emoji, multi-stage CJK IME, VoiceOver, native document-edited indication, and
+dirty-close Discard.
+
+The private `luna-ui-rust-m8-4-macos-evidence` executable records machine, toolchain, display, commit,
+bundle, signing, and explicit operator-status facts. It does not add public Luna API. An accepted
+campaign contains at least three unique evidence runs from one clean arm64 commit. External-display
+coverage may be marked not applicable and VoiceOver may record an advisory exception only with notes.
+Advisory CI becomes blocking only through a later explicit roadmap decision supported by repeated
+real-hardware evidence.
 
 ## M8.5 — development release candidate
 

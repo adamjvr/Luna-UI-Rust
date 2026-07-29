@@ -101,3 +101,38 @@ Windows is not a release blocker and receives no official package or support com
 - [ ] CPU editor and consumer complete the long-session operator protocol
 - [ ] `wgpu` editor and consumer repeat the long-session operator protocol
 - [ ] extracted consumer completes both backend passes without `LUNA_RESOURCE_ROOT`
+
+## M8.3 automated long-session acceptance
+
+- [x] all seven deterministic workloads pass twice at 64 cycles
+- [x] four source-tree and four extracted-package self-tests pass
+- [x] normalized reports are byte-for-byte deterministic
+- [x] source and extracted reference consumer launch through CPU and Vulkan/`wgpu`
+- [ ] full editor dirty-close Discard passes through CPU after M8.3.1 repair
+- [ ] full editor dirty-close Discard passes through Vulkan/`wgpu` after M8.3.1 repair
+
+## M8.3.1 native dirty-close repair
+
+- [ ] `scripts/test-m8-3-1.sh` passes
+- [ ] Zenity primary, secondary-on-stdout, secondary-on-stderr, diagnostic, and CRLF tests pass
+- [ ] two-choice confirmations do not create a duplicate Cancel extra button
+- [ ] dirty untitled tab closes after choosing Discard without opening Save As
+- [ ] dirty file-backed tab closes after choosing Discard without changing storage
+
+## M8.4 Apple-Silicon evidence campaign
+
+- [ ] `scripts/test-m8-4-macos.sh` passes on Apple-Silicon arm64 hardware
+- [ ] CPU and Metal editor/proof-gallery source launches pass
+- [ ] CPU and Metal backend-pinned `.app` bundles validate, sign, archive, and launch
+- [ ] Retina geometry and repeated resize/full-screen pass
+- [ ] external-display geometry passes or is documented as not applicable
+- [ ] AppleScript Open, Save As, Open Folder, dirty-close, and conflict dialogs pass
+- [ ] Application Support session location and relaunch restoration pass
+- [ ] FSEvents workspace create/modify/rename/delete delivery passes
+- [ ] sleep/wake and memory-pressure recovery pass
+- [ ] dead keys, emoji, and one multi-stage CJK IME pass
+- [ ] VoiceOver focus/actions pass or an advisory exception is documented
+- [ ] native document-edited indicator follows dirty/saved state
+- [ ] dirty-close Discard closes without saving
+- [ ] at least three unique evidence records reference one clean commit
+- [ ] `campaign-summary.json` finishes with `m8_4_campaign=passed`

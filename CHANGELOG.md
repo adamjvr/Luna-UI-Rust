@@ -7,6 +7,10 @@ commitments are governed by `api/public-api.toml` and `docs/PUBLIC_API_POLICY.md
 
 ### Added
 
+- M8.4 private Apple-Silicon environment, bundle, operator-status, and repeated-campaign evidence recorder;
+- backend-pinned, ad-hoc signed CPU and Metal macOS application bundles with ZIP checksums;
+- M8.4 Apple-Silicon automated gate and explicit three-run hardware acceptance protocol;
+
 - M8.3 deterministic repeated long-session qualification with subsystem-specific structural reports;
 - repeated source-tree and extracted-package self-test loops with normalized report comparison;
 - M8.2 external downstream reference consumer with separate Cargo-workspace qualification;
@@ -22,6 +26,8 @@ commitments are governed by `api/public-api.toml` and `docs/PUBLIC_API_POLICY.md
 
 ### Changed
 
+- the full M8.3 workload unit test is ignored in routine debug suites because the release-mode M8.3 gate is authoritative and debug cosmic-text shaping is intentionally expensive;
+
 - M8.2 is accepted on the blocking Linux/Pop!_OS lane after CPU, `wgpu`, session-relaunch, and
   extracted-package operator passes;
 - the provisional `SearchHistory::next()` API is renamed to `SearchHistory::next_newer()`; downstream callers must update the method name;
@@ -29,6 +35,11 @@ commitments are governed by `api/public-api.toml` and `docs/PUBLIC_API_POLICY.md
 - M7.0.1 is the accepted implementation baseline for M8;
 - project status now distinguishes completed Linux acceptance from advisory macOS evidence;
 - arbitrary-depth popup documentation matches the implemented M3.3c behavior.
+
+### Fixed
+
+- Zenity extra-button responses are recognized as exact lines on either standard output or standard error, so choosing **Discard** completes dirty-document close instead of being mistaken for Cancel;
+- two-choice Zenity confirmations no longer add a duplicate extra button labeled Cancel.
 
 ## M7.0.1 — 2026-07-26
 
