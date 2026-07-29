@@ -14,6 +14,9 @@
 //! deterministic adapters for unit tests. The dialog boundary also includes workspace-folder
 //! selection so products can compose document and project lifecycles without toolkit coupling.
 
+mod dialog_response;
+
+use dialog_response::zenity_extra_button_selected;
 use luna_core::{CodedError, ErrorCode};
 use luna_documents::{FileIdentity, StorageInstance, StorageRevision, StorageSnapshot};
 use std::cell::{Cell, RefCell};
@@ -823,25 +826,23 @@ end run"#;
         ok_label: &str,
         extra_label: &str,
     ) -> Result<QuestionResult, DialogError> {
-        let output = self.run(
-            "zenity",
-            &[
-                OsString::from("--question"),
-                OsString::from(format!("--title={title}")),
-                OsString::from(format!("--text={text}")),
-                OsString::from(format!("--ok-label={ok_label}")),
-                OsString::from("--cancel-label=Cancel"),
-                OsString::from(format!("--extra-button={extra_label}")),
-            ],
-        )?;
+        let mut arguments = vec![
+            OsString::from("--question"),
+            OsString::from(format!("--title={title}")),
+            OsString::from(format!("--text={text}")),
+            OsString::from(format!("--ok-label={ok_label}")),
+            OsString::from("--cancel-label=Cancel"),
+        ];
+        if extra_label != "Cancel" {
+            arguments.push(OsString::from(format!("--extra-button={extra_label}")));
+        }
+
+        let output = self.run("zenity", &arguments)?;
+        if zenity_extra_button_selected(&output.stdout, &output.stderr, extra_label) {
+            return Ok(QuestionResult::Secondary);
+        }
         if output.status.success() {
-            let stdout = String::from_utf8(output.stdout)
-                .map_err(|error| DialogError::invalid_response(error.to_string()))?;
-            return if stdout.trim() == extra_label {
-                Ok(QuestionResult::Secondary)
-            } else {
-                Ok(QuestionResult::Primary)
-            };
+            return Ok(QuestionResult::Primary);
         }
         if is_cancel_status(output.status) {
             Ok(QuestionResult::Cancel)
