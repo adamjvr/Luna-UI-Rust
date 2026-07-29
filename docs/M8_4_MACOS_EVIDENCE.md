@@ -147,3 +147,22 @@ A passing campaign ends with:
 ```text
 m8_4_campaign=passed
 ```
+
+## Accepted campaign
+
+M8.4 was accepted on Apple-Silicon implementation commit
+`3c93849df19fea32412b673f9f5a69a39ff7b145`.
+
+The complete automated gate passed, and three unique real-hardware operator records were captured
+from the same clean commit. Campaign verification reported:
+
+```text
+m8_4_campaign=passed
+```
+
+The retained `campaign-summary.json` has SHA-256
+`e4b56fd1dd730363c2a36e52580d99f1a601c2eb0a480fda81ba89c451dd54b2`.
+
+The complete retained text and JSON evidence set is stored under
+`retained-evidence/m8.4/apple-silicon`. This acceptance preserves macOS as an advisory support tier
+and does not promote it to a blocking CI or release target.

@@ -1,6 +1,6 @@
 # Current Status
 
-**Milestone:** M8.4 Apple-Silicon evidence campaign — candidate
+**Milestone:** M8.5 development release candidate — preparation
 
 ## Baseline
 
@@ -45,9 +45,9 @@ formatting, API-contract validation, all-target compilation, strict Clippy, comp
 deterministic qualification, packaged-resource loading, and Linux bundle construction. CPU, Vulkan/
 `wgpu`, proof-gallery, and extracted-package checks were completed during local acceptance.
 
-macOS remains supported but advisory. Repeated Apple-Silicon CPU/Metal, IME, VoiceOver, dialog,
-FSEvents, lifecycle, and packaged-launch evidence is still required before any promotion to a
-blocking lane.
+macOS remains supported but advisory. The M8.4 Apple-Silicon campaign is accepted at
+`3c93849df19fea32412b673f9f5a69a39ff7b145` after three unique CPU/Metal real-hardware runs from one clean commit.
+This acceptance does not promote macOS to a blocking lane.
 
 M8 re-runs the complete M7 gate before retaining release evidence:
 
@@ -88,25 +88,37 @@ release mode; source-tree and extracted-package self-tests passed; CPU and `wgpu
 completed; edited text and view/workspace state survived session relaunch; and the extracted Linux ZIP
 loaded resources without a repository-relative path.
 
-## M8.3 repeated long-session qualification status
+## M8.3 repeated long-session qualification — accepted
 
-The complete M8.3 automated gate passes: all seven deterministic workloads passed twice, four source
-and four extracted-package self-tests passed, and normalized reports were byte-for-byte identical.
-Extracted CPU and Vulkan/`wgpu` consumer launches also passed. Manual full-editor testing exposed one
-blocking Linux native-dialog defect: selecting **Discard** for a dirty document did not close the tab.
+The complete M8.3 automated gate and manual release qualification are accepted. All seven
+deterministic workloads passed twice, source and extracted-package self-tests passed, normalized
+reports were byte-for-byte identical, and extracted CPU and Vulkan/`wgpu` launches passed.
+The native dirty-close defect discovered during qualification was repaired and accepted through
+M8.3.1.
+## M8.3.1 native dirty-close repair — accepted
 
-## M8.3.1 native dirty-close repair candidate
+The Zenity adapter recognizes exact extra-button labels before interpreting Cancel-like process
+statuses. Focused parser and editor lifecycle regressions pass, and graphical dirty-close Cancel,
+Discard, and Save behavior was accepted through CPU and `wgpu` hosts.
+## M8.4 Apple-Silicon evidence campaign — accepted
 
-The repair keeps the editor lifecycle unchanged and corrects the Zenity adapter boundary. Extra-button labels are recognized before Cancel-like process statuses. Exact
-response lines are recognized on either standard output or standard error, without
-requiring toolkit diagnostics to be valid UTF-8. Focused parser tests cover primary, secondary,
-diagnostic, CRLF, and substring cases. Final M8.3 acceptance requires repeating dirty-close Discard
-through both CPU and Vulkan/`wgpu` editor hosts.
+M8.4 is accepted at clean implementation commit `3c93849df19fea32412b673f9f5a69a39ff7b145`. The Apple-Silicon automated
+gate passed on an M2 Pro Mac mini, including workspace checks, strict Clippy, complete tests,
+rustdoc, deterministic qualification, arm64 CPU and Metal application packaging, plist validation,
+ad-hoc signing, ZIP construction, and checksum validation.
 
-## M8.4 Apple-Silicon evidence candidate
+Three unique operator evidence records passed from the same clean commit. The campaign covers
+source and packaged CPU/Metal applications, editor and proof-gallery operation, Retina and external
+display geometry, native dialogs, Application Support sessions, FSEvents, sleep/wake, memory
+pressure, dead keys, emoji, CJK IME, VoiceOver, native document-edited indication, and dirty-close
+Discard.
 
-M8.4 adds a private evidence executable, a safe macOS gate, and backend-pinned CPU and Metal `.app`
-bundles. Evidence capture requires arm64 hardware, validated signatures and manifests, explicit
-operator results, and by default a clean source tree. Campaign verification requires at least three
-unique runs from one commit. macOS remains advisory; no headless process claims Retina, dialogs,
-FSEvents, IME, sleep/wake, memory pressure, or VoiceOver success without operator input.
+Campaign verification ended with `m8_4_campaign=passed`. The retained campaign-summary SHA-256 is
+`e4b56fd1dd730363c2a36e52580d99f1a601c2eb0a480fda81ba89c451dd54b2`. macOS remains advisory rather than blocking.
+
+## M8.5 development release candidate — active
+
+M8.5 prepares the first `0.2.0-rc.1` development release candidate from the accepted M8
+qualification baseline. Work now moves to release inventory and freeze, version consistency,
+retained API comparison, artifact assembly, known-limitations and migration documentation, final
+cross-platform validation, and source-tag preparation.

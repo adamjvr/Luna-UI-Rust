@@ -1,0 +1,7 @@
+{
+  "schema": "luna-m8.4-macos-campaign-v1",
+  "passed": true,
+  "minimum_runs": 3,
+  "git_commit": "3c93849df19fea32412b673f9f5a69a39ff7b145",
+  "run_ids": ["run-1", "run-2", "run-3"]
+}

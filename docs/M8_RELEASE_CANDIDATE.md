@@ -91,6 +91,11 @@ coverage may be marked not applicable and VoiceOver may record an advisory excep
 Advisory CI becomes blocking only through a later explicit roadmap decision supported by repeated
 real-hardware evidence.
 
+M8.4 is accepted at clean Apple-Silicon implementation commit `3c93849df19fea32412b673f9f5a69a39ff7b145`. The complete
+automated gate and three unique CPU/Metal operator evidence runs passed, and campaign verification
+reported `m8_4_campaign=passed`. The retained evidence is stored under
+`retained-evidence/m8.4/apple-silicon`. macOS remains advisory.
+
 ## M8.5 — development release candidate
 
 The first candidate is expected to be `0.2.0-rc.1`. A candidate must include:

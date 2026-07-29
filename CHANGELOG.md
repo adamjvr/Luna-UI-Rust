@@ -26,6 +26,8 @@ commitments are governed by `api/public-api.toml` and `docs/PUBLIC_API_POLICY.md
 
 ### Changed
 
+- M8.4 Apple-Silicon qualification is accepted after three unique CPU/Metal real-hardware evidence runs from one clean commit;
+
 - the full M8.3 workload unit test is ignored in routine debug suites because the release-mode M8.3 gate is authoritative and debug cosmic-text shaping is intentionally expensive;
 
 - M8.2 is accepted on the blocking Linux/Pop!_OS lane after CPU, `wgpu`, session-relaunch, and
@@ -37,6 +39,8 @@ commitments are governed by `api/public-api.toml` and `docs/PUBLIC_API_POLICY.md
 - arbitrary-depth popup documentation matches the implemented M3.3c behavior.
 
 ### Fixed
+
+- macOS packaging permits intentionally repeated required plist placeholders while still rejecting missing and unresolved template tokens;
 
 - Zenity extra-button responses are recognized as exact lines on either standard output or standard error, so choosing **Discard** completes dirty-document close instead of being mistaken for Cancel;
 - two-choice Zenity confirmations no longer add a duplicate extra button labeled Cancel.
