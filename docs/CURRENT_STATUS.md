@@ -1,6 +1,6 @@
 # Current Status
 
-**Milestone:** M8.5 development release candidate — preparation
+**Milestone:** M8.5 development release candidate — qualification
 
 ## Baseline
 
@@ -95,11 +95,13 @@ deterministic workloads passed twice, source and extracted-package self-tests pa
 reports were byte-for-byte identical, and extracted CPU and Vulkan/`wgpu` launches passed.
 The native dirty-close defect discovered during qualification was repaired and accepted through
 M8.3.1.
+
 ## M8.3.1 native dirty-close repair — accepted
 
 The Zenity adapter recognizes exact extra-button labels before interpreting Cancel-like process
 statuses. Focused parser and editor lifecycle regressions pass, and graphical dirty-close Cancel,
 Discard, and Save behavior was accepted through CPU and `wgpu` hosts.
+
 ## M8.4 Apple-Silicon evidence campaign — accepted
 
 M8.4 is accepted at clean implementation commit `3c93849df19fea32412b673f9f5a69a39ff7b145`. The Apple-Silicon automated
@@ -118,7 +120,7 @@ Campaign verification ended with `m8_4_campaign=passed`. The retained campaign-s
 
 ## M8.5 development release candidate — active
 
-M8.5 prepares the first `0.2.0-rc.1` development release candidate from the accepted M8
-qualification baseline. Work now moves to release inventory and freeze, version consistency,
-retained API comparison, artifact assembly, known-limitations and migration documentation, final
-cross-platform validation, and source-tag preparation.
+The workspace and inherited crate versions now target `0.2.0-rc.1`. Final qualification revalidates
+the retained M7-to-M8 API comparison, runs the blocking Linux M8 gate, performs one CPU and one
+`wgpu` graphical smoke pass, builds the Linux development bundle and checksum, and then creates the
+source tag. Accepted M8.4 evidence remains advisory and is not repeated.

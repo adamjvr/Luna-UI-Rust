@@ -3,7 +3,7 @@
 All notable Luna-UI-Rust changes are recorded here. The project remains pre-1.0; compatibility
 commitments are governed by `api/public-api.toml` and `docs/PUBLIC_API_POLICY.md`.
 
-## Unreleased — M8
+## 0.2.0-rc.1 — 2026-07-30
 
 ### Added
 

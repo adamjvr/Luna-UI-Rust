@@ -47,7 +47,7 @@ unicode-segmentation = "=1.13.3"
 winit = "=0.30.13"
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0-rc.1"
 edition = "2024"
 rust-version = "1.97.1"
 license = "MPL-2.0"

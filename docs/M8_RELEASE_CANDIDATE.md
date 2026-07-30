@@ -109,6 +109,23 @@ The first candidate is expected to be `0.2.0-rc.1`. A candidate must include:
 - provisional API inventory and known limitations;
 - migration notes for intentional API changes.
 
+## 0.2.0-rc.1 known limitations
+
+- This is a development candidate for the Luna framework and proof applications, not a finished
+  end-user editor release.
+- Linux is the blocking primary target. macOS remains supported but advisory, and Windows remains
+  unofficial and non-blocking.
+- macOS application bundles are development bundles with ad-hoc signatures; they are not notarized
+  or prepared for commercial distribution.
+- Workspace packages inherit `publish = false`; this candidate is distributed as source and
+  development bundles rather than as crates.io packages.
+- API commitments remain governed by `api/public-api.toml`. Provisional crates and symbols may
+  change during later pre-1.0 development.
+- Product-neutral regex search, deeper language services, docking, cross-window tab transfer, and
+  Moth Text integration are intentionally deferred until after the M8 release-candidate cycle.
+- The optional `wgpu` path is qualified as a reusable proof backend. Broader production-product GPU
+  integration remains future downstream work.
+
 Windows remains unofficial, best-effort, and non-blocking.
 
 ## Non-goals
