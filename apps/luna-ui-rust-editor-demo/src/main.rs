@@ -5350,16 +5350,6 @@ impl EditorDemoApplication {
                 },
                 13.0,
             )?;
-            if let Some(close_bounds) = frame.close_bounds {
-                self.append_label(
-                    display_list,
-                    &format!("m3-editor-pane-tab-close-{index}"),
-                    "×",
-                    close_bounds,
-                    TextAlignment::Center,
-                    12.0,
-                )?;
-            }
         }
         for (index, strip) in surface.layout().tab_strips.iter().enumerate() {
             if let Some(bounds) = strip.previous_bounds {

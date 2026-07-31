@@ -567,6 +567,52 @@ fn tab_frame(
     })
 }
 
+fn paint_close_glyph(display_list: &mut DisplayList, bounds: RectI, color: luna_theme::Rgba8) {
+    let extent = bounds.width.min(bounds.height).min(10);
+    if extent == 0 {
+        return;
+    }
+
+    let stroke = extent.min(2);
+    let max_offset = extent.saturating_sub(stroke);
+    let origin_x = bounds
+        .x
+        .saturating_add(i32::try_from(bounds.width.saturating_sub(extent) / 2).unwrap_or(0));
+    let origin_y = bounds
+        .y
+        .saturating_add(i32::try_from(bounds.height.saturating_sub(extent) / 2).unwrap_or(0));
+
+    if max_offset == 0 {
+        display_list.fill_rect(RectI::new(origin_x, origin_y, stroke, stroke), color);
+        return;
+    }
+
+    for step in 0..=4_u32 {
+        let forward = max_offset.saturating_mul(step) / 4;
+        let backward = max_offset.saturating_sub(forward);
+        let y = origin_y.saturating_add(i32::try_from(forward).unwrap_or(0));
+
+        display_list.fill_rect(
+            RectI::new(
+                origin_x.saturating_add(i32::try_from(forward).unwrap_or(0)),
+                y,
+                stroke,
+                stroke,
+            ),
+            color,
+        );
+        display_list.fill_rect(
+            RectI::new(
+                origin_x.saturating_add(i32::try_from(backward).unwrap_or(0)),
+                y,
+                stroke,
+                stroke,
+            ),
+            color,
+        );
+    }
+}
+
 impl Widget for EditorPaneSurface {
     fn id(&self) -> &NodeId {
         &self.id
@@ -627,6 +673,7 @@ impl Widget for EditorPaneSurface {
             }
             if let Some(close) = tab.close_bounds {
                 display_list.fill_rect(close, self.theme.panel_header);
+                paint_close_glyph(display_list, close, self.theme.foreground);
             }
         }
         for strip in &self.layout.tab_strips {
@@ -849,6 +896,7 @@ mod tests {
     use luna_core::{NodeId, PointI, RectI};
     use luna_documents::{DocumentRegistry, DocumentViewRegistry};
     use luna_panes::{PaneAxis, PaneLayoutMetrics, PaneTree};
+    use luna_render::{DisplayCommand, DisplayList};
     use luna_theme::Theme;
     use std::error::Error;
 
@@ -1035,6 +1083,62 @@ mod tests {
                 .tabs
                 .iter()
                 .any(|tab| tab.view_id == first && tab.is_pinned)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn closable_tab_paints_foreground_close_glyph() -> TestResult {
+        let mut documents = DocumentRegistry::new();
+        let document = documents.register_virtual("one", "one", 0)?;
+        let mut views = DocumentViewRegistry::new();
+        let view = views.create_view(document);
+        let tree = PaneTree::new(view);
+        let pane = tree.focused_pane();
+        let theme = Theme::luna_dark();
+        let surface = EditorPaneSurface::new(
+            NodeId::new("panes")?,
+            RectI::new(0, 0, 320, 240),
+            theme,
+            EditorPaneSurfaceState {
+                tree,
+                panes: vec![PanePresentation {
+                    pane_id: pane,
+                    tabs: vec![PaneTab::new(view, "one")],
+                    active_view: view,
+                    tab_scroll_offset: 0,
+                    editor_child: NodeId::new("text")?,
+                }],
+            },
+            PaneLayoutMetrics::default(),
+        )?;
+        let close_bounds = surface.layout().tabs[0]
+            .close_bounds
+            .ok_or("missing close bounds")?;
+
+        let mut display_list = DisplayList::new();
+        surface.build_display_list(&mut display_list);
+
+        let glyph_rectangles = display_list
+            .commands()
+            .iter()
+            .filter_map(|command| match command {
+                DisplayCommand::FillRect { bounds, color }
+                    if *color == theme.foreground
+                        && bounds.x >= close_bounds.x
+                        && bounds.y >= close_bounds.y
+                        && bounds.right() <= close_bounds.right()
+                        && bounds.bottom() <= close_bounds.bottom() =>
+                {
+                    Some(bounds)
+                }
+                _ => None,
+            })
+            .count();
+
+        assert!(
+            glyph_rectangles >= 8,
+            "expected a visible geometric X inside the close button"
         );
         Ok(())
     }
