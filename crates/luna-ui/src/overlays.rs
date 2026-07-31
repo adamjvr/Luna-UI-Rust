@@ -657,10 +657,12 @@ pub struct FindPanelState {
     pub query: String,
     /// Replacement text.
     pub replacement: String,
-    /// Number of current literal matches.
+    /// Number of current matches.
     pub match_count: usize,
     /// One-based selected match number, or zero when no match is selected.
     pub selected_match: usize,
+    /// Current pattern-compilation or search-validation error.
+    pub pattern_error: Option<String>,
     /// Active editable field.
     pub active_field: FindField,
     /// Whether replacement UI is visible.
@@ -669,6 +671,8 @@ pub struct FindPanelState {
     pub case_sensitive: bool,
     /// Whether matches must occupy complete identifier words.
     pub whole_word: bool,
+    /// Whether the query is interpreted as a regular expression.
+    pub regex: bool,
     /// Whether next/previous navigation wraps at the first and last match.
     pub wrap_around: bool,
     /// Whether matching is restricted to an application-captured selection range.
@@ -682,10 +686,12 @@ impl Default for FindPanelState {
             replacement: String::new(),
             match_count: 0,
             selected_match: 0,
+            pattern_error: None,
             active_field: FindField::Query,
             replacement_is_visible: false,
             case_sensitive: false,
             whole_word: false,
+            regex: false,
             wrap_around: true,
             selection_only: false,
         }
@@ -713,6 +719,8 @@ pub struct FindPanelLayout {
     pub match_case: RectI,
     /// Whole-word toggle.
     pub whole_word: RectI,
+    /// Regular-expression toggle.
+    pub regex: RectI,
     /// Wrap-around navigation toggle.
     pub wrap_around: RectI,
     /// Selection-only search toggle.
@@ -738,6 +746,7 @@ pub struct FindPanel {
     status_id: NodeId,
     match_case_id: NodeId,
     whole_word_id: NodeId,
+    regex_id: NodeId,
     wrap_around_id: NodeId,
     selection_only_id: NodeId,
     replace_one_id: NodeId,
@@ -761,6 +770,7 @@ impl FindPanel {
         let status_id = id.child("status")?;
         let match_case_id = id.child("match-case")?;
         let whole_word_id = id.child("whole-word")?;
+        let regex_id = id.child("regex")?;
         let wrap_around_id = id.child("wrap-around")?;
         let selection_only_id = id.child("selection-only")?;
         let replace_one_id = id.child("replace-one")?;
@@ -779,6 +789,7 @@ impl FindPanel {
             status_id,
             match_case_id,
             whole_word_id,
+            regex_id,
             wrap_around_id,
             selection_only_id,
             replace_one_id,
@@ -850,6 +861,12 @@ impl FindPanel {
         &self.whole_word_id
     }
 
+    /// Returns the regular-expression toggle semantic ID.
+    #[must_use]
+    pub const fn regex_node_id(&self) -> &NodeId {
+        &self.regex_id
+    }
+
     /// Returns the wrap-around toggle semantic ID.
     #[must_use]
     pub const fn wrap_around_node_id(&self) -> &NodeId {
@@ -910,6 +927,14 @@ impl Widget for FindPanel {
             },
         );
         display_list.fill_rect(
+            self.layout.regex,
+            if self.state.regex {
+                self.theme.selection()
+            } else {
+                self.theme.panel_header
+            },
+        );
+        display_list.fill_rect(
             self.layout.wrap_around,
             if self.state.wrap_around {
                 self.theme.selection()
@@ -945,6 +970,7 @@ impl Widget for FindPanel {
             self.status_id.clone(),
             self.match_case_id.clone(),
             self.whole_word_id.clone(),
+            self.regex_id.clone(),
             self.wrap_around_id.clone(),
             self.selection_only_id.clone(),
         ];
@@ -994,7 +1020,9 @@ impl Widget for FindPanel {
                 self.layout.status,
             )
             .with_label("Find results")
-            .with_value(if self.state.match_count == 0 {
+            .with_value(if let Some(error) = &self.state.pattern_error {
+                error.clone()
+            } else if self.state.match_count == 0 {
                 if self.state.query.is_empty() {
                     "No query".to_owned()
                 } else {
@@ -1015,6 +1043,19 @@ impl Widget for FindPanel {
             )
             .with_label("Match case")
             .with_value(if self.state.case_sensitive {
+                "Checked"
+            } else {
+                "Unchecked"
+            }),
+        );
+        nodes.push(
+            AccessibilityNode::new(
+                self.regex_id.clone(),
+                AccessibilityRole::CheckBox,
+                self.layout.regex,
+            )
+            .with_label("Use regular expression")
+            .with_value(if self.state.regex {
                 "Checked"
             } else {
                 "Unchecked"
@@ -1106,6 +1147,8 @@ impl Widget for FindPanel {
             Some(self.match_case_id.clone())
         } else if self.layout.whole_word.contains(point) {
             Some(self.whole_word_id.clone())
+        } else if self.layout.regex.contains(point) {
+            Some(self.regex_id.clone())
         } else if self.layout.wrap_around.contains(point) {
             Some(self.wrap_around_id.clone())
         } else if self.layout.selection_only.contains(point) {
@@ -1131,7 +1174,7 @@ fn calculate_find_layout(bounds: RectI, replacement_is_visible: bool) -> FindPan
         panel_width,
         panel_height.min(bounds.height.saturating_sub(24).max(1)),
     );
-    let button_width = 34_u32.min(panel.width / 8);
+    let button_width = 34_u32.min(panel.width / 9);
     let close = RectI::new(
         i32::try_from(panel.right().saturating_sub(i64::from(button_width + 8))).unwrap_or(panel.x),
         panel.y.saturating_add(8),
@@ -1153,13 +1196,21 @@ fn calculate_find_layout(bounds: RectI, replacement_is_visible: bool) -> FindPan
         button_width,
         next.height,
     );
-    let whole_word = RectI::new(
+    let regex = RectI::new(
         previous
             .x
             .saturating_sub(i32::try_from(button_width + 6).unwrap_or(i32::MAX)),
         previous.y,
         button_width,
         previous.height,
+    );
+    let whole_word = RectI::new(
+        regex
+            .x
+            .saturating_sub(i32::try_from(button_width + 6).unwrap_or(i32::MAX)),
+        regex.y,
+        button_width,
+        regex.height,
     );
     let match_case = RectI::new(
         whole_word
@@ -1228,6 +1279,7 @@ fn calculate_find_layout(bounds: RectI, replacement_is_visible: bool) -> FindPan
         status,
         match_case,
         whole_word,
+        regex,
         wrap_around,
         selection_only,
         replace_one,
@@ -1310,6 +1362,29 @@ mod tests {
     }
 
     #[test]
+    fn find_panel_exposes_pattern_error_semantics() -> Result<(), Box<dyn Error>> {
+        let message = "invalid regular expression: unclosed group";
+        let panel = FindPanel::new(
+            NodeId::new("find-error")?,
+            RectI::new(0, 0, 800, 600),
+            Theme::luna_dark(),
+            FindPanelState {
+                query: "(".to_owned(),
+                regex: true,
+                pattern_error: Some(message.to_owned()),
+                ..FindPanelState::default()
+            },
+        )?;
+        let status = panel
+            .accessibility_nodes()
+            .into_iter()
+            .find(|node| node.role == AccessibilityRole::Status)
+            .ok_or_else(|| std::io::Error::other("find status node missing"))?;
+        assert_eq!(status.value.as_deref(), Some(message));
+        Ok(())
+    }
+
+    #[test]
     fn completion_popup_places_selection_and_semantics() -> Result<(), Box<dyn Error>> {
         let popup = CompletionPopup::new(
             NodeId::new("completion")?,
@@ -1345,18 +1420,21 @@ mod tests {
                 replacement_is_visible: true,
                 case_sensitive: true,
                 whole_word: true,
+                regex: true,
                 wrap_around: false,
                 selection_only: true,
                 ..FindPanelState::default()
             },
         )?;
         assert!(!panel.layout().match_case.is_empty());
+        assert!(!panel.layout().regex.is_empty());
         assert!(!panel.layout().selection_only.is_empty());
         assert!(!panel.layout().replace_all.is_empty());
         assert_eq!(
             panel.match_case_node_id().to_string(),
             "find-options.match-case"
         );
+        assert_eq!(panel.regex_node_id().to_string(), "find-options.regex");
         assert_eq!(
             panel.selection_only_node_id().to_string(),
             "find-options.selection-only"

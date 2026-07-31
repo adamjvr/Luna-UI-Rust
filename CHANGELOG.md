@@ -10,11 +10,15 @@ commitments are governed by `api/public-api.toml` and `docs/PUBLIC_API_POLICY.md
 - Added the provisional `luna-search` crate with product-neutral literal and regular-expression
   matching, scoped searches, deterministic result caps, capture-aware replacement planning, and
   request identity suitable for asynchronous stale-result rejection.
+- Added an accessible regular-expression toggle and invalid-pattern feedback to the editor Find
+  panel.
 
 ### Changed
 
 - Routed the editor demo's existing literal Find behavior through the reusable search-provider
   boundary without changing its accepted non-overlapping match semantics.
+- Routed Replace and Replace All through `luna-search` replacement plans so regular-expression
+  capture groups expand correctly while the complete operation remains one undoable transaction.
 
 ## 0.2.0-rc.1 — 2026-07-30
 

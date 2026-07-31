@@ -42,8 +42,9 @@ use luna_documents::{
     SaveRequirement, StorageInstance, StorageRevision, StorageSnapshot,
 };
 use luna_editor::{
-    ByteSelection, EditGroup, EditHistory, HistorySnapshot, ImeComposition, KeywordSyntaxProvider,
-    SelectionSet, SublimeColorSchemeAdapter, SyntaxProvider, SyntaxTheme,
+    ByteEdit, ByteSelection, EditGroup, EditHistory, HistorySnapshot, ImeComposition,
+    KeywordSyntaxProvider, MultiEditResult, SelectionSet, SublimeColorSchemeAdapter,
+    SyntaxProvider, SyntaxTheme,
 };
 use luna_host_wgpu::run_native_wgpu;
 use luna_host_winit::{
@@ -60,7 +61,8 @@ use luna_panes::{
 };
 use luna_render::DisplayList;
 use luna_search::{
-    RegexSearchProvider, SearchMode, SearchProvider, SearchRequest, SearchRequestId, SearchSpec,
+    RegexSearchProvider, ReplacementPlan, SearchError, SearchMode, SearchProvider, SearchRequest,
+    SearchRequestId, SearchSpec,
 };
 #[cfg(test)]
 use luna_session::MemorySessionStore;
@@ -223,6 +225,69 @@ fn apply_selection_set_to_editor(editor: &mut EditableText, selections: &Selecti
 
 fn history_snapshot_from_editor(editor: &EditableText) -> HistorySnapshot {
     HistorySnapshot::new(editor.document().text(), selection_set_from_editor(editor))
+}
+
+fn offset_with_delta(value: usize, delta: i128) -> usize {
+    if delta >= 0 {
+        value.saturating_add(usize::try_from(delta).unwrap_or(usize::MAX))
+    } else {
+        value.saturating_sub(usize::try_from(delta.unsigned_abs()).unwrap_or(usize::MAX))
+    }
+}
+
+fn multi_edit_result_from_replacement_plan(
+    text: &str,
+    selections: &SelectionSet,
+    plan: &ReplacementPlan,
+) -> MultiEditResult {
+    let did_change = plan.edits().iter().any(|edit| {
+        text.get(edit.range())
+            .is_none_or(|existing| existing != edit.replacement())
+    });
+    if !did_change {
+        return MultiEditResult {
+            text: text.to_owned(),
+            selections: selections.clone(),
+            edits: Vec::new(),
+            did_change: false,
+        };
+    }
+
+    let Ok(next_text) = plan.apply(text) else {
+        return MultiEditResult {
+            text: text.to_owned(),
+            selections: selections.clone(),
+            edits: Vec::new(),
+            did_change: false,
+        };
+    };
+
+    let mut delta = 0_i128;
+    let mut next_selections = Vec::with_capacity(plan.edits().len());
+    let mut edits = Vec::with_capacity(plan.edits().len());
+    for edit in plan.edits() {
+        let range = edit.range();
+        let adjusted_start = offset_with_delta(range.start, delta);
+        let caret = adjusted_start.saturating_add(edit.replacement().len());
+        next_selections.push(ByteSelection::caret(caret));
+
+        let removed = i128::try_from(range.end.saturating_sub(range.start)).unwrap_or(i128::MAX);
+        let inserted = i128::try_from(edit.replacement().len()).unwrap_or(i128::MAX);
+        delta = delta.saturating_add(inserted.saturating_sub(removed));
+        edits.push(ByteEdit {
+            old_range: range,
+            inserted_text: edit.replacement().to_owned(),
+        });
+    }
+
+    let next_selections = SelectionSet::new(&next_text, next_selections, 0)
+        .unwrap_or_else(|_| SelectionSet::single(ByteSelection::caret(0)));
+    MultiEditResult {
+        text: next_text,
+        selections: next_selections,
+        edits,
+        did_change: true,
+    }
 }
 
 fn default_clipboard_service() -> Box<dyn ClipboardService> {
@@ -3100,20 +3165,30 @@ impl EditorDemoApplication {
 
     fn replace_current_match(&mut self) {
         self.refresh_find_matches();
-        if self.find_matches.is_empty() {
+        let plan = match self.current_replacement_plan() {
+            Some(Ok(plan)) => plan,
+            Some(Err(error)) => {
+                self.set_find_error(error);
+                return;
+            }
+            None => {
+                self.lifecycle_notice = Some("No find match to replace".to_owned());
+                return;
+            }
+        };
+        if plan.edits().is_empty() {
             self.lifecycle_notice = Some("No find match to replace".to_owned());
             return;
         }
+
         let selected = self
             .find
             .as_ref()
             .map_or(0, |find| find.selected_match.saturating_sub(1))
-            .min(self.find_matches.len().saturating_sub(1));
-        let range = self.find_matches[selected].clone();
-        let replacement = self
-            .find
-            .as_ref()
-            .map_or_else(String::new, |find| find.replacement.clone());
+            .min(plan.edits().len().saturating_sub(1));
+        let edit = plan.edits()[selected].clone();
+        let range = edit.range();
+        let replacement = edit.replacement().to_owned();
         let text = self.active_view().editor.document().text();
         let Ok(selections) =
             SelectionSet::new(text, [ByteSelection::new(range.start, range.end)], 0)
@@ -3131,30 +3206,47 @@ impl EditorDemoApplication {
 
     fn replace_all_matches(&mut self) {
         self.refresh_find_matches();
-        if self.find_matches.is_empty() {
+        let plan = match self.current_replacement_plan() {
+            Some(Ok(plan)) => plan,
+            Some(Err(error)) => {
+                self.set_find_error(error);
+                return;
+            }
+            None => {
+                self.lifecycle_notice = Some("No find matches to replace".to_owned());
+                return;
+            }
+        };
+        if plan.edits().is_empty() {
             self.lifecycle_notice = Some("No find matches to replace".to_owned());
             return;
         }
-        let replacement = self
-            .find
-            .as_ref()
-            .map_or_else(String::new, |find| find.replacement.clone());
-        let count = self.find_matches.len();
-        let selections = self
-            .find_matches
+
+        let count = plan.edits().len();
+        let was_truncated = plan.was_truncated();
+        let selections = plan
+            .edits()
             .iter()
-            .map(|range| ByteSelection::new(range.start, range.end))
+            .map(|edit| {
+                let range = edit.range();
+                ByteSelection::new(range.start, range.end)
+            })
             .collect::<Vec<_>>();
         let text = self.active_view().editor.document().text();
         let Ok(selections) = SelectionSet::new(text, selections, 0) else {
             return;
         };
         self.active_view_mut().selections = selections;
-        if self.apply_multi_selection_edit(EditGroup::Replacement, |document, selections| {
-            selections.replace_all(document, &replacement)
+        let plan_for_edit = plan.clone();
+        if self.apply_multi_selection_edit(EditGroup::Replacement, move |document, selections| {
+            multi_edit_result_from_replacement_plan(document, selections, &plan_for_edit)
         }) {
             self.refresh_find_matches();
-            self.lifecycle_notice = Some(format!("Replaced {count} matches"));
+            self.lifecycle_notice = Some(if was_truncated {
+                format!("Replaced {count} matches (result limit reached)")
+            } else {
+                format!("Replaced {count} matches")
+            });
         }
     }
 
@@ -4655,45 +4747,90 @@ impl EditorDemoApplication {
         case_sensitive: bool,
         whole_word: bool,
     ) -> Vec<Range<usize>> {
-        let request = SearchRequest::new(
-            SearchRequestId::new(1),
-            0,
-            SearchSpec::new(query, SearchMode::Literal)
-                .with_case_sensitive(case_sensitive)
-                .with_whole_word(whole_word),
-        );
+        Self::search_match_ranges(
+            text,
+            query,
+            SearchMode::Literal,
+            case_sensitive,
+            whole_word,
+            None,
+        )
+        .map_or_else(|_| Vec::new(), |ranges| ranges)
+    }
+
+    fn search_match_ranges(
+        text: &str,
+        query: &str,
+        mode: SearchMode,
+        case_sensitive: bool,
+        whole_word: bool,
+        scope: Option<Range<usize>>,
+    ) -> Result<Vec<Range<usize>>, SearchError> {
+        let mut spec = SearchSpec::new(query, mode)
+            .with_case_sensitive(case_sensitive)
+            .with_whole_word(whole_word);
+        if let Some(scope) = scope {
+            spec = spec.with_scope(scope);
+        }
+        let request = SearchRequest::new(SearchRequestId::new(1), 0, spec);
         RegexSearchProvider
             .search(text, &request)
-            .map_or_else(|_| Vec::new(), |result| result.ranges())
+            .map(|result| result.ranges())
+    }
+
+    fn current_find_request(&self) -> Option<SearchRequest> {
+        let state = self.find.as_ref()?;
+        let mode = if state.regex {
+            SearchMode::Regex
+        } else {
+            SearchMode::Literal
+        };
+        let mut spec = SearchSpec::new(state.query.clone(), mode)
+            .with_case_sensitive(state.case_sensitive)
+            .with_whole_word(state.whole_word);
+        if state.selection_only {
+            spec = spec.with_scope(self.find_selection_scope.clone()?);
+        }
+        Some(SearchRequest::new(
+            SearchRequestId::new(1),
+            self.active_view().editor.edit_revision(),
+            spec,
+        ))
+    }
+
+    fn current_replacement_plan(&self) -> Option<Result<ReplacementPlan, SearchError>> {
+        let request = self.current_find_request()?;
+        let replacement = self.find.as_ref()?.replacement.clone();
+        Some(RegexSearchProvider.replacement_plan(
+            self.active_view().editor.document().text(),
+            &request,
+            &replacement,
+        ))
+    }
+
+    fn set_find_error(&mut self, error: SearchError) {
+        let message = error.to_string();
+        self.find_matches.clear();
+        if let Some(find) = self.find.as_mut() {
+            find.match_count = 0;
+            find.selected_match = 0;
+            find.pattern_error = Some(message.clone());
+        }
+        self.lifecycle_notice = Some(message);
     }
 
     fn refresh_find_matches(&mut self) {
-        let (query, case_sensitive, whole_word, selection_only) = self.find.as_ref().map_or_else(
-            || (String::new(), false, false, false),
-            |state| {
-                (
-                    state.query.clone(),
-                    state.case_sensitive,
-                    state.whole_word,
-                    state.selection_only,
-                )
-            },
-        );
-        self.find_matches = Self::find_match_ranges(
-            self.active_view().editor.document().text(),
-            &query,
-            case_sensitive,
-            whole_word,
-        );
-        if selection_only {
-            if let Some(scope) = &self.find_selection_scope {
-                self.find_matches
-                    .retain(|range| range.start >= scope.start && range.end <= scope.end);
-            } else {
-                self.find_matches.clear();
-            }
-        }
+        let outcome = self.current_find_request().map(|request| {
+            RegexSearchProvider.search(self.active_view().editor.document().text(), &request)
+        });
+        let (matches, pattern_error) = match outcome {
+            Some(Ok(result)) => (result.ranges(), None),
+            Some(Err(error)) => (Vec::new(), Some(error.to_string())),
+            None => (Vec::new(), None),
+        };
+        self.find_matches = matches;
         if let Some(find) = self.find.as_mut() {
+            find.pattern_error = pattern_error;
             find.match_count = self.find_matches.len();
             find.selected_match = if self.find_matches.is_empty() {
                 0
@@ -5604,6 +5741,14 @@ impl EditorDemoApplication {
         )?;
         self.append_label(
             display_list,
+            "m3-editor-find-regex-label",
+            ".*",
+            panel.layout().regex,
+            TextAlignment::Center,
+            11.0,
+        )?;
+        self.append_label(
+            display_list,
             "m3-editor-find-wrap-label",
             "↻",
             panel.layout().wrap_around,
@@ -5636,7 +5781,13 @@ impl EditorDemoApplication {
                 11.0,
             )?;
         }
-        let status = if state.match_count == 0 {
+        let status = if state.pattern_error.is_some() {
+            if state.regex {
+                "Invalid regex".to_owned()
+            } else {
+                "Search error".to_owned()
+            }
+        } else if state.match_count == 0 {
             if state.query.is_empty() {
                 "No query".to_owned()
             } else {
@@ -6365,6 +6516,13 @@ impl NativeApplication for EditorDemoApplication {
                                 self.refresh_find_matches();
                                 return HostControl::Invalidate(InvalidationClass::TextOverlay);
                             }
+                            if layout.regex.contains(pointer.position) {
+                                if let Some(find) = self.find.as_mut() {
+                                    find.regex = !find.regex;
+                                }
+                                self.refresh_find_matches();
+                                return HostControl::Invalidate(InvalidationClass::TextOverlay);
+                            }
                             if layout.wrap_around.contains(pointer.position) {
                                 if let Some(find) = self.find.as_mut() {
                                     find.wrap_around = !find.wrap_around;
@@ -6786,6 +6944,13 @@ impl NativeApplication for EditorDemoApplication {
                 if &target == panel.whole_word_node_id() {
                     if let Some(find) = self.find.as_mut() {
                         find.whole_word = !find.whole_word;
+                    }
+                    self.refresh_find_matches();
+                    return HostControl::Invalidate(InvalidationClass::TextOverlay);
+                }
+                if &target == panel.regex_node_id() {
+                    if let Some(find) = self.find.as_mut() {
+                        find.regex = !find.regex;
                     }
                     self.refresh_find_matches();
                     return HostControl::Invalidate(InvalidationClass::TextOverlay);
@@ -8744,6 +8909,68 @@ mod tests {
             EditorDemoApplication::find_match_ranges("aaaa", "aa", true, false),
             vec![0..2, 2..4]
         );
+    }
+
+    #[test]
+    fn regex_find_surfaces_invalid_pattern_without_matches() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let mut application = test_application(&files, &dialogs)?;
+        let _ = application.open_find();
+        if let Some(find) = application.find.as_mut() {
+            find.query = "(".to_owned();
+            find.regex = true;
+        }
+
+        application.refresh_find_matches();
+
+        assert!(application.find_matches.is_empty());
+        assert!(
+            application
+                .find
+                .as_ref()
+                .and_then(|find| find.pattern_error.as_deref())
+                .is_some_and(|error| error.contains("invalid regular expression"))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn regex_replace_all_expands_captures_and_undoes_as_one_transaction() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let mut application = test_application(&files, &dialogs)?;
+        application.new_document();
+        {
+            let view = application.active_view_mut();
+            view.editor.synchronize_document("alpha=12 beta=34", 1);
+            view.selections = SelectionSet::single(ByteSelection::caret(0));
+            apply_selection_set_to_editor(&mut view.editor, &view.selections);
+        }
+        application.commit_active_view_to_buffer();
+        application.find = Some(luna_ui::FindPanelState {
+            query: r"(?P<left>[a-z]+)=(\d+)".to_owned(),
+            replacement: "${left}[$2]".to_owned(),
+            replacement_is_visible: true,
+            case_sensitive: true,
+            regex: true,
+            ..luna_ui::FindPanelState::default()
+        });
+
+        application.replace_all_matches();
+
+        assert_eq!(
+            application.active_view().editor.document().text(),
+            "alpha[12] beta[34]"
+        );
+        assert_eq!(
+            application.lifecycle_notice.as_deref(),
+            Some("Replaced 2 matches")
+        );
+        assert!(application.undo_active());
+        assert_eq!(
+            application.active_view().editor.document().text(),
+            "alpha=12 beta=34"
+        );
+        Ok(())
     }
 
     #[test]
