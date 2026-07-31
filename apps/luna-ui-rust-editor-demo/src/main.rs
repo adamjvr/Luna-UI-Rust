@@ -59,6 +59,9 @@ use luna_panes::{
     PaneTree, PaneTreeSnapshot,
 };
 use luna_render::DisplayList;
+use luna_search::{
+    RegexSearchProvider, SearchMode, SearchProvider, SearchRequest, SearchRequestId, SearchSpec,
+};
 #[cfg(test)]
 use luna_session::MemorySessionStore;
 use luna_session::{
@@ -4652,52 +4655,16 @@ impl EditorDemoApplication {
         case_sensitive: bool,
         whole_word: bool,
     ) -> Vec<Range<usize>> {
-        if query.is_empty() {
-            return Vec::new();
-        }
-        let mut ranges = Vec::new();
-        let mut cursor = 0;
-        while cursor < text.len() {
-            let Some(suffix) = text.get(cursor..) else {
-                break;
-            };
-            let Some(character) = suffix.chars().next() else {
-                break;
-            };
-            let start = cursor;
-            let end = start.saturating_add(query.len());
-            let is_match = text.get(start..end).is_some_and(|candidate| {
-                if case_sensitive {
-                    candidate == query
-                } else {
-                    candidate.eq_ignore_ascii_case(query)
-                }
-            });
-            let has_word_boundary = if is_match && whole_word {
-                let before_is_word = text
-                    .get(..start)
-                    .and_then(|prefix| prefix.chars().next_back())
-                    .is_some_and(Self::is_find_word_character);
-                let after_is_word = text
-                    .get(end..)
-                    .and_then(|suffix| suffix.chars().next())
-                    .is_some_and(Self::is_find_word_character);
-                !before_is_word && !after_is_word
-            } else {
-                is_match
-            };
-            if has_word_boundary {
-                ranges.push(start..end);
-                cursor = end;
-            } else {
-                cursor = cursor.saturating_add(character.len_utf8());
-            }
-        }
-        ranges
-    }
-
-    fn is_find_word_character(character: char) -> bool {
-        character.is_alphanumeric() || character == '_'
+        let request = SearchRequest::new(
+            SearchRequestId::new(1),
+            0,
+            SearchSpec::new(query, SearchMode::Literal)
+                .with_case_sensitive(case_sensitive)
+                .with_whole_word(whole_word),
+        );
+        RegexSearchProvider
+            .search(text, &request)
+            .map_or_else(|_| Vec::new(), |result| result.ranges())
     }
 
     fn refresh_find_matches(&mut self) {

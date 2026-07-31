@@ -1,0 +1,18 @@
+[package]
+name = "luna-search"
+description = "Product-neutral literal and regular-expression search mechanics for Luna UI Rust."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+publish.workspace = true
+repository.workspace = true
+readme.workspace = true
+
+[dependencies]
+luna-core = { path = "../luna-core" }
+regex.workspace = true
+
+[lints]
+workspace = true

@@ -3,6 +3,19 @@
 All notable Luna-UI-Rust changes are recorded here. The project remains pre-1.0; compatibility
 commitments are governed by `api/public-api.toml` and `docs/PUBLIC_API_POLICY.md`.
 
+## Unreleased — M9
+
+### Added
+
+- Added the provisional `luna-search` crate with product-neutral literal and regular-expression
+  matching, scoped searches, deterministic result caps, capture-aware replacement planning, and
+  request identity suitable for asynchronous stale-result rejection.
+
+### Changed
+
+- Routed the editor demo's existing literal Find behavior through the reusable search-provider
+  boundary without changing its accepted non-overlapping match semantics.
+
 ## 0.2.0-rc.1 — 2026-07-30
 
 ### Added

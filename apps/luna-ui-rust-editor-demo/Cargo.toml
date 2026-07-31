@@ -22,6 +22,7 @@ luna-host-wgpu = { path = "../../crates/luna-host-wgpu" }
 luna-input = { path = "../../crates/luna-input" }
 luna-panes = { path = "../../crates/luna-panes" }
 luna-render = { path = "../../crates/luna-render" }
+luna-search = { path = "../../crates/luna-search" }
 luna-session = { path = "../../crates/luna-session" }
 luna-text = { path = "../../crates/luna-text" }
 luna-text-cosmic = { path = "../../crates/luna-text-cosmic" }
