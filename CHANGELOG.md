@@ -7,6 +7,7 @@ commitments are governed by `api/public-api.toml` and `docs/PUBLIC_API_POLICY.md
 
 ### Added
 
+- Added validated downstream application profiles with distinct product-owned command, session, and resource namespaces for paired Luna/Moth integration.
 - Added the provisional `luna-search` crate with product-neutral literal and regular-expression
   matching, scoped searches, deterministic result caps, capture-aware replacement planning, and
   request identity suitable for asynchronous stale-result rejection.

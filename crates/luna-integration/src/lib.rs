@@ -6,6 +6,10 @@
 //! can gather file, dialog, workspace, watcher, session, syntax, and completion adapters into one
 //! application-owned value without making Luna responsible for product workflow or policy.
 
+mod profile;
+
+pub use profile::{DownstreamApplicationProfile, IntegrationNamespace, IntegrationProfileError};
+
 use luna_core::{CodedError, ErrorCode};
 use luna_host_core::{
     NativePlatform, PlatformSupportTier, current_native_platform, platform_support_tier,
