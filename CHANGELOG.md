@@ -12,6 +12,8 @@ commitments are governed by `api/public-api.toml` and `docs/PUBLIC_API_POLICY.md
   request identity suitable for asynchronous stale-result rejection.
 - Added an accessible regular-expression toggle and invalid-pattern feedback to the editor Find
   panel.
+- Added a product-neutral background search worker that coalesces queued jobs and preserves request
+  identity, document revision, worker timing, errors, and deterministic truncation state.
 
 ### Changed
 
@@ -19,6 +21,8 @@ commitments are governed by `api/public-api.toml` and `docs/PUBLIC_API_POLICY.md
   boundary without changing its accepted non-overlapping match semantics.
 - Routed Replace and Replace All through `luna-search` replacement plans so regular-expression
   capture groups expand correctly while the complete operation remains one undoable transaction.
+- Debounced regex and large-document Find requests off the UI thread, retained previous highlights
+  while searching, rejected stale revisions, and exposed searching and truncated-result states.
 
 ## 0.2.0-rc.1 — 2026-07-30
 

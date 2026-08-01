@@ -61,8 +61,8 @@ use luna_panes::{
 };
 use luna_render::DisplayList;
 use luna_search::{
-    RegexSearchProvider, ReplacementPlan, SearchError, SearchMode, SearchProvider, SearchRequest,
-    SearchRequestId, SearchSpec,
+    AsyncSearchWorker, RegexSearchProvider, ReplacementPlan, SearchCoordinator, SearchError,
+    SearchMode, SearchProvider, SearchRequest, SearchRequestId, SearchSpec,
 };
 #[cfg(test)]
 use luna_session::MemorySessionStore;
@@ -113,6 +113,8 @@ const MENU_ID: &str = "m3-editor-dropdown-menu";
 const CONTEXT_MENU_ID: &str = "m3-editor-context-menu";
 const EXTERNAL_POLL_INTERVAL: Duration = Duration::from_millis(750);
 const WORKSPACE_REFRESH_INTERVAL: Duration = Duration::from_millis(1_000);
+const FIND_SEARCH_DEBOUNCE: Duration = Duration::from_millis(75);
+const FIND_ASYNC_TEXT_THRESHOLD: usize = 64 * 1024;
 const RECENT_FILE_LIMIT: usize = 8;
 
 const M5_SUBLIME_SCHEME: &str = r##"
@@ -642,6 +644,10 @@ struct EditorDemoApplication {
     find_history: SearchHistory,
     find_selection_scope: Option<Range<usize>>,
     find_matches: Vec<Range<usize>>,
+    find_search_coordinator: SearchCoordinator,
+    find_search_worker: AsyncSearchWorker,
+    find_search_debounce_elapsed: Duration,
+    find_search_is_pending: bool,
     drag_anchor: Option<TextLocation>,
     dragged_splitter: Option<PaneId>,
     dragged_tab: Option<DraggedPaneTab>,
@@ -769,6 +775,10 @@ impl EditorDemoApplication {
             find_history: SearchHistory::new(32),
             find_selection_scope: None,
             find_matches: Vec::new(),
+            find_search_coordinator: SearchCoordinator::new(),
+            find_search_worker: AsyncSearchWorker::new()?,
+            find_search_debounce_elapsed: Duration::ZERO,
+            find_search_is_pending: false,
             drag_anchor: None,
             dragged_splitter: None,
             dragged_tab: None,
@@ -4819,24 +4829,116 @@ impl EditorDemoApplication {
         self.lifecycle_notice = Some(message);
     }
 
-    fn refresh_find_matches(&mut self) {
-        let outcome = self.current_find_request().map(|request| {
-            RegexSearchProvider.search(self.active_view().editor.document().text(), &request)
-        });
-        let (matches, pattern_error) = match outcome {
-            Some(Ok(result)) => (result.ranges(), None),
-            Some(Err(error)) => (Vec::new(), Some(error.to_string())),
-            None => (Vec::new(), None),
+    fn find_search_spec(&self) -> Option<SearchSpec> {
+        let state = self.find.as_ref()?;
+        let mode = if state.regex {
+            SearchMode::Regex
+        } else {
+            SearchMode::Literal
+        };
+        let mut spec = SearchSpec::new(state.query.clone(), mode)
+            .with_case_sensitive(state.case_sensitive)
+            .with_whole_word(state.whole_word);
+        if state.selection_only {
+            spec = spec.with_scope(self.find_selection_scope.clone()?);
+        }
+        Some(spec)
+    }
+
+    fn find_should_run_async(&self) -> bool {
+        self.find.as_ref().is_some_and(|state| state.regex)
+            || self.active_view().editor.document().text().len() >= FIND_ASYNC_TEXT_THRESHOLD
+    }
+
+    fn apply_find_outcome(&mut self, outcome: Result<luna_search::SearchResult, SearchError>) {
+        let (matches, pattern_error, was_truncated) = match outcome {
+            Ok(result) => (result.ranges(), None, result.was_truncated()),
+            Err(error) => (Vec::new(), Some(error.to_string()), false),
         };
         self.find_matches = matches;
         if let Some(find) = self.find.as_mut() {
+            find.searching = false;
             find.pattern_error = pattern_error;
+            find.was_truncated = was_truncated;
             find.match_count = self.find_matches.len();
             find.selected_match = if self.find_matches.is_empty() {
                 0
             } else {
                 find.selected_match.clamp(1, self.find_matches.len())
             };
+        }
+    }
+
+    fn launch_pending_find_search(&mut self) {
+        if !self.find_search_is_pending {
+            return;
+        }
+        self.find_search_is_pending = false;
+        self.find_search_debounce_elapsed = Duration::ZERO;
+        let Some(spec) = self.find_search_spec() else {
+            return;
+        };
+        let revision = self.active_view().editor.edit_revision();
+        let request = self.find_search_coordinator.begin(revision, spec);
+        let text: Arc<str> = Arc::from(self.active_view().editor.document().text().to_owned());
+        if !self.find_search_worker.submit(text, request) {
+            self.set_find_error(SearchError::InvalidPattern {
+                message: "background search worker stopped".to_owned(),
+            });
+        }
+    }
+
+    fn apply_latest_find_response(&mut self) -> bool {
+        let Some(response) = self.find_search_worker.try_recv_latest() else {
+            return false;
+        };
+        if !self
+            .find_search_coordinator
+            .accepts_identity(response.request_id(), response.source_revision())
+            || self.active_view().editor.edit_revision() != response.source_revision()
+        {
+            return false;
+        }
+        self.apply_find_outcome(response.into_outcome());
+        true
+    }
+
+    fn refresh_find_matches(&mut self) {
+        if self.find.is_none() {
+            self.find_matches.clear();
+            self.find_search_is_pending = false;
+            self.find_search_coordinator.cancel();
+            return;
+        }
+        if self.find_should_run_async() {
+            self.find_search_coordinator.cancel();
+            self.find_search_is_pending = true;
+            self.find_search_debounce_elapsed = Duration::ZERO;
+            if let Some(find) = self.find.as_mut() {
+                find.searching = true;
+                find.pattern_error = None;
+                find.was_truncated = false;
+            }
+            return;
+        }
+
+        self.find_search_is_pending = false;
+        self.find_search_coordinator.cancel();
+        let outcome = self.current_find_request().map(|request| {
+            RegexSearchProvider.search(self.active_view().editor.document().text(), &request)
+        });
+        match outcome {
+            Some(outcome) => self.apply_find_outcome(outcome),
+            None => {
+                self.find_matches.clear();
+                if let Some(find) = self.find.as_mut() {
+                    find.searching = false;
+                    find.pattern_error = None;
+                    find.was_truncated = false;
+                    find.match_count = 0;
+                    find.selected_match = 0;
+                }
+            }
         }
     }
 
@@ -5787,6 +5889,10 @@ impl EditorDemoApplication {
             } else {
                 "Search error".to_owned()
             }
+        } else if state.searching {
+            "Searching…".to_owned()
+        } else if state.was_truncated {
+            format!("{}+ matches", state.match_count)
         } else if state.match_count == 0 {
             if state.query.is_empty() {
                 "No query".to_owned()
@@ -6041,13 +6147,27 @@ impl NativeApplication for EditorDemoApplication {
     }
 
     fn frame_interval(&self) -> Option<Duration> {
-        Some(Duration::from_millis(250))
+        if self.find_search_is_pending || self.find.as_ref().is_some_and(|find| find.searching) {
+            Some(Duration::from_millis(16))
+        } else {
+            Some(Duration::from_millis(250))
+        }
     }
 
     fn update(&mut self, elapsed: Duration) -> HostControl {
         self.observation_elapsed = self.observation_elapsed.saturating_add(elapsed);
         self.workspace_refresh_elapsed = self.workspace_refresh_elapsed.saturating_add(elapsed);
+        if self.find_search_is_pending {
+            self.find_search_debounce_elapsed =
+                self.find_search_debounce_elapsed.saturating_add(elapsed);
+            if self.find_search_debounce_elapsed >= FIND_SEARCH_DEBOUNCE {
+                self.launch_pending_find_search();
+            }
+        }
         let mut invalidation = None;
+        if self.apply_latest_find_response() {
+            invalidation = Some(InvalidationClass::TextOverlay);
+        }
         if self.apply_latest_completion_response() {
             invalidation = Some(InvalidationClass::TextOverlay);
         }
@@ -8912,7 +9032,7 @@ mod tests {
     }
 
     #[test]
-    fn regex_find_surfaces_invalid_pattern_without_matches() -> TestResult {
+    fn regex_find_surfaces_invalid_pattern_after_background_search() -> TestResult {
         let (files, dialogs) = test_services()?;
         let mut application = test_application(&files, &dialogs)?;
         let _ = application.open_find();
@@ -8922,8 +9042,29 @@ mod tests {
         }
 
         application.refresh_find_matches();
+        assert!(application.find.as_ref().is_some_and(|find| find.searching));
 
+        application.launch_pending_find_search();
+        let mut response_applied = false;
+        for _ in 0..200 {
+            if application.apply_latest_find_response() {
+                response_applied = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+
+        assert!(
+            response_applied,
+            "background invalid-regex response was not received"
+        );
         assert!(application.find_matches.is_empty());
+        assert!(
+            application
+                .find
+                .as_ref()
+                .is_some_and(|find| !find.searching)
+        );
         assert!(
             application
                 .find
@@ -8969,6 +9110,47 @@ mod tests {
         assert_eq!(
             application.active_view().editor.document().text(),
             "alpha=12 beta=34"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn regex_search_debounces_and_applies_only_latest_request() -> TestResult {
+        let (files, dialogs) = test_services()?;
+        let mut application = test_application(&files, &dialogs)?;
+        application.new_document();
+        {
+            let view = application.active_view_mut();
+            view.editor.synchronize_document("alpha beta beta", 1);
+            view.selections = SelectionSet::single(ByteSelection::caret(0));
+            apply_selection_set_to_editor(&mut view.editor, &view.selections);
+        }
+        application.find = Some(luna_ui::FindPanelState {
+            query: "alpha".to_owned(),
+            regex: true,
+            ..luna_ui::FindPanelState::default()
+        });
+        application.refresh_find_matches();
+        assert!(application.find.as_ref().is_some_and(|find| find.searching));
+
+        if let Some(find) = application.find.as_mut() {
+            find.query = "beta".to_owned();
+        }
+        application.refresh_find_matches();
+        application.launch_pending_find_search();
+        for _ in 0..200 {
+            if application.apply_latest_find_response() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+
+        assert_eq!(application.find_matches, vec![6..10, 11..15]);
+        assert!(
+            application
+                .find
+                .as_ref()
+                .is_some_and(|find| !find.searching)
         );
         Ok(())
     }

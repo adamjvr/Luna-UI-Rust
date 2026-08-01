@@ -663,6 +663,10 @@ pub struct FindPanelState {
     pub selected_match: usize,
     /// Current pattern-compilation or search-validation error.
     pub pattern_error: Option<String>,
+    /// Whether a debounced or background search is currently pending.
+    pub searching: bool,
+    /// Whether the accepted result reached its deterministic match limit.
+    pub was_truncated: bool,
     /// Active editable field.
     pub active_field: FindField,
     /// Whether replacement UI is visible.
@@ -687,6 +691,8 @@ impl Default for FindPanelState {
             match_count: 0,
             selected_match: 0,
             pattern_error: None,
+            searching: false,
+            was_truncated: false,
             active_field: FindField::Query,
             replacement_is_visible: false,
             case_sensitive: false,
@@ -1022,6 +1028,10 @@ impl Widget for FindPanel {
             .with_label("Find results")
             .with_value(if let Some(error) = &self.state.pattern_error {
                 error.clone()
+            } else if self.state.searching {
+                "Searching".to_owned()
+            } else if self.state.was_truncated {
+                format!("{} matches; result limit reached", self.state.match_count)
             } else if self.state.match_count == 0 {
                 if self.state.query.is_empty() {
                     "No query".to_owned()

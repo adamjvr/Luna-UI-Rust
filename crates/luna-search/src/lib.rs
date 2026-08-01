@@ -12,6 +12,10 @@ use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::ops::Range;
 
+mod async_search;
+
+pub use async_search::{AsyncSearchResponse, AsyncSearchWorker};
+
 /// Default deterministic maximum number of matches returned by one request.
 pub const DEFAULT_MAX_MATCHES: usize = 100_000;
 
@@ -465,10 +469,16 @@ impl SearchCoordinator {
         self.active = None;
     }
 
+    /// Returns whether a request identity and revision are still active.
+    #[must_use]
+    pub fn accepts_identity(&self, request_id: SearchRequestId, source_revision: u64) -> bool {
+        self.active == Some((request_id, source_revision))
+    }
+
     /// Returns whether a result belongs to the latest active request and revision.
     #[must_use]
     pub fn accepts(&self, result: &SearchResult) -> bool {
-        self.active == Some((result.request_id, result.source_revision))
+        self.accepts_identity(result.request_id, result.source_revision)
     }
 }
 
