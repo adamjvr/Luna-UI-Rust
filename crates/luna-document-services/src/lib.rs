@@ -597,6 +597,18 @@ pub trait DocumentDialogService {
         path: &Path,
     ) -> Result<SaveConflictChoice, DialogError>;
 
+    /// Resolves a storage conflict with downstream product identity in native wording.
+    ///
+    /// Adapters that do not render branded wording may rely on this default delegation.
+    fn resolve_save_conflict_for_product(
+        &mut self,
+        _application_name: &str,
+        title: &str,
+        path: &Path,
+    ) -> Result<SaveConflictChoice, DialogError> {
+        self.resolve_save_conflict(title, path)
+    }
+
     /// Prompts for one workspace leaf name, or returns `None` when canceled.
     fn prompt_workspace_name(
         &mut self,
@@ -1010,8 +1022,17 @@ end run"#,
         title: &str,
         path: &Path,
     ) -> Result<SaveConflictChoice, DialogError> {
+        self.resolve_save_conflict_for_product("Luna", title, path)
+    }
+
+    fn resolve_save_conflict_for_product(
+        &mut self,
+        application_name: &str,
+        title: &str,
+        path: &Path,
+    ) -> Result<SaveConflictChoice, DialogError> {
         let text = format!(
-            "{} changed outside Luna. Overwrite it, reload storage content, or cancel?",
+            "{} changed outside {application_name}. Overwrite it, reload storage content, or cancel?",
             path.display()
         );
         let result = match self.backend {

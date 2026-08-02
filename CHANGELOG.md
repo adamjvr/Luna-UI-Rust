@@ -7,6 +7,7 @@ commitments are governed by `api/public-api.toml` and `docs/PUBLIC_API_POLICY.md
 
 ### Added
 
+- Added a product-labeled save-conflict dialog boundary and M9.4 downstream-product qualification for canonical file identity, duplicate-open prevention, optimistic conflict detection, reload, overwrite, and atomic UTF-8 writes.
 - Added validated downstream application profiles with distinct product-owned command, session, and resource namespaces for paired Luna/Moth integration.
 - Added the provisional `luna-search` crate with product-neutral literal and regular-expression
   matching, scoped searches, deterministic result caps, capture-aware replacement planning, and

@@ -119,11 +119,25 @@ pub struct KeyChord {
     pub modifiers: Modifiers,
 }
 
+fn normalize_shortcut_key(key: Key) -> Key {
+    match key {
+        Key::Character(character) => Key::Character(character.to_lowercase()),
+        other => other,
+    }
+}
+
 impl KeyChord {
     /// Creates a keyboard chord.
+    ///
+    /// Character keys are case-normalized because native keyboard backends may
+    /// report shifted shortcuts as uppercase characters while Shift remains
+    /// represented independently in the modifier set.
     #[must_use]
     pub fn new(key: Key, modifiers: Modifiers) -> Self {
-        Self { key, modifiers }
+        Self {
+            key: normalize_shortcut_key(key),
+            modifiers,
+        }
     }
 }
 
@@ -396,6 +410,30 @@ mod tests {
                 timestamp_micros: 10,
             })
             .ok_or_else(|| std::io::Error::other("binding should resolve"))?;
+
+        assert_eq!(request.command, command);
+        Ok(())
+    }
+
+    #[test]
+    fn shifted_character_event_matches_lowercase_binding() -> Result<(), Box<dyn Error>> {
+        let command = CommandId::new("luna.file.save_as")?;
+        let modifiers = Modifiers::CONTROL.union(Modifiers::SHIFT);
+        let chord = KeyChord::new(Key::Character("s".to_owned()), modifiers);
+        let mut registry = CommandRegistry::new();
+        registry.register_command(CommandDefinition::new(command.clone(), "Save As"))?;
+        registry.register_binding(KeyBinding::new(chord, command.clone()))?;
+
+        let request = registry
+            .resolve_keyboard(&KeyboardEvent {
+                key: Key::Character("S".to_owned()),
+                text: Some("S".to_owned()),
+                is_pressed: true,
+                is_repeat: false,
+                modifiers,
+                timestamp_micros: 30,
+            })
+            .ok_or_else(|| std::io::Error::other("shifted binding should resolve"))?;
 
         assert_eq!(request.command, command);
         Ok(())
